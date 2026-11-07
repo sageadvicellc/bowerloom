@@ -10,7 +10,8 @@
 //   - The only `npm publish` it ever runs is a dry run. A guard in spawnNpm() refuses every other npm subcommand that could change the registry.
 //   - It never reads, stores, or prints a token, a one-time code, or a password. Children start with a scrubbed environment and with
 //     empty npm config files, so a user's ~/.npmrc is never read. Output is redacted before it reaches a log or the screen.
-//   - Subcommands that publish, push, or retire only print the commands. They print them to a person at a terminal.
+//   - Subcommands that publish or retire only print the commands. They print them to a person at a terminal.
+//   - The only thing it ever pushes is the one release tag: `tag` runs `git push origin refs/tags/<tag>`. Never --force, never --tags, never a branch.
 //   - On SIGINT, SIGTERM or SIGHUP it kills every child process group, removes its temporary folders, and exits 130.
 //
 // Settings come from release.config.json at the repository root. The version comes from the release record that the config names.
@@ -61,8 +62,7 @@ export const COMMANDS = Object.freeze([
   { name: 'publish', class: 'human-only', description: 'Print the publish commands for a person to run. Never runs them.', flags: [] },
   { name: 'hashes', class: 'local-write', description: 'Write the SHA-256 of each desktop artifact to the hash file.', flags: [] },
   { name: 'verify', class: 'read-only', description: 'Check the registry tag and integrity, an install from the registry, and the desktop hashes.', flags: ['--tarball'] },
-  { name: 'tag', class: 'local-write', description: 'Create the annotated git tag on the checked commit. Does not push.', flags: ['--commit', '--branch'] },
-  { name: 'push-tag', class: 'human-only', description: 'Print the git push command for the tag. Never runs it.', flags: [] },
+  { name: 'tag', class: 'remote-write', description: 'Create the annotated git tag on the checked commit and push that one tag to origin.', flags: ['--commit', '--branch'] },
   { name: 'retire', class: 'human-only', description: 'Print the npm deprecate and dist-tag commands from the config. Never runs them.', flags: [] },
   { name: 'claims', class: 'read-only', description: 'Scan the configured files for stale wording. Exit 1 on any hit.', flags: [] },
 ]);
@@ -805,9 +805,15 @@ async function cmdPublish(ctx, o) {
 
 function tagName(o) { return `${o.config.tagPrefix}${o.version}`; }
 
-async function cmdPushTag(ctx, o) {
-  const lines = [`# Run this yourself after the tag exists locally and the release is verified.`, `git push origin ${shellQuote(tagName(o))}`];
-  return humanOnly(ctx, 'push-tag', lines, { version: o.version, tag: tagName(o) });
+/**
+ * Reads the tag on origin with `git ls-remote`. Returns { ok: true, commit } with commit null when origin has no such tag, or { ok: false, reason }.
+ * An annotated tag lists twice: the tag object, and the commit it points at under `^{}`. A lightweight tag lists once.
+ */
+async function originTagCommit(ctx, tag) {
+  const remote = await git(ctx, ['ls-remote', 'origin', `refs/tags/${tag}`, `refs/tags/${tag}^{}`]);
+  if (!remote.ok) return { ok: false, reason: failureLine(remote) };
+  const refs = new Map(remote.stdout.split('\n').filter(Boolean).map(line => line.split('\t').reverse()));
+  return { ok: true, commit: refs.get(`refs/tags/${tag}^{}`) ?? refs.get(`refs/tags/${tag}`) ?? null };
 }
 
 async function cmdRetire(ctx, o) {
@@ -968,14 +974,22 @@ async function cmdTag(ctx, o) {
   }
   if (!readReceipt(ctx, 'gates', o.version, commit)) throw new StepFailure(`no passing gates receipt for ${short(commit)} ${o.version}; run gates on that commit first`);
   const have = await git(ctx, ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`]);
-  if (have.ok) {
-    const at = have.stdout.trim();
-    if (at === commit) return alreadyDone(`tag ${tag} exists at ${short(commit)}`, { tag, commit, version: o.version });
-    throw new StepFailure(`tag ${tag} exists at ${short(at)}, not ${short(commit)}`, { tag, commit, existing: at });
+  const localCommit = have.ok ? have.stdout.trim() : null;
+  if (localCommit && localCommit !== commit) throw new StepFailure(`tag ${tag} exists at ${short(localCommit)}, not ${short(commit)}`, { tag, commit, existing: localCommit });
+  // Look at origin before any write, so a tag that origin already holds elsewhere is never overwritten and no local tag is made beside it.
+  const remote = await originTagCommit(ctx, tag);
+  if (!remote.ok) throw new StepFailure(`cannot read the tag on origin: ${remote.reason}`, { tag, commit });
+  if (remote.commit && remote.commit !== commit) throw new StepFailure(`origin has ${tag} at ${short(remote.commit)}, not ${short(commit)}; it was not overwritten`, { tag, commit, existing: remote.commit });
+  if (remote.commit && !localCommit) throw new StepFailure(`origin has ${tag} at ${short(commit)} but this clone has no such tag; run git fetch origin tag ${tag}`, { tag, commit });
+  if (localCommit && remote.commit) return alreadyDone(`tag ${tag} exists at ${short(commit)} and is on origin`, { tag, commit, version: o.version });
+  if (!localCommit) {
+    const made = await git(ctx, ['tag', '-a', '-m', `${o.config.package} ${o.version}`, '--', tag, commit]);
+    if (!made.ok) throw new StepFailure(`git tag failed: ${failureLine(made)}`);
   }
-  const made = await git(ctx, ['tag', '-a', '-m', `${o.config.package} ${o.version}`, '--', tag, commit]);
-  if (!made.ok) throw new StepFailure(`git tag failed: ${failureLine(made)}`);
-  return done(`created tag ${tag} at ${short(commit)}; it is not pushed`, { tag, commit, version: o.version });
+  // One tag, by its full ref name. No --force, no --tags, no branch. Git refuses to move a tag that origin already has.
+  const pushed = await git(ctx, ['push', 'origin', `refs/tags/${tag}`]);
+  if (!pushed.ok) throw new StepFailure(`git push failed: ${failureLine(pushed)}`, { tag, commit });
+  return done(`${localCommit ? 'pushed' : 'created and pushed'} tag ${tag} at ${short(commit)} to origin`, { tag, commit, version: o.version });
 }
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
@@ -1139,23 +1153,18 @@ async function cmdStatus(ctx, o) {
     if (releaseCommits.includes(localCommit)) add('tag', 'done', `${tag} at ${short(localCommit)}`);
     else add('tag', 'todo', `${tag} is at ${short(localCommit)}, not at the release commit ${commit ? short(commit) : 'unknown'}`);
   }
-  if (!localCommit) add('push-tag', 'todo', 'no local tag to push');
+  if (!localCommit) add('tag-on-origin', 'todo', 'no local tag to compare');
   else {
-    const remote = await git(ctx, ['ls-remote', '--tags', 'origin', `refs/tags/${tag}`, `refs/tags/${tag}^{}`]);
-    if (!remote.ok) add('push-tag', 'unknown', `cannot reach origin: ${failureLine(remote)}`);
-    else {
-      // An annotated tag lists twice: the tag object, and the commit it points at under `^{}`. A lightweight tag lists once.
-      const refs = new Map(remote.stdout.split('\n').filter(Boolean).map(line => line.split('\t').reverse()));
-      const remoteCommit = refs.get(`refs/tags/${tag}^{}`) ?? refs.get(`refs/tags/${tag}`);
-      if (!remoteCommit) add('push-tag', 'todo', `${tag} is not on origin`);
-      else if (remoteCommit === localCommit) add('push-tag', 'done', `${tag} is on origin at ${short(localCommit)}`);
-      else add('push-tag', 'todo', `origin has ${tag} at ${short(remoteCommit)}, not at ${short(localCommit)}`);
-    }
+    const remote = await originTagCommit(ctx, tag);
+    if (!remote.ok) add('tag-on-origin', 'unknown', `cannot reach origin: ${remote.reason}`);
+    else if (!remote.commit) add('tag-on-origin', 'todo', `${tag} is not on origin`);
+    else if (remote.commit === localCommit) add('tag-on-origin', 'done', `${tag} is on origin at ${short(localCommit)}`);
+    else add('tag-on-origin', 'todo', `origin has ${tag} at ${short(remote.commit)}, not at ${short(localCommit)}`);
   }
   return done(`${phases.filter(p => p.state === 'done').length} of ${phases.length} phases done`, { version, commit, phases });
 }
 
-const HANDLERS = { status: cmdStatus, preflight: cmdPreflight, gates: cmdGates, 'dry-run': cmdDryRun, publish: cmdPublish, hashes: cmdHashes, verify: cmdVerify, tag: cmdTag, 'push-tag': cmdPushTag, retire: cmdRetire, claims: cmdClaims };
+const HANDLERS = { status: cmdStatus, preflight: cmdPreflight, gates: cmdGates, 'dry-run': cmdDryRun, publish: cmdPublish, hashes: cmdHashes, verify: cmdVerify, tag: cmdTag, retire: cmdRetire, claims: cmdClaims };
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Output

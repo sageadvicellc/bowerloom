@@ -1,6 +1,6 @@
 # Releasing the Bowerloom CLI beta
 
-This page explains how to release a new beta of the Bowerloom command line to npm. A script does most of the work. A person does the steps that publish, push, or retire.
+This page explains how to release a new beta of the Bowerloom command line to npm. A script does most of the work. A person does the steps that publish or retire, because those need the owner's npm login. An agent or a script may run every other step, including the tag push.
 
 The script is `scripts/release.mjs`. Its config is the file `release.config.json`. Run it with Node `>=24.11.0 <25`. It has no packages of its own. Only `dry-run` loads one, the `tar` package of this repository, to list the tarball. `npm ci` installs it, and the gates run `npm ci`.
 
@@ -17,17 +17,18 @@ node scripts/release.mjs <subcommand> [flags]
 - A step that already finished for the same commit prints `already done` and exits 0. This holds for `gates`, `dry-run`, `hashes`, and `tag` only. Add `--force` to run `gates`, `dry-run`, or `hashes` again. `--force` works with those three only. Any other subcommand with `--force` is wrong use and exits 2.
 - A failed step prints the first failing line. The full log goes to `.trellis/release/logs/`. Log files are private (mode 0600).
 - A receipt is a small JSON file in `.trellis/release/receipts/`. It records that a step passed for one commit and one version. Git ignores the whole `.trellis` folder. Receipts have a schema version, now `v2`. A receipt of an older schema, or one without a `seams` list, counts as absent. Run the step again.
-- The script never stores, reads, or prints a token, a one-time code, or a password. Every child process starts with a clean environment. The clean environment drops `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `VERCEL_TOKEN`, every name that ends in `_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, or `_OTP`, and every name that holds `authtoken`, `_auth` (not followed by a letter), or `_password`. It drops `SSH_AUTH_SOCK` and `SSH_AGENT_PID` too, because the ssh agent can sign with every key it holds. Only the `git` commands the script runs (`fetch`, `ls-remote`, `tag`, `log`, and the others) get those two names back, so git over ssh works. npm, node, the gates, and pack never see them. The list lives in `tools/lib/safe-env.mjs`.
+- The script never stores, reads, or prints a token, a one-time code, or a password. Every child process starts with a clean environment. The clean environment drops `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `VERCEL_TOKEN`, every name that ends in `_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`, or `_OTP`, and every name that holds `authtoken`, `_auth` (not followed by a letter), or `_password`. It drops `SSH_AUTH_SOCK` and `SSH_AGENT_PID` too, because the ssh agent can sign with every key it holds. Only the `git` commands the script runs (`fetch`, `ls-remote`, `tag`, `push`, `log`, and the others) get those two names back, so git over ssh works. npm, node, the gates, and pack never see them. The list lives in `tools/lib/safe-env.mjs`.
 - Every npm child process gets an empty `userconfig` and an empty `globalconfig`. So npm never reads your `~/.npmrc`, which can hold a registry token.
 - The script blanks token-shaped text before it writes a log and before it prints a line, including the command line it echoes.
 - On Ctrl-C, `SIGTERM`, or `SIGHUP`, the script stops every child process group, removes the temporary folders it made, and exits 130.
 - Each child process runs in its own process group. A process group is the set of processes that one command starts. When a time limit or an output limit passes, the script stops the whole group.
 - The only `npm publish` that the script ever runs is `npm publish --dry-run`. A dry run lists what a publish does and publishes nothing. The script refuses every other form.
 
-## The three classes of subcommand
+## The four classes of subcommand
 
 - Read-only subcommands change no tracked file, no remote, and no registry. They may update the remote-tracking refs (`preflight` runs `git fetch origin`), and they may write logs and receipts under `.trellis`.
 - Local-write subcommands write files on this computer. They never contact the registry with a write.
+- Remote-write subcommands change a git remote. The only one is `tag`. It pushes one tag to origin, and nothing else: the command is `git push origin refs/tags/<tag>`, never with `--force` or `--tags`, and never a branch. It never contacts the registry.
 - Human-only subcommands only print commands. A person runs those commands. Without a terminal on both stdin and stdout, the script still prints the commands, runs nothing, and exits 2. This is on purpose: an agent can hand the printed commands to a person. With a terminal, it prints them and exits 0.
 
 ## Test seams
@@ -44,9 +45,8 @@ Run the phases in this order.
 4. Publish. A person publishes the tarball.
 5. Desktop hashes. Build the desktop app, then record a SHA-256 hash for each download.
 6. Verify. Run the checks that follow a publish.
-7. Tag. Create the git tag.
-8. Push the tag. A person pushes it.
-9. Check the claims. Look for wording that says the package is not on npm.
+7. Tag. Create the git tag and push it to origin.
+8. Check the claims. Look for wording that says the package is not on npm.
 
 Run `status` at any point to see which phases are done. A phase is `done`, `todo`, or `unknown`. A phase that rests on a receipt from a test run is `done (with test seams)`. When the script cannot find out, the phase is `unknown`. For example, an unreachable registry makes the publish phase `unknown`. It never makes it `todo`.
 
@@ -66,7 +66,7 @@ Shows each phase as `done`, `todo`, `unknown`, or `done (with test seams)`, with
 - `hashes` is `done` only when the recorded hashes equal the files on disk, with no unrecorded and no missing file.
 - `verify` is `done` only when the stored receipt has no skipped or failed check.
 - `tag` is `done` only when the local tag points at the release commit. That is HEAD, or the commit of the newest dry-run receipt that counts in this run and sits on HEAD or an ancestor of HEAD (`git merge-base --is-ancestor`). A dry run on another branch does not count.
-- `push-tag` is `done` only when `git ls-remote` shows the tag on origin at the same commit as the local tag.
+- `tag-on-origin` is `done` only when `git ls-remote` shows the tag on origin at the same commit as the local tag. It is `todo` when origin has no such tag, or has it at another commit, and `unknown` when origin cannot be reached.
 - If the registry answers 404 but the release record says `npm.published` is true, the `publish` and `dist-tag` phases are `unknown`, not `todo`.
 
 ### `preflight`
@@ -148,15 +148,20 @@ An unreachable registry fails the check with the reason `registry unreachable`. 
 
 ### `tag`
 
-Class: local-write.
+Class: remote-write.
 
-Creates the annotated tag `v<version>` on the commit that `preflight` checked. It runs `git tag -a`. In both forms `gates` must have passed for the tagged commit, and the step fails with no tag if it has not. Use `--commit HASH` to tag another commit. The hash must be all 40 characters. If the tag already exists at that commit, the step is already done. If it exists at another commit, the step fails. It does not push.
+Creates the annotated tag `v<version>` on the commit that `preflight` checked, then pushes that one tag to origin. It runs `git tag -a`, then `git push origin refs/tags/v<version>`. It never pushes a branch and never uses `--force` or `--tags`. In both forms `gates` must have passed for the tagged commit, and the step fails with no tag if it has not. Use `--commit HASH` to tag another commit. The hash must be all 40 characters. A `--commit` run does not fetch first.
 
-### `push-tag`
+The step reads the tag on origin (`git ls-remote origin refs/tags/v<version> refs/tags/v<version>^{}`) before it writes anything:
 
-Class: human-only.
+- The local tag is at the commit and origin has it at the same commit: the step is already done, and it pushes nothing.
+- Only the local tag exists, at the commit: the step pushes it.
+- Neither exists: the step creates the tag, then pushes it.
+- The local tag is at another commit, or origin has the tag at another commit: the step fails and changes nothing. It never overwrites a tag.
+- Origin has the tag at the commit but this clone has no such tag: the step fails. Fetch the tag, then run it again.
+- Origin cannot be read, or the push fails (authentication, network, or a rejection): the step fails with the first error line. No receipt is written. A tag made before the failed push stays, and the next run pushes it.
 
-Prints `git push origin v<version>` for a person to run. It never runs it.
+The push is the only write to a remote that the script makes, and it never touches the registry.
 
 ### `retire`
 
@@ -171,6 +176,12 @@ Class: read-only.
 Scans the files and folders listed under `claims.paths` in the config for the phrases listed under `claims.patterns`. The config needs at least one path and one phrase. A phrase matches without regard to case, and it matches across line breaks and runs of spaces: the script folds every run of white space in the file to one space before it looks. So a phrase that wraps onto the next line still matches, and so does one at the start of a sentence. For each hit it prints one `file:line`, where the line is the line on which the match starts. It skips `node_modules`, `dist`, and `.git`.
 
 A file that it cannot read is a file that it did not check, so that is a failure. It skips a symlink (also when the configured path itself is a symlink), a file over 2 MiB, and a binary file. It lists each one with the reason and exits 1. It also exits 1 on any hit, on a configured path that is missing, and when it scanned no file. Run it after you publish and update the docs. A hit means a page still says the package is not on npm.
+
+## What an agent may run
+
+- Read-only and local-write subcommands: an agent or a script may run any of them.
+- `tag`: an agent or a script may run it. It needs a passing gates receipt for the commit, and it pushes only the one release tag to origin.
+- `publish` and `retire`: a person runs the printed commands. Publishing needs the owner's npm login and one-time code, and an agent never holds them. The script never runs `npm publish` except as a dry run.
 
 ## Cleaning up
 

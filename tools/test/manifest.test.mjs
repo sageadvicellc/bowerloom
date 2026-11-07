@@ -14,7 +14,7 @@ const SUBCOMMANDS = new Set(['create', 'remove', 'list']);
 // The release subcommands and their classes, as agreed for the release script. The manifest must list exactly these.
 const RELEASE = {
   status: 'read-only', preflight: 'read-only', gates: 'local-write', 'dry-run': 'local-write', publish: 'human-only', hashes: 'local-write',
-  verify: 'read-only', tag: 'local-write', 'push-tag': 'human-only', retire: 'human-only', claims: 'read-only',
+  verify: 'read-only', tag: 'remote-write', retire: 'human-only', claims: 'read-only',
 };
 const exists = rel => fs.existsSync(path.join(root, rel));
 // A script under scripts/ may not be written yet. Once the file exists, every check below applies to it.

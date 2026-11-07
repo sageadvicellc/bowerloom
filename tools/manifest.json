@@ -573,8 +573,8 @@
       "name": "release:tag",
       "path": "scripts/release.mjs",
       "help": true,
-      "safetyClass": "local-write",
-      "description": "Create the annotated git tag on the checked commit. Does not push.",
+      "safetyClass": "remote-write",
+      "description": "Create the annotated git tag on the checked commit and push that one tag to origin.",
       "args": [
         {
           "name": "--json",
@@ -611,7 +611,7 @@
           "commit": "string",
           "existing": "string"
         },
-        "note": "The tag is created locally and never pushed. existing appears only when the tag already points at another commit.",
+        "note": "The tag is created locally, then only refs/tags/<tag> is pushed to origin; never a branch, never --force or --tags. A tag already on origin at another commit is a failure and is never overwritten. existing appears only when the local tag or the tag on origin is at another commit.",
         "optional": [
           "command",
           "version",
@@ -621,49 +621,6 @@
         ]
       },
       "example": "node scripts/release.mjs tag --json"
-    },
-    {
-      "name": "release:push-tag",
-      "path": "scripts/release.mjs",
-      "help": true,
-      "safetyClass": "human-only",
-      "description": "Print the git push command for the tag. Never runs it.",
-      "args": [
-        {
-          "name": "--json",
-          "required": false,
-          "description": "Print exactly one JSON object on stdout."
-        },
-        {
-          "name": "--repo",
-          "required": false,
-          "description": "DIR. Run against another repository root."
-        }
-      ],
-      "output": {
-        "format": "json",
-        "keys": {
-          "schema": "string",
-          "command": "string|null",
-          "ok": "boolean",
-          "outcome": "string",
-          "exit": "number",
-          "message": "string",
-          "version": "string",
-          "commands": "array",
-          "notes": "array",
-          "tag": "string"
-        },
-        "note": "A human-only subcommand: it prints the command and runs nothing.",
-        "optional": [
-          "command",
-          "version",
-          "commands",
-          "notes",
-          "tag"
-        ]
-      },
-      "example": "node scripts/release.mjs push-tag --json"
     },
     {
       "name": "release:retire",

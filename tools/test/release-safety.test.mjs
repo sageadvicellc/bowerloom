@@ -24,12 +24,12 @@ async function inProcess(fx, args, { tty }) {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // human-only subcommands
 
-test('publish, push-tag and retire refuse without a terminal: exit 2, commands printed, nothing run, no npm call', t => {
+test('publish and retire refuse without a terminal: exit 2, commands printed, nothing run, no npm call', t => {
   const fx = makeFixture(t, { config: testConfig({ retire: [{ version: '0.7.0-beta.1', message: 'Use the newer beta.' }] }) });
   assert.equal(fx.run(['gates']).status, 0);
   assert.equal(fx.run(['dry-run']).status, 0);
   const callsBefore = fx.npmCalls().length;
-  for (const [sub, expected] of [['publish', /npm publish \S+ --tag beta --access public/], ['push-tag', /git push origin v0\.8\.0-beta\.2/], ['retire', /npm deprecate bowerloom@0\.7\.0-beta\.1 'Use the newer beta\.'/]]) {
+  for (const [sub, expected] of [['publish', /npm publish \S+ --tag beta --access public/], ['retire', /npm deprecate bowerloom@0\.7\.0-beta\.1 'Use the newer beta\.'/]]) {
     const r = fx.run([sub]);
     assert.equal(r.status, 2, sub);
     assert.match(r.stdout, expected, sub);
@@ -82,16 +82,10 @@ test('publish without a dry-run receipt, at a terminal or not, exits 1 with "run
   assert.equal(fx.npmCalls().filter(c => c.args[0] === 'publish').length, 0);
 });
 
-test('with a terminal, push-tag and retire print their commands, exit 0, and run and push nothing', async t => {
+test('with a terminal, retire prints its commands, exit 0, and runs nothing', async t => {
   const fx = makeFixture(t, { config: testConfig({ retire: [{ version: '0.7.0-beta.1', message: "It's old; use the beta" }, { version: '0.7.0-beta.2', message: 'Retired.' }] }) });
   assert.equal(fx.run(['gates']).status, 0);
-  assert.equal(fx.run(['tag']).status, 0);
   const callsBefore = fx.npmCalls().length;
-  const push = await inProcess(fx, ['push-tag'], { tty: true });
-  assert.equal(push.code, 0);
-  assert.match(push.out, /^git push origin v0\.8\.0-beta\.2$/m);
-  assert.equal(fx.git('ls-remote', '--tags', 'origin'), '', 'the tag was not pushed');
-
   const retire = await inProcess(fx, ['retire'], { tty: true });
   assert.equal(retire.code, 0);
   assert.match(retire.out, /^npm deprecate bowerloom@0\.7\.0-beta\.1 'It'\\''s old; use the beta' --registry https:\/\/registry\.example\.test$/m);
@@ -112,9 +106,9 @@ test('a terminal on only one side is still a refusal', async t => {
   const fx = makeFixture(t);
   for (const [stdin, stdout] of [[true, false], [false, true], [false, false]]) {
     const out = [];
-    const code = await runCli(['--repo', fx.repo, 'push-tag'], { env: fx.baseEnv, stdin: { isTTY: stdin }, stdout: { isTTY: stdout, write: s => out.push(s) }, stderr: { write: () => {} } });
+    const code = await runCli(['--repo', fx.repo, 'retire'], { env: fx.baseEnv, stdin: { isTTY: stdin }, stdout: { isTTY: stdout, write: s => out.push(s) }, stderr: { write: () => {} } });
     assert.equal(code, 2, `stdin ${stdin}, stdout ${stdout}`);
-    assert.match(out.join(''), /git push origin/);
+    assert.match(out.join(''), /nothing configured/);
   }
 });
 
@@ -238,7 +232,7 @@ test('the script source has one npm publish spawn and it carries --dry-run; ever
 
 test('across a whole release run the fake npm sees no publish without --dry-run, and no login, whoami, deprecate or dist-tag', t => {
   const fx = makeFixture(t);
-  for (const args of [['preflight'], ['gates', '--e2e'], ['dry-run'], ['publish'], ['status'], ['verify'], ['tag'], ['push-tag'], ['retire']]) fx.run(args);
+  for (const args of [['preflight'], ['gates', '--e2e'], ['dry-run'], ['publish'], ['status'], ['verify'], ['tag'], ['retire']]) fx.run(args);
   const calls = fx.npmCalls();
   const subs = new Set(calls.map(c => c.args[0]));
   assert.ok(subs.has('publish'), 'the dry run did call publish');
@@ -296,7 +290,7 @@ test('logs and receipts are private: files 0600 and the release state folder is 
 
 test('a read-only subcommand writes no file under the repository', t => {
   const fx = makeFixture(t);
-  for (const args of [['status'], ['preflight'], ['claims'], ['publish'], ['push-tag'], ['retire']]) fx.run(args);
+  for (const args of [['status'], ['preflight'], ['claims'], ['publish'], ['retire']]) fx.run(args);
   assert.equal(allFiles(path.join(fx.repo, '.trellis')).length, 0);
   assert.equal(fx.git('status', '--porcelain'), '');
 });
@@ -609,7 +603,7 @@ test('--help --json prints one JSON object with the subcommand table', t => {
   assert.equal(out.schema, 'bowerloom/release-result/v1');
   assert.equal(out.ok, true);
   assert.equal(out.outcome, 'help');
-  assert.deepEqual(out.commands.map(c => c.name), ['status', 'preflight', 'gates', 'dry-run', 'publish', 'hashes', 'verify', 'tag', 'push-tag', 'retire', 'claims']);
+  assert.deepEqual(out.commands.map(c => c.name), ['status', 'preflight', 'gates', 'dry-run', 'publish', 'hashes', 'verify', 'tag', 'retire', 'claims']);
   assert.match(out.usage, /^Usage: /);
 });
 

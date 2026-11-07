@@ -23,8 +23,8 @@ test('--manifest prints the subcommand table as JSON, and the docs describe ever
   assert.equal(r.status, 0);
   const table = r.json();
   assert.deepEqual(table, manifest());
-  assert.deepEqual(table.commands.map(c => c.name), ['status', 'preflight', 'gates', 'dry-run', 'publish', 'hashes', 'verify', 'tag', 'push-tag', 'retire', 'claims']);
-  assert.deepEqual([...new Set(table.commands.map(c => c.class))].sort(), ['human-only', 'local-write', 'read-only']);
+  assert.deepEqual(table.commands.map(c => c.name), ['status', 'preflight', 'gates', 'dry-run', 'publish', 'hashes', 'verify', 'tag', 'retire', 'claims']);
+  assert.deepEqual([...new Set(table.commands.map(c => c.class))].sort(), ['human-only', 'local-write', 'read-only', 'remote-write']);
   const docs = fs.readFileSync(path.join(repoRoot, 'docs/releasing.md'), 'utf8');
   for (const c of table.commands) {
     const section = docs.split(/^### /m).find(s => s.startsWith('`' + c.name + '`'));
@@ -40,15 +40,15 @@ test('parseArgs accepts good input and refuses wrong use with a UsageError', () 
   assert.equal(parseArgs(['--help']).help, true);
   for (const name of ['gates', 'dry-run', 'hashes']) assert.equal(parseArgs([name, '--force']).flags['--force'], true, name);
   for (const argv of [
-    [], ['nope'], ['status', 'extra'], ['status', '--nope'], ['status', '--json=1'], ['preflight', '--branch'], ['preflight', '--branch', '--json'],
+    [], ['nope'], ['push-tag'], ['status', 'extra'], ['status', '--nope'], ['status', '--json=1'], ['preflight', '--branch'], ['preflight', '--branch', '--json'],
     ['status', '--json', '--json'], ['status', '--e2e'], ['claims', '--tarball', 'x'], ['--manifest', 'status'], ['hashes', '--commit', 'abc'],
-    ['status', '--force'], ['preflight', '--force'], ['publish', '--force'], ['verify', '--force'], ['tag', '--force'], ['push-tag', '--force'], ['retire', '--force'], ['claims', '--force'],
+    ['status', '--force'], ['preflight', '--force'], ['publish', '--force'], ['verify', '--force'], ['tag', '--force'], ['retire', '--force'], ['claims', '--force'],
   ]) assert.throws(() => parseArgs(argv), UsageError, JSON.stringify(argv));
 });
 
 test('wrong use exits 2 and, with --json, still prints exactly one JSON object', t => {
   const fx = makeFixture(t);
-  const cases = [[], ['nope'], ['status', '--nope'], ['preflight', '--branch'], ['status', '--e2e'], ['gates', '--min-free-gib', '5'], ['gates', '--min-free-gib', 'many'], ['tag', '--commit', 'abc123'], ['tag', '--commit', 'A'.repeat(40)]];
+  const cases = [[], ['nope'], ['push-tag'], ['status', '--nope'], ['preflight', '--branch'], ['status', '--e2e'], ['gates', '--min-free-gib', '5'], ['gates', '--min-free-gib', 'many'], ['tag', '--commit', 'abc123'], ['tag', '--commit', 'A'.repeat(40)]];
   for (const args of cases) {
     const plain = fx.run(args);
     assert.equal(plain.status, 2, `${args.join(' ')} -> ${plain.stderr}`);
