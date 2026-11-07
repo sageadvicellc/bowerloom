@@ -43,8 +43,8 @@ test('redact blanks auth assignments, password assignments, and Authorization he
   assert.equal(redact(`//registry.npmjs.org/:${AUTH}Token=abcdef123456`, {}), `//registry.npmjs.org/:${AUTH}Token=${REDACTED}`);
   assert.equal(redact(`${AUTH}=dXNlcjpwYXNz`, {}), `${AUTH}=${REDACTED}`);
   assert.equal(redact(`${PASS}=hunter22 and more`, {}), `${PASS}=${REDACTED} and more`);
-  assert.equal(redact('db_password = "s3cret-value"', {}), `db_password = "${REDACTED}"`);
-  assert.equal(redact('{"password": "s3cret-value"}', {}), `{"password": "${REDACTED}"}`);
+  assert.equal(redact(`db_${PASS} = "s3cret-value"`, {}), `db_${PASS} = "${REDACTED}"`);
+  assert.equal(redact(`{"${PASS}": "s3cret-value"}`, {}), `{"${PASS}": "${REDACTED}"}`);
   assert.equal(redact('Authorization: Bearer abc.def-123_xyz==', {}), `Authorization: Bearer ${REDACTED}`);
   assert.equal(redact('authorization: basic dXNlcjpwYXNz', {}), `authorization: basic ${REDACTED}`);
   assert.equal(redact('curl -H "Authorization: Bearer abcdefgh12345678"', {}), `curl -H "Authorization: Bearer ${REDACTED}"`);

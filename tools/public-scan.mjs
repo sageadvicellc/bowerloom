@@ -18,8 +18,10 @@
 // A path finding is reported with the file "file-path" and the line set to the path's position in `git diff --name-only`. A binary file name that matches a leak
 // pattern is listed as "[path withheld]".
 // An empty range (no commits, or nothing added) exits 1 unless --allow-empty is given; with it the output says "accepted by --allow-empty", never "clean".
-// Only committed work is scanned: a change that is not committed is not in `<base>...HEAD`. A binary file added and removed again inside the branch is not scanned (only
-// the HEAD blob of a binary file the net diff adds is).
+// Binary content is read as raw bytes (latin1). A compressed format (zip, gz, dmg, docx, pdf streams) is not inspected, and the output says so (binaryNote).
+// Only committed work is scanned: a change that is not committed is not in `<base>...HEAD`. A binary file added (or changed) and then removed (or put back) inside the
+// branch is not scanned, because only the HEAD blob of a binary file the net diff adds is. Such files are listed as binaryIntermediate and printed as a warning; the
+// exit code does not change.
 // Exit 0: nothing found. Exit 1: findings, an unscanned binary file, or an empty range. Exit 2: wrong use, an unreadable base or repository, or an internal error
 // (with --json, one object {ok:false, exit:2, error}). Exit 130: interrupted.
 import crypto from 'node:crypto';
@@ -42,6 +44,8 @@ export const WINDOW_CHARS = 4000;
 export const WINDOW_OVERLAP = 200;
 /** A binary file over this size is reported as unscanned. */
 export const MAX_BINARY_BYTES = 5 * 1024 * 1024;
+/** Said in every result: what the binary scan can and cannot see. */
+export const BINARY_NOTE = 'binary files are read as raw bytes; compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected, so a leak inside one is not found';
 
 const USAGE = `Usage: node tools/public-scan.mjs [--base REF] [--pr-body FILE] [--terms-file ABS_FILE] [--allow-empty] [--json]
   --base REF           scan git diff REF...HEAD and the commits REF..HEAD (default ${DEFAULT_BASE})
@@ -61,8 +65,27 @@ const BEFORE = String.raw`(?<![A-Za-z0-9_])`;
 
 const allowedPlaceholder = match => PLACEHOLDER_NAMES.has(match[1].toLowerCase());
 const ALLOWED_EMAIL = /(?:@example\.com|@users\.noreply\.github\.com|^noreply@anthropic\.com|^noreply@github\.com|^git@github\.com)$/i;
-// A value that only stands for a secret: an environment reference, an angle-bracket or template placeholder, or a row of mask characters.
-const PLACEHOLDER_VALUE = /^(?:\$|<|\{\{|%|\*+$|x+$|\.+$)/i;
+// A value that only stands for a secret. The WHOLE value must be one of these: an environment reference in capitals (`$NAME`, `${NAME}`, `%NAME%`), an
+// angle-bracket placeholder (`<your password>`), a template (`${{ secrets.X }}`, `{{ x }}`), or a row of mask characters. A value that only starts like one
+// (`$ecret99`, `<x>tail`) is a secret.
+// The environment forms are case-sensitive on purpose: `$ecret99` is a secret, `$DB_PASS` is a reference. The other forms ignore case.
+const ENV_REFERENCE = /^(?:\$\{?[A-Z][A-Z0-9_]*\}?|%[A-Z][A-Z0-9_]*%)$/;
+const OTHER_PLACEHOLDER = /^(?:<[^<>]*>|\$?\{\{[^{}]*\}\}|\*+|x+|\.+)$/i;
+const isPlaceholderValue = value => ENV_REFERENCE.test(value) || OTHER_PLACEHOLDER.test(value);
+
+/**
+ * A secret assignment: a name (`password`, `_authToken`), an optional closing quote of the name, `=` or `:`, an optional opening quote, and the value. The value is a
+ * template or an angle-bracket placeholder that ends the value, or a run of characters that are not white space or quotes. Groups: 1 the separator, 2 the quote, 3 the value.
+ */
+function assignment(name) {
+  return new RegExp(name + String.raw`["']?\s*([=:])\s*(["']?)((?:\$?\{\{[^{}\n]*\}\}|<[^<>\n]*>)(?![^\s'"])|[^\s'"]{3,})`, 'gi');
+}
+/** A match of `assignment` is allowed when its value is a placeholder, or when it is a short bare word after a colon (`password: string` in a type). */
+function allowedAssignment(match) {
+  const [, separator, quote, value] = match;
+  if (isPlaceholderValue(value)) return true;
+  return separator === ':' && quote === '' && value.length < 8;
+}
 
 // Each pattern: a kind, an expression (global), an optional `allow(match)`, and how the excerpt is written. Excerpts of secrets never hold the match, and
 // the excerpt of a home path or an email is a constant, so a real name or address is never printed.
@@ -87,8 +110,8 @@ const PATTERNS = [
   { kind: 'secret', re: /(?<![A-Za-z0-9_-])ey[J][A-Za-z0-9_-]{8,}\.ey[J][A-Za-z0-9_-]{8,}/g, needs: '.', secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])xo[x][baprs]-[A-Za-z0-9-]{10,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])AI[z]a[A-Za-z0-9_-]{35}/g, secret: true },
-  { kind: 'secret', re: /_auth(?:T[o]ken)?\s*=\s*[^\s'"]{3,}/gi, needs: '=', secret: true, allow: match => PLACEHOLDER_VALUE.test(match[0].replace(/^[^=]*=\s*/, '')) },
-  { kind: 'secret', re: /pass[w]ord\s*=\s*[^\s'"]{3,}/gi, needs: '=', secret: true, allow: match => PLACEHOLDER_VALUE.test(match[0].replace(/^[^=]*=\s*/, '')) },
+  { kind: 'secret', re: assignment('_auth(?:T[o]ken)?'), secret: true, allow: allowedAssignment },
+  { kind: 'secret', re: assignment('pass[w]ord'), secret: true, allow: allowedAssignment },
 ];
 
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -280,6 +303,8 @@ export async function scanRepository(args, cwd = process.cwd()) {
   if (!names.ok) return { exitCode: 2, error: `git diff --name-only failed: ${failure(names)}` };
   const numstat = await git(['diff', '--numstat', '-z', '--diff-filter=d', '--no-renames', '--no-ext-diff', '--no-textconv', range], repoRoot, MAX_DIFF_BYTES);
   if (!numstat.ok) return { exitCode: 2, error: `git diff --numstat failed: ${failure(numstat)}` };
+  const added = await git(['log', '--numstat', '-z', '--diff-filter=AM', '--no-renames', '--no-ext-diff', '--no-textconv', '--format=', commitRange], repoRoot, MAX_DIFF_BYTES);
+  if (!added.ok) return { exitCode: 2, error: `git log --numstat failed: ${failure(added)}` };
   const log = await git(['log', '-z', '--format=%H%n%an%n%ae%n%cn%n%ce%n%B', commitRange], repoRoot, MAX_DIFF_BYTES);
   if (!log.ok) return { exitCode: 2, error: `git log failed: ${failure(log)}` };
   const marker = `patch-${crypto.randomBytes(16).toString('hex')}-`;
@@ -312,6 +337,10 @@ export async function scanRepository(args, cwd = process.cwd()) {
     binaryScanned.push(shown);
     add(scanLine(blob.stdout, terms), shown, 0);
   }
+
+  // A binary file that some commit added or changed but that the net diff does not carry (it was removed again, or put back) is never read.
+  const netBinary = new Set(binaryNames);
+  const binaryIntermediate = [...new Set(parseNumstat(added.stdout).filter(entry => entry.binary && !netBinary.has(entry.path)).map(entry => entry.path))].map(safeName);
 
   const commits = parseCommitRecords(log.stdout);
   for (const record of commits) {
@@ -346,7 +375,7 @@ export async function scanRepository(args, cwd = process.cwd()) {
   const emptyNote = empty ? `the range ${args.base}...HEAD has ${commits.length === 0 ? 'no commits' : 'no added lines'}; nothing was scanned (use --allow-empty to accept that)` : null;
   const result = {
     ok: findings.length === 0 && unscanned.length === 0 && (!empty || args.allowEmpty), base: args.base, commits: commits.length, files: new Set(lines.map(l => l.file)).size, addedLines: lines.length,
-    patchLines, paths: paths.length, binaryFiles: binaryNames.length, binaryScanned, unscanned, empty, emptyNote: args.allowEmpty ? null : emptyNote,
+    patchLines, paths: paths.length, binaryFiles: binaryNames.length, binaryScanned, binaryIntermediate, binaryNote: BINARY_NOTE, unscanned, empty, emptyNote: args.allowEmpty ? null : emptyNote,
     termsChecked: args.termsFile === null ? null : terms.length, prBody, counts, findings: findings.slice(0, MAX_FINDINGS), truncated: findings.length > MAX_FINDINGS, total: findings.length,
   };
   return { exitCode: result.ok ? 0 : 1, result };
@@ -369,6 +398,9 @@ export function formatResult(result) {
     if (unscannedText) lines.push(`public-scan: NOT CLEAN. ${unscannedText}`);
   }
   lines.push(result.termsChecked === null ? 'terms: NOT checked' : `terms: ${result.termsChecked} checked`);
+  lines.push(`binary: ${(result.binaryNote ?? BINARY_NOTE).replace(/^binary /, '')}`);
+  const intermediate = result.binaryIntermediate ?? [];
+  if (intermediate.length > 0) lines.push(`warning: ${plural(intermediate.length, 'binary file')} ${intermediate.length === 1 ? 'was' : 'were'} added and removed again inside the range and ${intermediate.length === 1 ? 'was' : 'were'} never scanned: ${intermediate.slice(0, 5).join(', ')}${intermediate.length > 5 ? ', ...' : ''}`);
   if (result.binaryScanned.length > 0) lines.push(`binary: ${plural(result.binaryScanned.length, 'file')} scanned from its HEAD blob: ${result.binaryScanned.slice(0, 5).join(', ')}${result.binaryScanned.length > 5 ? ', ...' : ''}`);
   return lines.join('\n') + '\n';
 }

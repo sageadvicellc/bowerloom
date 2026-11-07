@@ -155,7 +155,7 @@
       "path": "tools/public-scan.mjs",
       "help": true,
       "safetyClass": "read-only",
-      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets, and private terms, and checks the pull request shape.",
+      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets (token shapes, and password or auth-token assignments in plain, quoted, and colon forms), and private terms, and checks the pull request shape.",
       "args": [
         {
           "name": "--base REF",
@@ -195,6 +195,8 @@
           "paths": "number",
           "binaryFiles": "number",
           "binaryScanned": "array",
+          "binaryIntermediate": "array",
+          "binaryNote": "string",
           "unscanned": "array",
           "empty": "boolean",
           "emptyNote": "string|null",
@@ -205,7 +207,7 @@
           "truncated": "boolean",
           "total": "number"
         },
-        "note": "Each finding has kind, file, line, excerpt, and for a term the termLine in the terms file; a finding on a line that only an earlier commit patch added (it was removed again later) also has commit. A path finding has the file file-path and the position of the path in git diff --name-only as its line. A finding inside a binary file has that file and the line 0. addedLines counts the net diff and patchLines every commit patch. A line over 4000 characters is scanned in overlapping 4000-character windows, never skipped. binaryScanned names the binary files scanned from their HEAD blob (a name that matches a leak pattern is shown as [path withheld]); unscanned lists { file, reason } for a binary file over 5 MiB or unreadable, and makes the exit 1. termsChecked is null when no terms file was given. A usage error or crash prints {ok:false, exit:2, error} instead."
+        "note": "Each finding has kind, file, line, excerpt, and for a term the termLine in the terms file; a finding on a line that only an earlier commit patch added (it was removed again later) also has commit. A path finding has the file file-path and the position of the path in git diff --name-only as its line. A finding inside a binary file has that file and the line 0. addedLines counts the net diff and patchLines every commit patch. A line over 4000 characters is scanned in overlapping 4000-character windows, never skipped. binaryScanned names the binary files scanned from their HEAD blob (a name that matches a leak pattern is shown as [path withheld]); unscanned lists { file, reason } for a binary file over 5 MiB or unreadable, and makes the exit 1. binaryIntermediate lists the binary files that a commit in the range added or changed but that the net diff does not carry (added and removed again, or put back); they were never read, the exit code does not change, and a name that matches a leak pattern is shown as [path withheld]. binaryNote says that binary content is read as raw bytes and that compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected. termsChecked is null when no terms file was given. A usage error or crash prints {ok:false, exit:2, error} instead."
       },
       "example": "node tools/public-scan.mjs --pr-body /abs/path/body.md --terms-file /abs/path/terms.txt --json"
     },
@@ -238,13 +240,15 @@
           "message": "string",
           "version": "string",
           "commit": "string|null",
-          "phases": "array"
+          "phases": "array",
+          "seams": "array"
         },
-        "note": "phases lists each release phase as { phase, state, reason }.",
+        "note": "phases lists each release phase as { phase, state, reason }. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
-          "commit"
+          "commit",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs status --json"
@@ -286,12 +290,14 @@
           "commit": "string",
           "ahead": "number|null",
           "behind": "number|null",
-          "checks": "array"
+          "checks": "array",
+          "seams": "array"
         },
-        "note": "checks lists { name, status, detail } for fetch, branch, commit, sync, and clean.",
+        "note": "checks lists { name, status, detail } for fetch, branch, commit, sync, and clean. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
-          "version"
+          "version",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs preflight --json"
@@ -346,9 +352,10 @@
           "log": "string",
           "gates": "array",
           "freeGiB": "number",
-          "floorGiB": "number"
+          "floorGiB": "number",
+          "seams": "array"
         },
-        "note": "receipt is the receipt written under .trellis (its seams key lists any test seams in use); ran names the gates run. gate, log, gates, freeGiB, and floorGiB appear only when the step fails, and commit, ran, and receipt only when it passes; the keys in output.optional can be absent.",
+        "note": "receipt is the receipt written under .trellis (its seams key lists any test seams in use); ran names the gates run. gate, log, gates, freeGiB, and floorGiB appear only when the step fails, and commit, ran, and receipt only when it passes; the keys in output.optional can be absent. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
@@ -359,7 +366,8 @@
           "log",
           "gates",
           "freeGiB",
-          "floorGiB"
+          "floorGiB",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs gates --json"
@@ -412,9 +420,10 @@
           "sha256": "string",
           "integrity": "string",
           "log": "string",
-          "entry": "string"
+          "entry": "string",
+          "seams": "array"
         },
-        "note": "The tarball, sha256, and integrity are those of the packed file; entries counts every entry in the tarball, bundled files included. log and entry appear only when the step fails (entry names the tarball entry that must never ship).",
+        "note": "The tarball, sha256, and integrity are those of the packed file; entries counts every entry in the tarball, bundled files included. log and entry appear only when the step fails (entry names the tarball entry that must never ship). seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
@@ -428,7 +437,8 @@
           "integrity",
           "log",
           "entries",
-          "entry"
+          "entry",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs dry-run --json"
@@ -463,15 +473,17 @@
           "version": "string",
           "commands": "array",
           "notes": "array",
-          "commit": "string"
+          "commit": "string",
+          "seams": "array"
         },
-        "note": "A human-only subcommand: it prints commands and runs nothing. Without a terminal the outcome is refused and the exit is 2. commit appears when a dry-run receipt is found.",
+        "note": "A human-only subcommand: it prints commands and runs nothing. Without a terminal the outcome is refused and the exit is 2. commit appears when a dry-run receipt is found. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
           "commit",
           "commands",
-          "notes"
+          "notes",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs publish --json"
@@ -512,16 +524,18 @@
           "files": "object",
           "different": "array",
           "found": "array",
-          "stale": "array"
+          "stale": "array",
+          "seams": "array"
         },
-        "note": "files maps each desktop artifact name to its SHA-256. different, found, and stale appear only when the step fails (found lists the artifacts on disk; stale lists the ones whose name lacks the release version).",
+        "note": "files maps each desktop artifact name to its SHA-256. different, found, and stale appear only when the step fails (found lists the artifacts on disk; stale lists the ones whose name lacks the release version). seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
           "files",
           "different",
           "found",
-          "stale"
+          "stale",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs hashes --json"
@@ -559,12 +573,14 @@
           "exit": "number",
           "message": "string",
           "version": "string",
-          "checks": "array"
+          "checks": "array",
+          "seams": "array"
         },
-        "note": "checks lists { name, status, reason } for dist-tag, integrity, install, and desktop-sha256.",
+        "note": "checks lists { name, status, reason } for dist-tag, integrity, install, and desktop-sha256. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
-          "version"
+          "version",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs verify --json"
@@ -589,12 +605,12 @@
         {
           "name": "--commit",
           "required": false,
-          "description": "HASH. The full 40-character commit to tag. It must be on a published release branch on origin; the step fetches first."
+          "description": "HASH. The full 40-character commit to tag. Needs --branch. The step fetches with --prune, then the commit must be an ancestor of exactly origin/<--branch>."
         },
         {
           "name": "--branch",
           "required": false,
-          "description": "NAME. The branch the release must be on."
+          "description": "NAME. With --commit (required then): the release branch on origin that must hold the commit; it must match the config branchPattern. Without --commit: the branch the release must be on."
         }
       ],
       "output": {
@@ -609,15 +625,17 @@
           "version": "string",
           "tag": "string",
           "commit": "string",
-          "existing": "string"
+          "existing": "string",
+          "seams": "array"
         },
-        "note": "The tag is created locally, then only refs/tags/<tag> is pushed to origin; never a branch, never --force or --tags. A tag already on origin at another commit is a failure and is never overwritten. With --commit, the commit must be an ancestor of a branch on origin that matches the config branchPattern. existing appears only when the local tag or the tag on origin is at another commit.",
+        "note": "The tag is created locally, then only refs/tags/<tag> is pushed to origin with git -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/<tag>; never a branch, never --force or --tags, and no repository hook runs. The step needs a passing gates receipt and a passing verify receipt (same version, on the tagged commit or an ancestor of it), origin push URL equal to its fetch URL, and, under a test seam, a local-path origin. A tag already on origin at another commit is a failure and is never overwritten. With --commit, --branch is required and the commit must be an ancestor of exactly origin/<branch> after git fetch --prune. existing appears only when the local tag or the tag on origin is at another commit. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
           "tag",
           "commit",
-          "existing"
+          "existing",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs tag --json"
@@ -651,12 +669,14 @@
           "message": "string",
           "version": "string",
           "commands": "array",
-          "notes": "array"
+          "notes": "array",
+          "seams": "array"
         },
-        "note": "A human-only subcommand: it prints the commands and runs nothing.",
+        "note": "A human-only subcommand: it prints the commands and runs nothing. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
-          "version"
+          "version",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs retire --json"
@@ -692,13 +712,15 @@
           "hits": "array",
           "scanned": "number",
           "skipped": "array",
-          "missing": "array"
+          "missing": "array",
+          "seams": "array"
         },
-        "note": "hits lists file:line positions of stale wording. missing appears only when a configured file is absent.",
+        "note": "hits lists file:line positions of stale wording. missing appears only when a configured file is absent. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
-          "missing"
+          "missing",
+          "seams"
         ]
       },
       "example": "node scripts/release.mjs claims --json"

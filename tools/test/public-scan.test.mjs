@@ -29,7 +29,7 @@ const secrets = {
   google: 'AI' + 'za' + 'SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q',
   authToken: '//registry.example.com/:_auth' + 'Token=' + 'a1b2c3d4e5f6',
   authBasic: '_auth' + '=' + 'dXNlcjpwYXNz',
-  password: 'DB_PASS' + 'WORD=' + 'hunter2hunter2',
+  dbpass: 'DB_PASS' + 'WORD=' + 'hunter2hunter2',
 };
 const EMAIL = 'someone' + '@' + 'corp-mail.org';
 const TERM = 'Zorblaxian';
@@ -596,7 +596,7 @@ test('scan: the author and committer names are scanned with the terms and the pa
 });
 
 test('scan: the new secret shapes are found and redacted, and placeholders are allowed', () => {
-  for (const key of ['jwt', 'slack', 'google', 'authToken', 'authBasic', 'password', 'pem']) {
+  for (const key of ['jwt', 'slack', 'google', 'authToken', 'authBasic', 'dbpass', 'pem']) {
     const found = scanLine(`value: ${secrets[key]} end`);
     assert.deepEqual(found.map(f => f.kind), ['secret'], key);
     assert.equal(found[0].excerpt, '[redacted]', key);
@@ -604,6 +604,40 @@ test('scan: the new secret shapes are found and redacted, and placeholders are a
   }
   for (const line of ['//registry.npmjs.org/:_auth' + 'Token=${NPM_TOKEN}', 'PASS' + 'WORD=$DB_PASS', 'pass' + 'word=<your password>', 'pass' + 'word = ***', 'the pass' + 'word is stored elsewhere', '_auth' + 'Token is documented here', 'ey' + 'J is a prefix and ey' + 'J.x is not a token']) {
     assert.deepEqual(kinds(line), [], line);
+  }
+});
+
+test('scanLine finds quoted and colon forms of a password or auth token, and redacts them', () => {
+  const leaks = [
+    'pass' + 'word="x12345678"',
+    'const pass' + 'word = "abc12345"',
+    "pass" + "word = 'abc12345'",
+    '_auth' + 'Token="abcdef123"',
+    'pass' + 'word: hunter2hunter2',
+    'pass' + 'word: "x12345678"',
+    '"pass' + 'word": "x12345678"',
+    'pass' + 'word=$ecret99',
+    '//registry.example.com/:_auth' + 'Token = "a1b2c3d4"',
+  ];
+  for (const line of leaks) {
+    const found = scanLine(`before ${line} after`);
+    assert.deepEqual(found.map(f => f.kind), ['secret'], line);
+    assert.equal(found[0].excerpt, '[redacted]', line);
+    assert.equal(JSON.stringify(found).includes('x12345678'), false, line);
+    assert.equal(JSON.stringify(found).includes('hunter2'), false, line);
+  }
+});
+
+test('scanLine allows a password value only when the WHOLE value is a placeholder', () => {
+  const placeholders = [
+    'pass' + 'word="${NPM_PASS}"', 'pass' + 'word=$DB_PASS', 'pass' + 'word: ${DB_PASS}', 'pass' + 'word: "<your password>"', 'pass' + 'word=<secret>',
+    'pass' + 'word = "****"', 'pass' + 'word: ********', '_auth' + 'Token="${{ secrets.NPM }}"', 'pass' + 'word: string', 'pass' + 'word = ',
+    'pass' + 'word=""',
+  ];
+  for (const line of placeholders) assert.deepEqual(kinds(line), [], line);
+  // A value that only starts like a placeholder is a secret.
+  for (const line of ['pass' + 'word=$ecret99', 'pass' + 'word="$ecret99"', 'pass' + 'word=<x>tail12345', 'pass' + 'word=**real1234', 'pass' + 'word: $DB_PASS_and_lower9']) {
+    assert.deepEqual(kinds(line), ['secret'], line);
   }
 });
 
@@ -736,4 +770,45 @@ test('scan: the scanner finds nothing in its own source and test files', () => {
     const hits = text.split('\n').flatMap((line, i) => scanLine(line).map(f => `${file}:${i + 1} ${f.kind}`));
     assert.deepEqual(hits, [], file);
   }
+});
+
+test('scan: the output says binary content is read as raw bytes and compressed formats are not inspected', () => {
+  const dir = repo();
+  commit(dir, { 'b.txt': 'clean\n' });
+  const run = scan(dir);
+  assert.equal(run.status, 0, run.stdout);
+  assert.match(run.json.binaryNote, /raw bytes/);
+  assert.match(run.json.binaryNote, /not inspected/);
+  for (const word of ['zip', 'gz', 'dmg', 'docx', 'pdf']) assert.ok(run.json.binaryNote.includes(word), word);
+  assert.deepEqual(run.json.binaryIntermediate, []);
+  const human = scan(dir, [], { json: false }).stdout;
+  assert.match(human, /^binary: files are read as raw bytes; compressed formats \(zip, gz, dmg, docx, pdf streams\) are not inspected/m);
+  assert.doesNotMatch(human, /warning:/);
+});
+
+test('scan: a binary file added and removed again inside the range is listed as binaryIntermediate, with a warning and no change of exit', () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, 'temp.bin'), Buffer.from([0, 1, 2, 3, 0, 255]));
+  fs.writeFileSync(path.join(dir, 'keep.bin'), Buffer.from([0, 9, 9, 0, 1]));
+  commit(dir, { 'b.txt': 'clean\n' }, 'add binaries');
+  fs.rmSync(path.join(dir, 'temp.bin'));
+  commit(dir, { 'c.txt': 'still clean\n' }, 'remove one');
+  const run = scan(dir);
+  assert.equal(run.status, 0, run.stdout);
+  assert.deepEqual(run.json.binaryIntermediate, ['temp.bin']);
+  assert.deepEqual(run.json.binaryScanned, ['keep.bin']);
+  assert.equal(run.json.ok, true);
+  assert.match(scan(dir, [], { json: false }).stdout, /^warning: 1 binary file was added and removed again inside the range and was never scanned: temp\.bin$/m);
+});
+
+test('scan: a binary file whose name holds a leak is withheld in binaryIntermediate too', () => {
+  const dir = repo();
+  const name = `logos/${EMAIL}.bin`;
+  commit(dir, { [name]: Buffer.from([0, 1, 0, 2]), 'b.txt': 'clean\n' }, 'add');
+  fs.rmSync(path.join(dir, name));
+  commit(dir, { 'c.txt': 'clean again\n' }, 'remove');
+  const run = scan(dir);
+  assert.equal(run.json.binaryIntermediate.length, 1);
+  assert.match(run.json.binaryIntermediate[0], /withheld/);
+  assert.equal(run.stdout.includes('corp-mail'), false);
 });

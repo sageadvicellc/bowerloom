@@ -650,6 +650,21 @@ test('gates: an interrupt stops the step group, releases the e2e lock, removes t
   assert.equal(await goneWithin(Number(fs.readFileSync(pidFile, 'utf8'))), true, 'the grandchild is gone');
 });
 
+test('gates: an interrupt skips the --clean clean-up, so the build outputs stay', { skip }, async () => {
+  const dir = tmp();
+  const ready = path.join(dir, 'ready');
+  const body = `fs.writeFileSync(${JSON.stringify(ready)}, 'x'); setInterval(() => {}, 1000);`;
+  const root = fakeRoot({ 'root-test': { hang: true, body } });
+  fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'test-results/keep.txt'), 'keep');
+  const child = spawn(process.execPath, [script, '--root', root, '--json', '--clean', '--only', 'root-test'], { env: { ...process.env, ...MODE }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
+  assert.equal(await waitFor(ready), true, 'the step started');
+  child.kill('SIGINT');
+  assert.equal((await exited).code, 130);
+  assert.equal(fs.existsSync(path.join(root, 'test-results/keep.txt')), true, 'an interrupted run does not delete build outputs');
+});
+
 test('gates: the seams --root, --lock-dir, and --timeout-seconds are refused without the test-mode variable', () => {
   const env = { ...process.env, BOWERLOOM_TOOLS_TEST_MODE: undefined };
   for (const argv of [['--root', os.tmpdir()], ['--lock-dir', '/tmp/x'], ['--timeout-seconds', '5']]) {

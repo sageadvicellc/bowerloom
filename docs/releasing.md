@@ -26,14 +26,14 @@ node scripts/release.mjs <subcommand> [flags]
 
 ## The four classes of subcommand
 
-- Read-only subcommands change no tracked file, no remote, and no registry. They may update the remote-tracking refs (`preflight` runs `git fetch origin`), and they may write logs and receipts under `.trellis`.
+- Read-only subcommands change no tracked file, no remote, and no registry. They may update the remote-tracking refs (`preflight` runs `git fetch --prune origin`), and they may write logs and receipts under `.trellis`.
 - Local-write subcommands write files on this computer. They never contact the registry with a write.
-- Remote-write subcommands change a git remote. The only one is `tag`. It pushes one tag to origin, and nothing else: the command is `git push origin refs/tags/<tag>`, never with `--force` or `--tags`, and never a branch. It never contacts the registry.
+- Remote-write subcommands change a git remote. The only one is `tag`. It pushes one tag to origin, and nothing else: the exact command is `git -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/<tag>`, never with `--force` or `--tags`, and never a branch. No repository hook runs for it, or for the fetches of `preflight` and `tag`. If the push URL of origin differs from its fetch URL, it pushes nothing. It never contacts the registry.
 - Human-only subcommands only print commands. A person runs those commands. Without a terminal on both stdin and stdout, the script still prints the commands, runs nothing, and exits 2. This is on purpose: an agent can hand the printed commands to a person. With a terminal, it prints them and exits 0.
 
 ## Test seams
 
-Three environment variables, and a `--repo` that names another repository, are test seams. They replace the npm program, the pack script, the free disk space, or the repository. When one is active, the script prints one line that starts with `WARNING: test seams active` on stderr. It records the seams in every receipt it writes. A receipt counts only in a run that has exactly the same seams as the run that wrote it. So a real run never counts a test receipt, and a test run never counts a real one or one made under other seams. `status` shows a receipt of any seams, and marks one made under seams as `done (with test seams)`. It does not count it as done. Do not set a seam in a real release.
+Three environment variables, and a `--repo` that names another repository, are test seams. They replace the npm program, the pack script, the free disk space, or the repository. When one is active, the script prints one line that starts with `WARNING: test seams active` on stderr. It records the seams in every receipt it writes. Every JSON result lists them in a `seams` array. A real run has no `seams` key. A receipt counts only in a run that has exactly the same seams as the run that wrote it. Under a seam, `tag` refuses to run unless the URL of origin is a path on this computer. So a test run never pushes to a real remote. So a real run never counts a test receipt, and a test run never counts a real one or one made under other seams. `status` shows a receipt of any seams, and marks one made under seams as `done (with test seams)`. It does not count it as done. Do not set a seam in a real release.
 
 ## The phases
 
@@ -45,14 +45,21 @@ Run the phases in this order.
 4. Publish. A person publishes the tarball.
 5. Desktop hashes. Build the desktop app, then record a SHA-256 hash for each download.
 6. Verify. Run the checks that follow a publish.
-7. Tag. Create the git tag and push it to origin.
+7. Tag. Create the git tag and push it to origin. The tag step needs a passing `verify` receipt, so the package is published and verified before the tag exists.
 8. Check the claims. Look for wording that says the package is not on npm.
 
 Run `status` at any point to see which phases are done. A phase is `done`, `todo`, or `unknown`. A phase that rests on a receipt from a test run is `done (with test seams)`. When the script cannot find out, the phase is `unknown`. For example, an unreachable registry makes the publish phase `unknown`. It never makes it `todo`.
 
 A SHA-256 hash is a fingerprint of a file. Two files with the same hash are the same bytes. An integrity value is the same idea in the form that npm uses. It is the word `sha512-` followed by a base64 hash.
 
-The hash file `release/desktop-sha256.json` is a tracked file. After `hashes` writes it, commit and push it. That makes a new commit. Receipts belong to one commit each, so the gates and dry-run receipts stay with the earlier commit, and the tarball you published came from that earlier commit. Then you have two choices for the tag. Tag the published commit with `tag --commit <full hash>`, which needs the gates receipt of that commit. Or run `preflight`, `gates`, and `tag` again on the new commit. `verify` works on the new commit either way: it looks for the dry-run receipt of the new commit first, then for the newest one on an ancestor of it.
+The hash file `release/desktop-sha256.json` is a tracked file. After `hashes` writes it, commit and push it. That makes a new commit. Receipts belong to one commit each, so the gates and dry-run receipts stay with the earlier commit, and the tarball you published came from that earlier commit. `verify` works on either commit: it looks for the dry-run receipt of the current commit first, then for the newest one on an ancestor of it. It also reads the hash file from the working tree, so it can run before the hash commit.
+
+The tag needs a gates receipt and a passing verify receipt, each for the tagged commit or (for verify) an ancestor of it. So you have two orders:
+
+1. Run `hashes`, then `verify` on the published commit (the hash file is still uncommitted), then commit and push the hash file. Tag the published commit with `tag --commit <full hash> --branch <release branch>`. Its gates receipt and its verify receipt both belong to it.
+2. Commit and push the hash file first. Then run `gates` and `verify` on the new commit, and run `tag` there, or `tag --commit <new hash> --branch <release branch>`. The dry-run receipt stays on the earlier commit, and that is allowed.
+
+A verify receipt on a commit that is later than the tagged commit does not count.
 
 ## Subcommands
 
@@ -65,7 +72,7 @@ Shows each phase as `done`, `todo`, `unknown`, or `done (with test seams)`, with
 - `gates` and `dry-run` are `done` only when a receipt exists for the current commit, the working tree is clean, and (for the dry run) the tarball still exists with the same SHA-256.
 - `hashes` is `done` only when the recorded hashes equal the files on disk, with no unrecorded and no missing file.
 - `verify` is `done` only when the stored receipt has no skipped or failed check.
-- `tag` is `done` only when the local tag points at the release commit. That is HEAD, or the commit of the newest dry-run receipt that counts in this run and sits on HEAD or an ancestor of HEAD (`git merge-base --is-ancestor`). A dry run on another branch does not count.
+- `tag` is `done` only when the local tag points at the release commit. That is HEAD, or the commit of the newest dry-run receipt that counts in this run and sits on HEAD or an ancestor of HEAD (`git merge-base --is-ancestor`). A dry run on another branch does not count. When origin has no such tag, the reason ends with `(local only)`. When git cannot read the local tag ref, the phase is `unknown`, not `todo`.
 - `tag-on-origin` is `done` only when `git ls-remote` shows the tag on origin at the same commit as the local tag. It is `todo` when origin has no such tag, or has it at another commit, and `unknown` when origin cannot be reached. When this clone has no local tag but origin has one at the release commit, the phase is `done` and the reason says the tag exists on origin and to run `git fetch origin tag <tag>`.
 - If the registry answers 404 but the release record says `npm.published` is true, the `publish` and `dist-tag` phases are `unknown`, not `todo`.
 
@@ -73,7 +80,7 @@ Shows each phase as `done`, `todo`, `unknown`, or `done (with test seams)`, with
 
 Class: read-only.
 
-Runs `git fetch origin`. Then it runs three tests. HEAD must be on a branch that matches the `branchPattern` key (the default is `^release/`). HEAD must equal `origin/<branch>`. `git status --porcelain` must print nothing. It reports how many commits HEAD is ahead and behind. It prints the commit hash. It never pulls and never checks out. Use `--branch NAME` to name a different branch.
+Runs `git -c core.hooksPath=/dev/null fetch --prune origin`. That runs no hook, and it drops the remote-tracking refs of branches that origin no longer has. Then it runs three tests. HEAD must be on a branch that matches the `branchPattern` key (the default is `^release/`). HEAD must equal `origin/<branch>`. `git status --porcelain` must print nothing. It reports how many commits HEAD is ahead and behind. It prints the commit hash. It never pulls and never checks out. Use `--branch NAME` to name a different branch.
 
 ### `gates`
 
@@ -99,7 +106,7 @@ The script then lists the tarball itself, with the `tar` package, and checks it:
 
 - The number of file entries must equal what the pack reported. The pack reports `files`, which counts the package's own files and leaves out the bundled `node_modules/` entries, and `bundle.files`, the bundled ones. The script counts both groups in the tarball and compares each with its report.
 - Every entry must be a plain file or a folder. A link or any other kind of entry fails the dry run.
-- No file of the package may match a never-ship pattern from `tools/cli-distribution/README.md`: `.env` (and `.env.*`), a `.git` folder, `*.map`, `*.d.ts` (and `.d.mts`, `.d.cts`), a `test` or `tests` folder, or a `.trellis` folder. Bundled third-party code under `node_modules/` is held to the `.env`, `.git`, and `.trellis` patterns only. It is not held to `*.map`, `*.d.ts`, or the `test` folders, because those packages ship their own declarations, maps, and tests.
+- No file of the package may match a never-ship pattern from `tools/cli-distribution/README.md`: `.env` (and `.env.*`), a `.git` folder, `*.map`, `*.d.ts` (and `.d.mts`, `.d.cts`), a `test` or `tests` folder, or a `.trellis` folder. Bundled third-party code under `node_modules/` is held to the `.env`, `.git`, and `.trellis` patterns only. It is not held to `*.map`, `*.d.ts`, or the `test` folders, because those packages ship their own declarations, maps, and tests. One more exception: a bundled `.env.example`, `.env.sample`, `.env.template`, or `.env.dist` may ship, because it is a template. Every other `.env*` file is refused, and so are those four names in the package's own files.
 
 The receipt records the real entry count as `entries`, and the pack's own-file count as `files`.
 
@@ -112,6 +119,8 @@ The config must set `expectedFileCount`. It means the number of files **excludin
 5. Run `dry-run` again.
 
 The tarball path and hashes are in the dry-run receipt. The `publish` and `verify` subcommands read them from there.
+
+A dry run that already passed for this commit prints `already done`. It does so only while the receipt still agrees with the config: the receipt's file count must equal `expectedFileCount`, and its tag must equal `distTag`. If the config changed in either, the dry run runs again.
 
 The temporary folder that holds the tarball is kept on purpose, because the tarball is what a person publishes. Only the stage folder is removed. A failed dry run removes everything it made. `dry-run --force` packs again into a new folder and writes a new receipt for the same commit. The old folder is orphaned: nothing points at it any more. Delete it by hand when you are done. The folders are named `bowerloom-release-*` in the system temp folder.
 
@@ -127,7 +136,7 @@ Before it prints, the script needs the dry-run receipt for the current commit. W
 
 Class: local-write.
 
-Computes the SHA-256 of each desktop download in `apps/desktop/release` that matches `*.dmg` or `*.zip`. Every matched file name must contain the release version, such as `Bowerloom-0.8.0-beta.2-arm64.dmg`. The version must stand alone: the character before it is not a letter, digit, or dot, and the text after it does not go on with a letter, a digit, or a dot and a digit. So `0.8.0-beta.21` and `0.8.0-beta.2.1` do not match `0.8.0-beta.2`. If any name does not match, the step fails and lists those names, even with `--force`. That catches an installer left from an older build next to a new one. Delete the old installers and run `hashes` again.
+Computes the SHA-256 of each desktop download in `apps/desktop/release` that matches `*.dmg` or `*.zip`. Every matched file name must contain the release version, such as `Bowerloom-0.8.0-beta.2-arm64.dmg`. The version must stand alone: the character before it is not a letter, digit, or dot, and the text after it does not go on with a letter, a digit, or a dot and a digit. So `0.8.0-beta.21` and `0.8.0-beta.2.1` do not match `0.8.0-beta.2`. A release version with no prerelease part has one more rule: a hyphen plus a letter or digit after it ends the match. So `Bowerloom-0.8.0-beta.2-arm64.dmg` does not match `0.8.0`, and neither does `Bowerloom-0.8.0-arm64.dmg`. For a stable release, name the installers `Bowerloom-0.8.0.dmg` or `Bowerloom-0.8.0_arm64.dmg`. If any name does not match, the step fails and lists those names, even with `--force`. That catches an installer left from an older build next to a new one. Delete the old installers and run `hashes` again.
 
 It writes the hash file fresh from the files on disk, with the names in plain code-point order. It never merges with the old file. An entry of an earlier run, for a file that is gone, is dropped. It refuses to replace a different hash for a name that is already recorded, and a hash file for another version. Use `--force` to replace them.
 
@@ -150,7 +159,22 @@ An unreachable registry fails the check with the reason `registry unreachable`. 
 
 Class: remote-write.
 
-Creates the annotated tag `v<version>` on the commit that `preflight` checked, then pushes that one tag to origin. It runs `git tag -a`, then `git -c push.followTags=false push origin refs/tags/v<version>`, so a `push.followTags` setting never carries other tags along. It never pushes a branch and never uses `--force` or `--tags`. In both forms `gates` must have passed for the tagged commit, and the step fails with no tag if it has not. Use `--commit HASH` to tag another commit. The hash must be all 40 characters. A `--commit` run skips `preflight`, so it runs `git fetch origin` first and needs the commit to be on a published release branch: an ancestor of a remote-tracking branch `origin/<name>` whose name matches the `branchPattern` in the config. Otherwise it fails with `commit <hash> is not on a published release branch; push the branch first` and writes nothing. That check stops the tag from carrying an unpublished commit and its history to origin.
+Creates the annotated tag `v<version>` on the commit that `preflight` checked, then pushes that one tag to origin. It runs `git tag -a`, then this exact command:
+
+```sh
+git -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/<tag>
+```
+
+`push.followTags=false` keeps a `push.followTags` setting from carrying other tags along. `core.hooksPath=/dev/null` and `--no-verify` keep every repository hook from running. `--no-recurse-submodules` keeps a submodule out of the push. The fetches of `tag` and `preflight` also run with `-c core.hooksPath=/dev/null`. The step never pushes a branch and never uses `--force` or `--tags`.
+
+Before it fetches or pushes, the step reads `git remote get-url origin` and `git remote get-url --push origin`. If the two differ, it fails with `push URL differs from fetch URL`. Under a test seam it also fails unless the origin URL is a path on this computer.
+
+The step needs these receipts, for the same version:
+
+- A passing `gates` receipt for the tagged commit. Without it the step fails with no tag.
+- A passing `verify` receipt on the tagged commit or on an ancestor of it. Without it the step fails with `run verify first (the package must be published and verified before the tag)`. A tag cannot land before the package is published and verified.
+
+Use `--commit HASH --branch NAME` to tag another commit. The hash must be all 40 characters. `--branch` is required with `--commit`, and its value must match the `branchPattern` of the config. Otherwise the step exits 2. A `--commit` run skips `preflight`. It runs `git -c core.hooksPath=/dev/null fetch --prune origin` first. The prune drops the tracking ref of a branch that origin deleted. Then the commit must be an ancestor of exactly `refs/remotes/origin/<NAME>`. A branch of another name does not count, even when its name matches the pattern. If origin has no branch `NAME`, the step fails with `origin has no branch <NAME>; push the branch first`. If the commit is not on it, the step fails with `commit <hash> is not on origin/<NAME>; push the branch first`. If git itself fails in the ancestor check (exit 128), the step reports `git merge-base failed` and the git error, not "not on the branch". Each failure writes nothing. That check stops the tag from carrying an unpublished commit and its history to origin.
 
 The step reads the tag on origin (`git ls-remote origin refs/tags/v<version> refs/tags/v<version>^{}`) before it writes anything:
 
@@ -181,13 +205,22 @@ A file that it cannot read is a file that it did not check, so that is a failure
 ## What an agent may run
 
 - Read-only and local-write subcommands: an agent or a script may run any of them.
-- `tag`: an agent or a script may run it. It needs a passing gates receipt for the commit, and it pushes only the one release tag to origin.
+- `tag`: an agent or a script may run it. It needs a passing gates receipt and a passing verify receipt for the commit, and it pushes only the one release tag to origin.
 - `publish` and `retire`: a person runs the printed commands. Publishing needs the owner's npm login and one-time code, and an agent never holds them. The script never runs `npm publish` except as a dry run.
 
 ## Cleaning up
 
 - The dry-run folder in the system temp folder holds the tarball, and stays until you delete it. See `dry-run`.
 - `node tools/lane-tree.mjs remove` refuses a lane whose branch was squash-merged and deleted on origin, because that lane has commits that origin lacks. It cannot tell a squash merge from lost work. Delete such a lane by hand, after you check that nothing is lost.
+
+## Known limits
+
+- `tools/public-scan.mjs` does not scan branch names or other ref names. It scans added lines, file paths, commit messages, author names, binary content, and the pull request text.
+- `tools/public-scan.mjs` reads a binary file as raw bytes. It does not look inside a compressed format: zip, gz, dmg, docx, or the compressed streams of a pdf. Its output says so. A binary file that a commit added and a later commit removed is listed under `binaryIntermediate` as a warning. It was never read.
+- `node tools/lane-tree.mjs remove` refuses a lane whose origin is an ssh URL. It cannot reach origin without the ssh agent, so it cannot compare the lane with origin.
+- `node tools/gates.mjs --clean-installers` checks the hashes of the `.dmg` and `.zip` installers only. Another file in `apps/desktop/release` is removed with the folder and is not checked.
+- `node tools/gates.mjs --clean` and `--clean-installers` delete nothing when the run was interrupted.
+- `hashes` treats a release version with no prerelease part strictly. An installer named `Bowerloom-0.8.0-arm64.dmg` does not match `0.8.0`. Use `_` before the architecture in a stable release.
 
 ## Configuration
 

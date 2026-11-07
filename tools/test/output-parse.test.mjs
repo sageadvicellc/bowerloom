@@ -54,6 +54,20 @@ test('parseCounts takes the LAST summary block, so a nested run or a printed lin
   assert.equal(parseCounts('3 passed\n'), null);
 });
 
+test('parseCounts reads every summary block: a failing block makes the result a failure even when a later block passes', () => {
+  // (a) one failing block, then a passing one (two runners in one command).
+  const failFirst = ['ℹ tests 3', 'ℹ pass 1', 'ℹ fail 2', 'ℹ cancelled 0', 'ℹ skipped 0', 'second runner starts', 'ℹ tests 5', 'ℹ pass 5', 'ℹ fail 0', 'ℹ cancelled 0', 'ℹ skipped 0'].join('\n');
+  const mixed = parseCounts(failFirst);
+  assert.equal(mixed.pass, 5);
+  assert.equal(mixed.fail, 2);
+  // (b) a cancelled test in the first block counts as a failure too.
+  assert.equal(parseCounts('ℹ pass 4\nℹ fail 0\nℹ cancelled 1\nℹ skipped 0\nnext\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0').fail, 1);
+  // (c) two passing blocks stay a pass.
+  assert.deepEqual(parseCounts('ℹ pass 4\nℹ fail 0\nmore\nℹ pass 9\nℹ fail 0\nℹ skipped 2'), { pass: 9, fail: 0, skipped: 2 });
+  // (d) the same holds for Playwright blocks.
+  assert.equal(parseCounts(['  1 failed', '  2 passed (3s)', 'later', '  9 passed (4s)'].join('\n')).fail, 1);
+});
+
 test('parseCounts counts cancelled node tests as failures', () => {
   assert.deepEqual(parseCounts('ℹ pass 2\nℹ fail 0\nℹ cancelled 1\nℹ skipped 0'), { pass: 2, fail: 1, skipped: 0 });
 });

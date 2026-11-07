@@ -11,7 +11,8 @@
 //   - It never reads, stores, or prints a token, a one-time code, or a password. Children start with a scrubbed environment and with
 //     empty npm config files, so a user's ~/.npmrc is never read. Output is redacted before it reaches a log or the screen.
 //   - Subcommands that publish or retire only print the commands. They print them to a person at a terminal.
-//   - The only thing it ever pushes is the one release tag: `tag` runs `git -c push.followTags=false push origin refs/tags/<tag>`. Never --force, never --tags, never a branch.
+//   - The only thing it ever pushes is the one release tag: `tag` runs `git -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/<tag>`.
+//     Never --force, never --tags, never a branch. Its fetches and that push run no repository hooks, and it pushes only when the push URL of origin equals the fetch URL.
 //   - On SIGINT, SIGTERM or SIGHUP it kills every child process group, removes its temporary folders, and exits 130.
 //
 // Settings come from release.config.json at the repository root. The version comes from the release record that the config names.
@@ -418,6 +419,10 @@ function failureLine(result) {
 
 // Only git gets the ssh agent variables (for a fetch or ls-remote over ssh). npm, node, the gates, and pack never do.
 const git = (ctx, args, extra = {}) => runChild(ctx, { cmd: 'git', args, cwd: ctx.repo, timeoutMs: GIT_TIMEOUT_MS, keepEnv: KEEPABLE_ENV, ...extra });
+/** A git command that runs no repository hook: the fetches and the tag push. The folder /dev/null holds no hook, and `-c` beats every config file. */
+const gitNoHooks = (ctx, args, extra = {}) => git(ctx, ['-c', 'core.hooksPath=/dev/null', ...args], extra);
+/** Fetches origin and drops the remote-tracking refs of branches that origin no longer has, so a deleted branch is never read as published. */
+const fetchOrigin = ctx => gitNoHooks(ctx, ['fetch', '--prune', 'origin']);
 function spawnNpm(ctx, args, extra = {}) {
   assertSafeNpmArgs(args);
   return runChild(ctx, { cmd: npmBinary(ctx.env), args, cwd: ctx.repo, ...extra, env: { ...npmConfigEnv(ctx), ...extra.env } });
@@ -474,17 +479,17 @@ function writeReceipt(ctx, step, version, commit, data) {
   writeFileAtomic(receiptFile(ctx, step, version, commit), JSON.stringify(receipt, null, 2) + '\n');
   return receipt;
 }
-/** True when `commit` is HEAD or an ancestor of it. */
-async function isAncestorOfHead(ctx, commit) {
-  const r = await git(ctx, ['merge-base', '--is-ancestor', commit, 'HEAD']);
+/** True when `ancestor` is `descendant` or an ancestor of it. Any other answer of git, such as a commit this clone does not hold, counts as false. */
+async function isAncestor(ctx, ancestor, descendant) {
+  const r = await git(ctx, ['merge-base', '--is-ancestor', ancestor, descendant]);
   return r.ok;
 }
 /**
- * The newest dry-run receipt for a version that counts in this run (same seams) and whose commit is HEAD or an ancestor of HEAD, or null.
- * The hash commit that follows a publish moves HEAD past the dry run, and a receipt on a commit outside this history is not evidence.
+ * The newest receipt of one step and version that counts in this run (same seams), passes `accept`, and sits on `descendant` or an ancestor of it, or null.
+ * A receipt on a commit outside that history is not evidence.
  */
-async function newestDryRun(ctx, version) {
-  const prefix = `dry-run-${version}-`;
+async function newestReceipt(ctx, step, version, descendant, accept = () => true) {
+  const prefix = `${step}-${version}-`;
   let names;
   try { names = fs.readdirSync(path.join(ctx.repo, STATE_DIR, 'receipts')); } catch { return null; }
   const found = [];
@@ -492,13 +497,20 @@ async function newestDryRun(ctx, version) {
     if (!name.startsWith(prefix) || !name.endsWith('.json')) continue;
     const commit = name.slice(prefix.length, -'.json'.length);
     if (!FULL_HASH.test(commit)) continue;
-    const receipt = readReceipt(ctx, 'dry-run', version, commit);
-    if (receipt) found.push(receipt);
+    const receipt = readReceipt(ctx, step, version, commit);
+    if (receipt && accept(receipt)) found.push(receipt);
   }
   found.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
-  for (const receipt of found) if (await isAncestorOfHead(ctx, receipt.commit)) return receipt;
+  for (const receipt of found) if (await isAncestor(ctx, receipt.commit, descendant)) return receipt;
   return null;
 }
+/**
+ * The newest dry-run receipt for a version that counts in this run (same seams) and whose commit is HEAD or an ancestor of HEAD, or null.
+ * The hash commit that follows a publish moves HEAD past the dry run, and a receipt on a commit outside this history is not evidence.
+ */
+const newestDryRun = (ctx, version) => newestReceipt(ctx, 'dry-run', version, 'HEAD');
+/** A verify receipt counts only when it holds checks and every one of them passed. */
+const verifyPassed = receipt => Array.isArray(receipt?.checks) && receipt.checks.length > 0 && receipt.checks.every(c => c.status === 'pass');
 
 /** The folder for temporary work: TMPDIR of the run, else the system folder. */
 const tmpRoot = ctx => fs.realpathSync(ctx.env.TMPDIR || os.tmpdir());
@@ -575,8 +587,8 @@ function readHashFile(ctx, config) {
 async function cmdPreflight(ctx, o) {
   const checks = [];
   const add = (name, status, detail) => checks.push({ name, status, detail });
-  const fetch = await git(ctx, ['fetch', 'origin']);
-  if (fetch.ok) add('fetch', 'pass', 'git fetch origin');
+  const fetch = await fetchOrigin(ctx);
+  if (fetch.ok) add('fetch', 'pass', 'git fetch --prune origin');
   else add('fetch', 'fail', `git fetch origin failed: ${failureLine(fetch)}`);
 
   const head = await git(ctx, ['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -670,17 +682,23 @@ async function cmdGates(ctx, o) {
   return done(`gates passed for ${short(commit)} ${o.version}${existing ? ' (end-to-end added)' : ''}`, { commit, version: o.version, ran: ran.map(g => g.name), receipt });
 }
 
+/** Environment files that hold no value and may ship inside a bundled package. */
+const ENV_TEMPLATES = new Set(['.env.example', '.env.sample', '.env.template', '.env.dist']);
+
 /**
  * Why an entry of the tarball must not ship, or null. The list is the one in tools/cli-distribution/README.md: environment files, a git
  * folder, source maps, type declarations, test folders, and the release state folder. Bundled third-party code under node_modules/ is held
  * to the first three (environment files, .git, .trellis) and not to the rest, because the packages of the closure ship their own
- * declarations, maps, and test folders. Pass `bundled` for such an entry.
+ * declarations, maps, and test folders. A bundled `.env.example`, `.env.sample`, `.env.template`, or `.env.dist` is allowed: it is a template. Pass
+ * `bundled` for such an entry.
  */
 function neverShipReason(rel, { bundled = false } = {}) {
   const parts = rel.split('/');
   const name = parts[parts.length - 1];
   const folders = parts.slice(0, -1);
-  if (name === '.env' || name.startsWith('.env.')) return 'an environment file';
+  // A bundled package may ship a template that holds no value. Every other .env file is refused, bundled or not.
+  const isEnvFile = name === '.env' || name.startsWith('.env.');
+  if (isEnvFile && !(bundled && ENV_TEMPLATES.has(name))) return 'an environment file';
   if (parts.includes('.git')) return 'a .git folder';
   if (parts.includes('.trellis')) return 'a .trellis folder';
   if (bundled) return null;
@@ -722,7 +740,9 @@ async function cmdDryRun(ctx, o) {
   const commit = await headCommit(ctx);
   if (!readReceipt(ctx, 'gates', o.version, commit)) throw new StepFailure(`no passing gates receipt for ${short(commit)} ${o.version}; run gates first`);
   const existing = o.flags['--force'] ? null : readReceipt(ctx, 'dry-run', o.version, commit);
-  if (existing && typeof existing.tarball === 'string' && fs.existsSync(existing.tarball) && sha256Hex(fs.readFileSync(existing.tarball)) === existing.sha256) {
+  // The receipt counts only while it still agrees with the config: the file count and the dist-tag it was made for.
+  const sameConfig = existing && existing.files === o.config.expectedFileCount && existing.tag === o.config.distTag;
+  if (existing && sameConfig && typeof existing.tarball === 'string' && fs.existsSync(existing.tarball) && sha256Hex(fs.readFileSync(existing.tarball)) === existing.sha256) {
     return alreadyDone(`dry run passed for ${short(commit)} ${o.version}`, { commit, version: o.version, ...summary(existing) });
   }
   requireFree(ctx, tmpRoot(ctx), floor + DRY_RUN_EXTRA_GIB);
@@ -828,13 +848,16 @@ async function cmdRetire(ctx, o) {
 /**
  * True when `name` holds `version` as a whole version: the character before it is not a letter, digit, or dot, and the character after it does
  * not continue the version (no letter or digit, and no dot followed by a digit). A hyphen, underscore, space, a dot before a letter such as the
- * file extension, or the end of the name all end a version. So 0.8.0-beta.21 and 0.8.0-beta.2.1 do not hold 0.8.0-beta.2.
+ * file extension, or the end of the name all end a version. So 0.8.0-beta.21 and 0.8.0-beta.2.1 do not hold 0.8.0-beta.2. When the version has no hyphen
+ * (no prerelease part), a hyphen followed by a letter or digit does not end it either, so 0.8.0-beta.2 and 0.8.0-arm64 do not hold 0.8.0.
  */
 export function hasVersion(name, version) {
   for (let at = name.indexOf(version); at !== -1; at = name.indexOf(version, at + 1)) {
     const before = name[at - 1] ?? '', after = name.slice(at + version.length, at + version.length + 2);
     if (/[0-9A-Za-z.]/.test(before)) continue;
     if (/^[0-9A-Za-z]/.test(after) || /^\.[0-9]/.test(after)) continue;
+    // A version with no prerelease part does not hold a longer one: 0.8.0 is not in 0.8.0-beta.2.
+    if (!version.includes('-') && /^-[0-9A-Za-z]/.test(after)) continue;
     return true;
   }
   return false;
@@ -962,39 +985,89 @@ async function cmdVerify(ctx, o) {
   return done(`verified ${config.package}@${version}`, data);
 }
 
+/** True for an absolute path on this computer: `/x/y.git` or `file:///x/y.git`. A URL with a host, such as ssh or https, is not. */
+const isLocalPath = url => url.startsWith('/') || url.startsWith('file:///');
+
+/**
+ * Before the tag step fetches or pushes anything: the URL that a push uses must be the URL that a fetch uses, so the tag goes to the repository whose branch
+ * was checked. Under a test seam, origin must also be a path on this computer, so a test run never reaches a real remote.
+ */
+async function requireSafeRemote(ctx) {
+  const fetchUrl = await git(ctx, ['remote', 'get-url', 'origin']);
+  if (!fetchUrl.ok) throw new StepFailure(`cannot read the fetch URL of origin: ${failureLine(fetchUrl)}`);
+  const pushUrl = await git(ctx, ['remote', 'get-url', '--push', 'origin']);
+  if (!pushUrl.ok) throw new StepFailure(`cannot read the push URL of origin: ${failureLine(pushUrl)}`);
+  // The URLs are never printed: a URL can hold a credential.
+  if (fetchUrl.stdout.trim() !== pushUrl.stdout.trim()) throw new StepFailure('push URL differs from fetch URL; set them equal before the tag is pushed');
+  if (ctx.seams.length > 0 && !isLocalPath(fetchUrl.stdout.trim())) throw new StepFailure(`test seams are active and the origin URL is not a local path (${ctx.seams.join(', ')}); a test run never pushes to a remote`);
+}
+
+/** Checks the --branch value of a --commit run. Throws UsageError. */
+function checkTagBranch(config, name) {
+  if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.includes('..')) throw new UsageError('--branch has an invalid form');
+  if (!new RegExp(config.branchPattern).test(name)) throw new UsageError(`--branch ${name} does not match the branchPattern ${config.branchPattern} of the config`);
+}
+
 /**
  * The --commit path skips preflight, so it must prove the commit is already public before the tag can carry it (and its history) to origin.
- * Fetches, then needs the commit to be an ancestor of a remote-tracking branch whose name matches the config branch pattern.
+ * Fetches with --prune (so a branch deleted on origin is gone from this clone), then needs the commit to be an ancestor of exactly refs/remotes/origin/<branch>.
+ * `git merge-base --is-ancestor` answers 0 (yes), 1 (no), or 128 (an error); an error is reported as an error, never as "no".
  */
-async function requirePublished(ctx, o, commit) {
-  const fetched = await git(ctx, ['fetch', 'origin']);
+async function requirePublished(ctx, commit, branch) {
+  const fetched = await fetchOrigin(ctx);
   if (!fetched.ok) throw new StepFailure(`git fetch origin failed: ${failureLine(fetched)}`);
-  const listed = await git(ctx, ['for-each-ref', 'refs/remotes/origin', '--format=%(refname)']);
-  if (!listed.ok) throw new StepFailure(`cannot list the branches on origin: ${failureLine(listed)}`);
-  const prefix = 'refs/remotes/origin/';
-  const pattern = new RegExp(o.config.branchPattern);
-  const branches = listed.stdout.split('\n').map(l => l.trim()).filter(l => l.startsWith(prefix)).map(l => l.slice(prefix.length)).filter(name => name !== 'HEAD' && pattern.test(name));
-  for (const name of branches) {
-    const inside = await git(ctx, ['merge-base', '--is-ancestor', commit, `${prefix}${name}`]);
-    if (inside.ok) return;
+  const ref = `refs/remotes/origin/${branch}`;
+  const known = await git(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  if (!known.ok) {
+    if (known.code === 1 && !known.timedOut && !known.spawnError) throw new StepFailure(`origin has no branch ${branch}; push the branch first`);
+    throw new StepFailure(`git rev-parse failed: ${failureLine(known)}`);
   }
-  throw new StepFailure(`commit ${commit} is not on a published release branch; push the branch first`);
+  const inside = await git(ctx, ['merge-base', '--is-ancestor', commit, ref]);
+  if (inside.ok) return;
+  if (inside.code === 1 && !inside.timedOut && !inside.capped && !inside.spawnError) throw new StepFailure(`commit ${commit} is not on origin/${branch}; push the branch first`);
+  throw new StepFailure(`git merge-base failed: ${failureLine(inside)}`);
+}
+
+/**
+ * The local tag. Returns { commit } (null when there is no such tag) or { error }. `git show-ref --verify` answers 1 for a tag that is not there and
+ * 128 for a ref git cannot read, such as one that names a missing object; only the first is "no tag".
+ */
+async function localTag(ctx, tag) {
+  const ref = `refs/tags/${tag}`;
+  const shown = await git(ctx, ['show-ref', '--verify', '--quiet', ref]);
+  if (!shown.ok) {
+    if (shown.code === 1 && !shown.timedOut && !shown.spawnError) return { commit: null };
+    return { error: failureLine(shown) };
+  }
+  const commit = await git(ctx, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  const hash = commit.stdout.trim();
+  if (!commit.ok || !FULL_HASH.test(hash)) return { error: 'the tag does not point at a commit' };
+  return { commit: hash };
 }
 
 async function cmdTag(ctx, o) {
   let commit = o.flags['--commit'];
+  const branch = o.flags['--branch'];
   const tag = tagName(o);
   if (commit !== undefined) {
     if (!FULL_HASH.test(commit)) throw new UsageError('--commit needs a full 40-character lowercase hex hash');
+    if (branch === undefined) throw new UsageError('--commit needs --branch NAME: the release branch on origin that holds the commit');
+    checkTagBranch(o.config, branch);
+  }
+  await requireSafeRemote(ctx);
+  if (commit !== undefined) {
     const exists = await git(ctx, ['cat-file', '-e', `${commit}^{commit}`]);
     if (!exists.ok) throw new StepFailure(`commit ${commit} not found in this repository`);
-    await requirePublished(ctx, o, commit);
+    await requirePublished(ctx, commit, branch);
   } else {
     commit = (await cmdPreflight(ctx, o)).commit;
   }
   if (!readReceipt(ctx, 'gates', o.version, commit)) throw new StepFailure(`no passing gates receipt for ${short(commit)} ${o.version}; run gates on that commit first`);
-  const have = await git(ctx, ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`]);
-  const localCommit = have.ok ? have.stdout.trim() : null;
+  // The package must be on the registry, and verify must have said so, before the tag can name the release.
+  if (!await newestReceipt(ctx, 'verify', o.version, commit, verifyPassed)) throw new StepFailure(`no passing verify receipt for ${short(commit)} ${o.version}; run verify first (the package must be published and verified before the tag)`);
+  const local = await localTag(ctx, tag);
+  if (local.error) throw new StepFailure(`cannot read the local tag ${tag}: ${local.error}`, { tag, commit });
+  const localCommit = local.commit;
   if (localCommit && localCommit !== commit) throw new StepFailure(`tag ${tag} exists at ${short(localCommit)}, not ${short(commit)}`, { tag, commit, existing: localCommit });
   // Look at origin before any write, so a tag that origin already holds elsewhere is never overwritten and no local tag is made beside it.
   const remote = await originTagCommit(ctx, tag);
@@ -1007,8 +1080,8 @@ async function cmdTag(ctx, o) {
     if (!made.ok) throw new StepFailure(`git tag failed: ${failureLine(made)}`);
   }
   // One tag, by its full ref name. No --force, no --tags, no branch. Git refuses to move a tag that origin already has.
-  // `-c push.followTags=false` keeps a user's config from carrying other annotated tags along.
-  const pushed = await git(ctx, ['-c', 'push.followTags=false', 'push', 'origin', `refs/tags/${tag}`]);
+  // `-c push.followTags=false` keeps a user's config from carrying other annotated tags along. No hook runs (core.hooksPath, --no-verify), and no submodule is pushed.
+  const pushed = await gitNoHooks(ctx, ['-c', 'push.followTags=false', 'push', '--no-verify', '--no-recurse-submodules', 'origin', `refs/tags/${tag}`]);
   if (!pushed.ok) throw new StepFailure(`git push failed: ${failureLine(pushed)}`, { tag, commit });
   return done(`${localCommit ? 'pushed' : 'created and pushed'} tag ${tag} at ${short(commit)} to origin`, { tag, commit, version: o.version });
 }
@@ -1164,18 +1237,21 @@ async function cmdStatus(ctx, o) {
   if (verifyPassed) add('verify', receiptState(verify), `passed ${verify.at}`);
   else add('verify', 'todo', verify ? 'the verify receipt for this commit holds a check that did not pass' : 'no passing verify receipt for this commit');
 
-  const local = await git(ctx, ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`]);
-  const localCommit = local.ok ? local.stdout.trim() : null;
-  if (!localCommit) add('tag', 'todo', `${tag} does not exist locally`);
+  const local = await localTag(ctx, tag);
+  const localCommit = local.commit ?? null;
+  const remote = await originTagCommit(ctx, tag);
+  // A tag that origin does not have is local only: the reason says so, so a person does not read "done" as "published".
+  const localOnly = localCommit && remote.ok && !remote.commit ? ' (local only)' : '';
+  if (local.error) add('tag', 'unknown', `cannot read the local tag ${tag}: ${local.error}`);
+  else if (!localCommit) add('tag', 'todo', `${tag} does not exist locally`);
   else {
     // The release commit is HEAD, or the commit of the dry run that made the published tarball.
     const dry = await newestDryRun(ctx, version);
     const releaseCommits = [commit, dry?.commit].filter(Boolean);
-    if (releaseCommits.includes(localCommit)) add('tag', 'done', `${tag} at ${short(localCommit)}`);
-    else add('tag', 'todo', `${tag} is at ${short(localCommit)}, not at the release commit ${commit ? short(commit) : 'unknown'}`);
+    if (releaseCommits.includes(localCommit)) add('tag', 'done', `${tag} at ${short(localCommit)}${localOnly}`);
+    else add('tag', 'todo', `${tag} is at ${short(localCommit)}, not at the release commit ${commit ? short(commit) : 'unknown'}${localOnly}`);
   }
   {
-    const remote = await originTagCommit(ctx, tag);
     if (!remote.ok) add('tag-on-origin', 'unknown', `cannot reach origin: ${remote.reason}`);
     else if (!remote.commit) add('tag-on-origin', 'todo', localCommit ? `${tag} is not on origin` : `${tag} is not on origin and there is no local tag`);
     else if (localCommit) {
@@ -1235,8 +1311,10 @@ function renderHuman(result) {
  */
 export async function runCli(argv, ctx) {
   const wantsJson = jsonWanted(argv);
+  // The test seams of this run, once they are known. Every JSON result then lists them, so a reader of one result can tell a test run from a real one.
+  let activeSeams = [];
   const emit = result => {
-    const out = { schema: RESULT_SCHEMA, ...result };
+    const out = { schema: RESULT_SCHEMA, ...result, ...(activeSeams.length ? { seams: activeSeams } : {}) };
     if (wantsJson) ctx.stdout.write(JSON.stringify(out) + '\n');
     else for (const line of renderHuman(out)) (out.ok || out.outcome === 'printed' ? ctx.stdout : ctx.stderr).write(line + '\n');
     return out.exit;
@@ -1261,6 +1339,7 @@ export async function runCli(argv, ctx) {
     const config = loadConfig(repo);
     const { version, record } = loadVersion(repo, config);
     const seams = detectSeams(ctx.env, repo);
+    activeSeams = seams;
     run = { ...ctx, repo, config, json: wantsJson, seams, temps: [] };
     if (seams.length) ctx.stderr.write(`WARNING: test seams active (${seams.join(', ')}); this is not a real release run, and its receipts do not count as real\n`);
     const result = await HANDLERS[name](run, { flags: parsed.flags, config, version, record });

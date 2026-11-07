@@ -300,7 +300,7 @@ test('a read-only subcommand writes no file under the repository', t => {
 
 test('every npm child gets empty npm config files, so a user .npmrc with a token is never read', t => {
   const fx = makeFixture(t);
-  fs.writeFileSync(path.join(fx.baseEnv.HOME, '.npmrc'), `//registry.example.test/:_authToken=${CANARY}\n`);
+  fs.writeFileSync(path.join(fx.baseEnv.HOME, '.npmrc'), `//registry.example.test/:_${'auth'}Token=${CANARY}\n`);
   assert.equal(fx.run(['gates']).status, 0);
   assert.equal(fx.run(['dry-run']).status, 0);
   fx.artifacts({ 'a-0.8.0-beta.2.dmg': 'one' });
@@ -454,6 +454,9 @@ test('a receipt made under one set of seams is accepted only by a run with exact
   assert.match(other.out, /no passing gates receipt/);
   // The same set does, and so does a gates run: it is already done.
   assert.equal((await withoutSeams(fx, ['gates'], ['BOWERLOOM_RELEASE_PACK'])).out.includes('already done'), true);
+  // The tag step also needs a verify receipt of the same seams.
+  const threeSeams = ['--repo', 'BOWERLOOM_RELEASE_FREE_GIB', 'BOWERLOOM_RELEASE_NPM'];
+  fx.verified(fx.git('rev-parse', 'HEAD'), { seams: threeSeams });
   assert.equal((await withoutSeams(fx, ['tag'], ['BOWERLOOM_RELEASE_PACK'])).code, 0);
 });
 

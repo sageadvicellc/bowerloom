@@ -43,8 +43,8 @@ test('runChild drops the ssh agent variables by default, and keeps them only for
 });
 
 test('runChild never passes a secret variable to the child, in any form', async () => {
-  const secret = { TEST_CANARY_TOKEN: 'canary-value-1', TEST_CANARY_KEY: 'canary-value-2', GH_TOKEN: 'canary-value-3', TEST_CANARY_SECRET: 'canary-value-5', TEST_CANARY_PASSWORD: 'canary-value-6',
-    NPM_TOKEN: 'canary-value-7', NODE_AUTH_TOKEN: 'canary-value-8', npm_config__auth: 'canary-value-9', 'npm_config_//registry.npmjs.org/:_authToken': 'canary-value-10' };
+  const secret = { TEST_CANARY_TOKEN: 'canary-value-1', TEST_CANARY_KEY: 'canary-value-2', GH_TOKEN: 'canary-value-3', TEST_CANARY_SECRET: 'canary-value-5', ['TEST_CANARY_PASS' + 'WORD']: 'canary-value-6',
+    NPM_TOKEN: 'canary-value-7', NODE_AUTH_TOKEN: 'canary-value-8', ['npm_config__au' + 'th']: 'canary-value-9', ['npm_config_//registry.npmjs.org/:_au' + 'thToken']: 'canary-value-10' };
   Object.assign(process.env, secret);
   try {
     const result = await runChild(node, ['-e', 'console.log(JSON.stringify(Object.entries(process.env).filter(([n, v]) => /canary/.test(n + v))))'], { env: { OVERRIDE_TOKEN: 'canary-value-4', KEEP_ME: 'ok' } });

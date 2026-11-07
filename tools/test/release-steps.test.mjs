@@ -5,7 +5,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { allFiles, BRANCH, makeFixture, TARBALL, testConfig, VERSION } from './release-fixture.mjs';
+import { hasVersion } from '../../scripts/release.mjs';
+import { allFiles, BRANCH, makeFixture, scriptPath, TARBALL, testConfig, VERSION } from './release-fixture.mjs';
 
 const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const integrityOf = bytes => 'sha512-' + crypto.createHash('sha512').update(bytes).digest('base64');
@@ -23,7 +24,7 @@ test('preflight passes on a clean release branch equal to origin, prints the com
   const r = fx.run(['preflight']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, new RegExp(head));
-  assert.match(r.stderr, /^\$ git fetch origin$/m);
+  assert.match(r.stderr, /^\$ git -c core\.hooksPath=\/dev\/null fetch --prune origin$/m);
   const out = fx.run(['preflight', '--json']).json();
   assert.deepEqual([out.branch, out.commit, out.ahead, out.behind], [fx.git('rev-parse', '--abbrev-ref', 'HEAD'), head, 0, 0]);
   assert.deepEqual(out.checks.map(c => c.name), ['fetch', 'branch', 'sync', 'clean']);
@@ -248,6 +249,27 @@ test('dry-run is idempotent for the same commit, reruns when the tarball is gone
   assert.equal(fx.packCalls().length, 3);
 });
 
+test('dry-run is not "already done" when the receipt files or tag no longer equal the config, and runs again', t => {
+  const fx = makeFixture(t);
+  passGates(fx);
+  const first = fx.run(['dry-run', '--json']).json();
+  assert.equal(fx.packCalls().length, 1);
+  const receiptFile = allFiles(path.join(fx.repo, '.trellis/release/receipts')).find(f => path.basename(f).startsWith('dry-run-'));
+  const original = fs.readFileSync(receiptFile, 'utf8');
+  // The receipt was made when the config expected another file count or used another dist-tag.
+  for (const [key, value] of [['files', 6], ['tag', 'next']]) {
+    fs.writeFileSync(receiptFile, JSON.stringify({ ...JSON.parse(original), [key]: value }));
+    const again = fx.run(['dry-run', '--json']);
+    assert.equal(again.status, 0, again.stderr);
+    assert.equal(again.json().outcome, 'done', key);
+    assert.equal(again.json().tag, 'beta');
+    assert.equal(again.json().files, 7);
+  }
+  assert.equal(fx.packCalls().length, 3);
+  assert.equal(fx.run(['dry-run', '--json']).json().outcome, 'already done');
+  assert.equal(first.files, 7);
+});
+
 test('dry-run checks the expected file count when the config sets one', t => {
   const bad = makeFixture(t, { config: testConfig({ expectedFileCount: 9 }) });
   passGates(bad);
@@ -378,6 +400,16 @@ test('hashes needs the version at a boundary: beta.21, beta.2.1, 10.8.0-beta.2, 
     const r = fx.run(['hashes', '--json', '--force']);
     assert.equal(r.status, 0, `${name}: ${r.stdout}`);
   }
+});
+
+test('hasVersion: a version with no prerelease part does not match a longer prerelease version, and a prerelease version keeps its old rules', () => {
+  // No prerelease part in the release version: a hyphen plus a letter or digit after it means the name carries a longer version.
+  for (const name of ['Bowerloom-0.8.0-beta.2-arm64.dmg', 'Bowerloom-0.8.0-rc1.dmg', 'Bowerloom-0.8.0-1.dmg', 'Bowerloom-0.8.0-arm64.dmg', 'Bowerloom-0.8.0-beta.dmg']) assert.equal(hasVersion(name, '0.8.0'), false, name);
+  for (const name of ['Bowerloom-0.8.0.dmg', 'Bowerloom_0.8.0_arm64.dmg', 'Bowerloom 0.8.0.zip', '0.8.0', 'Bowerloom-0.8.0 -x.dmg', 'Bowerloom-0.8.0.universal.dmg']) assert.equal(hasVersion(name, '0.8.0'), true, name);
+  assert.equal(hasVersion('Bowerloom-0.8.0-.dmg', '0.8.0'), true, 'a hyphen followed by a dot is not a longer version');
+  // A prerelease release version: unchanged.
+  assert.equal(hasVersion('Bowerloom-0.8.0-beta.2-arm64.dmg', '0.8.0-beta.2'), true);
+  assert.equal(hasVersion('Bowerloom-0.8.0-beta.21.dmg', '0.8.0-beta.2'), false);
 });
 
 test('hashes fails with no artifact folder, no matching file, a hash file of another version, or a damaged hash file', t => {
@@ -579,11 +611,25 @@ const originRefs = fx => fx.git('ls-remote', 'origin');
 const otherRefs = fx => originRefs(fx).split('\n').filter(line => line && !line.includes(`refs/tags/v${VERSION}`)).join('\n');
 /** True when the fake npm saw a publish that is not a dry run. */
 const sawRealPublish = fx => fx.npmCalls().some(c => c.args[0] === 'publish' && !c.args.includes('--dry-run'));
+const escapeRe = text => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+/** The exact lines the script echoes before the fetch and the push of the tag. */
+const FETCH_LINE = /^\$ git -c core\.hooksPath=\/dev\/null fetch --prune origin$/m;
+const PUSH_COMMAND = `git -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/v${VERSION}`;
+/** A git command that pushes, fetches, or makes a tag, as the script echoes it ("$ git [-c x=y ...] push ..."). A `git remote get-url --push` line is none of these. */
+const DID_PUSH = /^\$ git (?:-c \S+ )*push\b/m;
+const DID_PUSH_OR_TAG = /^\$ git (?:-c \S+ )*(?:push|tag)\b/m;
+const DID_ANYTHING = /^\$ git (?:-c \S+ )*(?:push|fetch|tag)\b/m;
+const PUSH_LINE = new RegExp(`^\\$ ${escapeRe(PUSH_COMMAND)}$`, 'm');
+/** Gates and a verify receipt for HEAD: what `tag` needs. Returns the commit. */
+const ready = fx => { const head = fx.git('rev-parse', 'HEAD'); passGates(fx); fx.verified(head); return head; };
+/** `tag --commit HASH --branch NAME` (the branch defaults to the fixture's release branch). */
+const tagAt = (fx, commit, { branch = BRANCH, json = true } = {}) => fx.run(['tag', '--commit', commit, '--branch', branch, ...(json ? ['--json'] : [])]);
+/** Gates, then a verify receipt, for a commit that is not checked out. Leaves the release branch checked out. */
+const readyAt = (fx, commit) => { fx.git('checkout', '--detach', commit); passGates(fx); fx.verified(commit); fx.git('checkout', BRANCH); };
 
 test('tag creates an annotated tag at the checked commit and pushes only that tag to origin', t => {
   const fx = makeFixture(t);
-  const head = fx.git('rev-parse', 'HEAD');
-  passGates(fx);
+  const head = ready(fx);
   const before = originRefs(fx);
   const r = fx.run(['tag', '--json']);
   assert.equal(r.status, 0, r.stderr);
@@ -598,22 +644,22 @@ test('tag creates an annotated tag at the checked commit and pushes only that ta
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}^{commit}`), head);
   // No other ref on origin changed or appeared.
   assert.equal(otherRefs(fx), before);
-  assert.match(r.stderr, new RegExp(`^\\$ git -c push\\.followTags=false push origin refs/tags/v${VERSION.replace(/\./g, '\\.')}$`, 'm'));
+  assert.match(r.stderr, PUSH_LINE, 'the push is this exact command');
+  assert.match(r.stderr, FETCH_LINE, 'the fetch prunes and runs no hooks');
   assert.doesNotMatch(r.stderr, /--force|--tags|-f /);
   assert.equal(sawRealPublish(fx), false);
 });
 
 test('tag is idempotent: the second run says already done, and a different commit on the local tag fails', t => {
   const fx = makeFixture(t);
-  const first = fx.git('rev-parse', 'HEAD');
-  passGates(fx);
+  const first = ready(fx);
   assert.equal(fx.run(['tag']).status, 0);
   const onOrigin = originRefs(fx);
   const again = fx.run(['tag', '--json']);
   assert.equal(again.status, 0);
   assert.equal(again.json().outcome, 'already done');
   assert.match(again.json().message, /already done/);
-  assert.doesNotMatch(again.stderr, /git push/, 'an already done run pushes nothing');
+  assert.doesNotMatch(again.stderr, DID_PUSH, 'an already done run pushes nothing');
   assert.equal(originRefs(fx), onOrigin);
   fx.commit('c.txt', 'c');
   fx.git('push', 'origin', 'HEAD');
@@ -622,15 +668,14 @@ test('tag is idempotent: the second run says already done, and a different commi
   const moved = fx.run(['tag', '--json']);
   assert.equal(moved.status, 1);
   assert.match(moved.json().message, new RegExp(`exists at ${first.slice(0, 12)}`));
-  assert.equal(fx.run(['tag', '--commit', first, '--json']).json().outcome, 'already done');
+  assert.equal(tagAt(fx, first).json().outcome, 'already done');
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}^{commit}`), first, 'origin still has the first commit');
   assert.equal(sawRealPublish(fx), false);
 });
 
 test('tag pushes a local-only tag, and then reports already done', t => {
   const fx = makeFixture(t);
-  const head = fx.git('rev-parse', 'HEAD');
-  passGates(fx);
+  const head = ready(fx);
   fx.git('tag', '-a', '-m', 'bowerloom 0.8.0-beta.2', '--', `v${VERSION}`, head);
   assert.equal(fx.git('ls-remote', '--tags', 'origin'), '');
   const r = fx.run(['tag', '--json']);
@@ -650,38 +695,37 @@ test('tag fails and never overwrites when origin has the tag at a different comm
   fx.git('tag', '-a', '-m', 'someone else', `v${VERSION}`, first);
   fx.git('push', 'origin', `refs/tags/v${VERSION}`);
   fx.git('tag', '-d', `v${VERSION}`);
-  passGates(fx);
+  ready(fx);
   const refsBefore = originRefs(fx);
   const remoteObject = fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}`);
   // A fetch normally brings the remote tag into this clone. Turn that off, so the read of origin is what finds the tag.
   fx.git('config', 'remote.origin.tagOpt', '--no-tags');
-  const r = fx.run(['tag', '--commit', second, '--json']);
+  const r = tagAt(fx, second);
   assert.equal(r.status, 1);
   assert.equal(r.json().outcome, 'failed');
   assert.match(r.json().message, new RegExp(`origin has v${VERSION.replace(/\./g, '\\.')} at ${first.slice(0, 12)}, not ${second.slice(0, 12)}`));
   assert.equal(fx.git('tag', '--list'), '', 'no local tag is made when origin already has another one');
   assert.equal(originRefs(fx), refsBefore);
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}`), remoteObject);
-  assert.doesNotMatch(r.stderr, /git push/);
+  assert.doesNotMatch(r.stderr, DID_PUSH);
   // The plain form fetches first, which brings the remote tag into this clone. It still fails and still overwrites nothing.
   fx.git('config', '--unset', 'remote.origin.tagOpt');
   const plain = fx.run(['tag', '--json']);
   assert.equal(plain.status, 1);
   assert.match(plain.json().message, new RegExp(`exists at ${first.slice(0, 12)}, not ${second.slice(0, 12)}`));
   assert.equal(originRefs(fx), refsBefore);
-  assert.doesNotMatch(plain.stderr, /git push/);
+  assert.doesNotMatch(plain.stderr, DID_PUSH);
   assert.equal(sawRealPublish(fx), false);
 });
 
 test('tag fails when origin has the tag at the checked commit but the local tag is missing', t => {
   const fx = makeFixture(t);
-  const head = fx.git('rev-parse', 'HEAD');
-  passGates(fx);
+  const head = ready(fx);
   fx.git('tag', '-a', '-m', 'x', `v${VERSION}`, head);
   fx.git('push', 'origin', `refs/tags/v${VERSION}`);
   fx.git('tag', '-d', `v${VERSION}`);
   fx.git('config', 'remote.origin.tagOpt', '--no-tags');
-  const r = fx.run(['tag', '--commit', head, '--json']);
+  const r = tagAt(fx, head);
   assert.equal(r.status, 1);
   assert.match(r.json().message, /origin has v0\.8\.0-beta\.2 at [0-9a-f]{12} but this clone has no such tag/);
   assert.equal(fx.git('tag', '--list'), '');
@@ -689,8 +733,7 @@ test('tag fails when origin has the tag at the checked commit but the local tag 
 
 test('a failed push fails with the first error line and no receipt, and a later run pushes the kept local tag', t => {
   const fx = makeFixture(t);
-  const head = fx.git('rev-parse', 'HEAD');
-  passGates(fx);
+  const head = ready(fx);
   // A pre-receive hook on the bare origin rejects every update. The ref listing still works.
   const hook = path.join(fx.origin, 'hooks/pre-receive');
   fs.mkdirSync(path.dirname(hook), { recursive: true });
@@ -714,23 +757,67 @@ test('a failed push fails with the first error line and no receipt, and a later 
 
 test('tag fails with the first error line, and makes no tag, when origin cannot be reached', t => {
   const fx = makeFixture(t);
-  passGates(fx);
+  ready(fx);
   fx.git('remote', 'set-url', 'origin', path.join(fx.root, 'no-such-origin.git'));
-  const r = fx.run(['tag', '--commit', fx.git('rev-parse', 'HEAD'), '--json']);
+  const r = tagAt(fx, fx.git('rev-parse', 'HEAD'));
   assert.equal(r.status, 1);
   assert.match(r.json().message, /^git fetch origin failed: /);
   assert.equal(r.json().message.includes('\n'), false, 'one line');
   assert.equal(fx.git('tag', '--list'), '');
 });
 
-test('tag without --commit needs a passing gates receipt for the checked commit, and writes no tag without one', t => {
+test('tag without --commit needs a passing gates receipt, then a passing verify receipt, for the checked commit, and writes no tag without them', t => {
   const fx = makeFixture(t);
   const r = fx.run(['tag', '--json']);
   assert.equal(r.status, 1);
   assert.match(r.json().message, /no passing gates receipt for [0-9a-f]{12} 0\.8\.0-beta\.2; run gates on that commit first/);
   assert.equal(fx.git('tag', '--list'), '');
   passGates(fx);
+  const before = originRefs(fx);
+  const noVerify = fx.run(['tag', '--json']);
+  assert.equal(noVerify.status, 1);
+  assert.match(noVerify.json().message, /no passing verify receipt for [0-9a-f]{12} 0\.8\.0-beta\.2; run verify first \(the package must be published and verified before the tag\)/);
+  assert.equal(fx.git('tag', '--list'), '');
+  assert.equal(originRefs(fx), before);
+  assert.doesNotMatch(noVerify.stderr, DID_PUSH_OR_TAG);
+  fx.verified();
   assert.equal(fx.run(['tag']).status, 0);
+});
+
+test('tag needs a verify receipt for the same version, with every check passed, at the tagged commit or an ancestor of it', t => {
+  const fx = makeFixture(t);
+  const first = fx.git('rev-parse', 'HEAD');
+  passGates(fx);
+  const second = fx.commit('c.txt', 'c');
+  fx.git('push', 'origin', 'HEAD');
+  const before = originRefs(fx);
+  const verifyMessage = /run verify first \(the package must be published and verified before the tag\)/;
+  // A receipt for another version, a receipt with a check that did not pass, and a receipt on a LATER commit do not count.
+  fx.verified(first, { version: '0.0.1' });
+  assert.match(tagAt(fx, first).json().message, verifyMessage);
+  fx.verified(first, { status: 'fail' });
+  assert.match(tagAt(fx, first).json().message, verifyMessage);
+  fx.verified(second);
+  const later = tagAt(fx, first);
+  assert.equal(later.status, 1);
+  assert.match(later.json().message, verifyMessage);
+  assert.equal(fx.git('tag', '--list'), '');
+  assert.equal(originRefs(fx), before);
+  // A passing receipt on the commit itself counts.
+  fx.verified(first);
+  assert.equal(tagAt(fx, first).status, 0);
+});
+
+test('a verify receipt on an ancestor of the tagged commit counts', t => {
+  const fx = makeFixture(t);
+  const first = fx.verified();
+  const second = fx.commit('c.txt', 'c');
+  fx.git('push', 'origin', 'HEAD');
+  passGates(fx);
+  const r = fx.run(['tag', '--json']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fx.git('rev-parse', `v${VERSION}^{commit}`), second);
+  assert.notEqual(first, second);
 });
 
 test('tag refuses to run on a dirty tree', t => {
@@ -753,19 +840,26 @@ test('tag refuses to run on a branch that is behind origin', t => {
   assert.equal(fx.git('tag', '--list'), '');
 });
 
-test('tag --commit needs a full hash of a real commit and a passing gates receipt for that commit', t => {
+test('tag --commit needs a full hash, a --branch that matches the branch pattern, a real commit, and passing gates and verify receipts for it', t => {
   const fx = makeFixture(t);
-  assert.equal(fx.run(['tag', '--commit', fx.git('rev-parse', '--short', 'HEAD')]).status, 2);
-  assert.equal(fx.run(['tag', '--commit', 'a'.repeat(40)]).status, 1);
   const older = fx.git('rev-parse', 'HEAD');
-  const noReceipt = fx.run(['tag', '--commit', older, '--json']);
+  // Wrong use: exit 2, and nothing is read or written.
+  const usage = (args, pattern) => { const r = fx.run([...args, '--json']); assert.equal(r.status, 2, args.join(' ')); assert.equal(r.json().outcome, 'usage'); assert.match(r.json().message, pattern); return r; };
+  usage(['tag', '--commit', fx.git('rev-parse', '--short', 'HEAD'), '--branch', BRANCH], /40-character/);
+  usage(['tag', '--commit', older], /--commit needs --branch/);
+  usage(['tag', '--commit', older, '--branch', 'feature/x'], /does not match the branchPattern/);
+  usage(['tag', '--commit', older, '--branch', 'release/has space'], /invalid form/);
+  assert.equal(tagAt(fx, 'a'.repeat(40)).status, 1);
+  const noReceipt = tagAt(fx, older);
   assert.equal(noReceipt.status, 1);
   assert.match(noReceipt.json().message, /no passing gates receipt for /);
   assert.equal(fx.git('tag', '--list'), '');
   passGates(fx);
+  assert.match(tagAt(fx, older).json().message, /run verify first/);
+  fx.verified(older);
   fx.commit('d.txt', 'd');
   fx.git('push', 'origin', 'HEAD');
-  assert.equal(fx.run(['tag', '--commit', older]).status, 0);
+  assert.equal(tagAt(fx, older, { json: false }).status, 0);
   assert.equal(fx.git('rev-parse', `v${VERSION}^{commit}`), older);
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}^{commit}`), older, 'the tag is on origin at the tagged commit');
 });
@@ -773,24 +867,24 @@ test('tag --commit needs a full hash of a real commit and a passing gates receip
 test('tag --commit refuses a gated commit that exists only locally, and nothing reaches origin', t => {
   const fx = makeFixture(t);
   const local = fx.commit('local.txt', 'unpublished');
-  passGates(fx);
+  ready(fx);
   const refsBefore = originRefs(fx);
-  const r = fx.run(['tag', '--commit', local, '--json']);
+  const r = tagAt(fx, local);
   assert.equal(r.status, 1);
   assert.equal(r.json().outcome, 'failed');
-  assert.equal(r.json().message, `commit ${local} is not on a published release branch; push the branch first`);
-  assert.match(r.stderr, /^\$ git fetch origin$/m, 'the --commit path fetches first');
-  assert.doesNotMatch(r.stderr, /git push|git tag /);
+  assert.equal(r.json().message, `commit ${local} is not on origin/${BRANCH}; push the branch first`);
+  assert.match(r.stderr, FETCH_LINE, 'the --commit path fetches first');
+  assert.doesNotMatch(r.stderr, DID_PUSH_OR_TAG);
   assert.equal(fx.git('tag', '--list'), '');
   assert.equal(originRefs(fx), refsBefore);
   assert.equal(spawnSync('git', ['--git-dir', fx.origin, 'cat-file', '-e', `${local}^{commit}`], { env: fx.baseEnv }).status === 0, false, 'the unpublished commit never reached origin');
   // Once the branch is pushed, the same call passes.
   fx.git('push', 'origin', 'HEAD');
-  assert.equal(fx.run(['tag', '--commit', local]).status, 0);
+  assert.equal(tagAt(fx, local, { json: false }).status, 0);
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}^{commit}`), local);
 });
 
-test('tag --commit passes for a commit on a published release branch that is not the checked-out one', t => {
+test('tag --commit passes for a commit on the named published release branch, which is not the checked-out one', t => {
   const fx = makeFixture(t);
   const base = fx.git('rev-parse', 'HEAD');
   fx.git('checkout', '-b', 'release/other');
@@ -799,27 +893,122 @@ test('tag --commit passes for a commit on a published release branch that is not
   fx.git('checkout', BRANCH);
   fx.git('branch', '-D', 'release/other');
   assert.notEqual(other, base);
-  passGates(fx);
-  // Gates ran on base; the receipt for `other` is needed too.
-  fx.git('checkout', '--detach', other);
-  passGates(fx);
-  fx.git('checkout', BRANCH);
-  const r = fx.run(['tag', '--commit', other, '--json']);
+  readyAt(fx, other);
+  const r = tagAt(fx, other, { branch: 'release/other' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}^{commit}`), other);
 });
 
-test('tag --commit refuses a commit that is only on a published branch whose name does not match the release pattern', t => {
+test('tag --commit proves the commit is on exactly the named branch: a stray release/scratch branch that holds it does not count', t => {
   const fx = makeFixture(t);
-  fx.git('checkout', '-b', 'feature/x');
-  const odd = fx.commit('odd.txt', 'odd');
-  fx.git('push', 'origin', 'feature/x');
-  passGates(fx);
+  fx.git('checkout', '-b', 'release/scratch');
+  const stray = fx.commit('scratch.txt', 'scratch');
+  fx.git('push', 'origin', 'release/scratch');
+  fx.git('checkout', BRANCH);
+  readyAt(fx, stray);
   const refsBefore = originRefs(fx);
-  const r = fx.run(['tag', '--commit', odd, '--json']);
+  const r = tagAt(fx, stray);
   assert.equal(r.status, 1);
-  assert.match(r.json().message, /is not on a published release branch; push the branch first$/);
+  assert.equal(r.json().message, `commit ${stray} is not on origin/${BRANCH}; push the branch first`);
+  assert.equal(fx.git('tag', '--list'), '');
   assert.equal(originRefs(fx), refsBefore);
+  assert.doesNotMatch(r.stderr, DID_PUSH_OR_TAG);
+  // Named, the same branch is the proof.
+  assert.equal(tagAt(fx, stray, { branch: 'release/scratch' }).status, 0);
+});
+
+test('tag --commit fetches with --prune: a release branch deleted on origin is not proof, and nothing is pushed', t => {
+  const fx = makeFixture(t);
+  fx.git('checkout', '-b', 'release/stale');
+  const stale = fx.commit('stale.txt', 'stale');
+  fx.git('push', 'origin', 'release/stale');
+  fx.git('checkout', BRANCH);
+  readyAt(fx, stale);
+  // A second clone deletes the branch on origin. This clone still holds its remote-tracking ref until a prune.
+  const other = path.join(fx.root, 'other');
+  assert.equal(spawnSync('git', ['clone', fx.origin, other], { env: fx.baseEnv }).status, 0);
+  assert.equal(spawnSync('git', ['push', 'origin', '--delete', 'release/stale'], { cwd: other, env: fx.baseEnv }).status, 0);
+  assert.equal(fx.git('rev-parse', '--verify', 'refs/remotes/origin/release/stale'), stale, 'the stale tracking ref is still here');
+  const refsBefore = originRefs(fx);
+  const r = tagAt(fx, stale, { branch: 'release/stale' });
+  assert.equal(r.status, 1);
+  assert.equal(r.json().message, 'origin has no branch release/stale; push the branch first');
+  assert.match(r.stderr, FETCH_LINE);
+  assert.doesNotMatch(r.stderr, DID_PUSH_OR_TAG);
+  assert.equal(fx.git('tag', '--list'), '');
+  assert.equal(originRefs(fx), refsBefore);
+});
+
+test('preflight fetches with --prune and without hooks', t => {
+  const fx = makeFixture(t);
+  const r = fx.run(['preflight']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, FETCH_LINE);
+});
+
+test('a git error from the ancestor check is reported as a git error, not as "not on the branch"', t => {
+  const fx = makeFixture(t);
+  const head = ready(fx);
+  // A git that fails every merge-base with exit 128, as a damaged repository would.
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = path.join(fx.root, 'shim');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\nfor a in "$@"; do if [ "$a" = merge-base ]; then echo "fatal: simulated git failure" >&2; exit 128; fi; done\nexec ${real} "$@"\n`, { mode: 0o755 });
+  const r = fx.run(['tag', '--commit', head, '--branch', BRANCH, '--json'], { env: { PATH: `${bin}:${fx.baseEnv.PATH}` } });
+  assert.equal(r.status, 1);
+  assert.match(r.json().message, /^git merge-base failed: fatal: simulated git failure/);
+  assert.doesNotMatch(r.json().message, /is not on origin/);
+  assert.doesNotMatch(r.stderr, DID_PUSH_OR_TAG);
+  assert.equal(fx.git('tag', '--list'), '');
+});
+
+test('the tag push and the fetches run no repository hooks', t => {
+  const fx = makeFixture(t);
+  const hooks = path.join(fx.root, 'hooks');
+  fs.mkdirSync(hooks);
+  const marker = path.join(fx.root, 'hook-ran.txt');
+  // pre-push would block and note the push; reference-transaction notes every ref update, which a fetch of a new branch makes.
+  fs.writeFileSync(path.join(hooks, 'pre-push'), `#!/bin/sh\necho pre-push >> ${marker}\nexit 1\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(hooks, 'reference-transaction'), `#!/bin/sh\nif [ "$1" = prepared ]; then cat >> ${marker}; fi\nexit 0\n`, { mode: 0o755 });
+  fx.git('config', 'core.hooksPath', hooks);
+  const head = ready(fx);
+  // Origin gains a new branch, so the next fetch updates a ref in this clone.
+  const other = path.join(fx.root, 'other');
+  assert.equal(spawnSync('git', ['clone', '-b', BRANCH, fx.origin, other], { env: fx.baseEnv }).status, 0);
+  assert.equal(spawnSync('git', ['push', 'origin', 'HEAD:refs/heads/release/fetched'], { cwd: other, env: fx.baseEnv }).status, 0);
+  const r = fx.run(['tag', '--json']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}^{commit}`), head);
+  assert.equal(fx.git('rev-parse', '--verify', 'refs/remotes/origin/release/fetched').length, 40, 'the fetch did update a ref');
+  const seen = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8') : '';
+  assert.doesNotMatch(seen, /pre-push/, 'pre-push did not run');
+  assert.doesNotMatch(seen, /refs\/remotes\/origin\/release\/fetched/, 'no hook ran for the fetch');
+});
+
+test('tag refuses when the push URL differs from the fetch URL, before it fetches or pushes anything', t => {
+  const fx = makeFixture(t);
+  ready(fx);
+  const elsewhere = path.join(fx.root, 'elsewhere.git');
+  assert.equal(spawnSync('git', ['init', '--bare', '-b', 'main', elsewhere], { env: fx.baseEnv }).status, 0);
+  fx.git('remote', 'set-url', '--push', 'origin', elsewhere);
+  const r = fx.run(['tag', '--json']);
+  assert.equal(r.status, 1);
+  assert.match(r.json().message, /push URL differs from fetch URL/);
+  assert.doesNotMatch(r.stderr, DID_ANYTHING);
+  assert.equal(fx.git('tag', '--list'), '');
+  assert.equal(fx.git('--git-dir', elsewhere, 'tag', '--list'), '');
+});
+
+test('tag refuses under a test seam when the origin URL is not a local filesystem path', t => {
+  const fx = makeFixture(t);
+  ready(fx);
+  for (const url of ['ssh://git@example.com/owner/repo.git', 'git@example.com:owner/repo.git', 'https://example.com/owner/repo.git']) {
+    fx.git('remote', 'set-url', 'origin', url);
+    const r = fx.run(['tag', '--json']);
+    assert.equal(r.status, 1, url);
+    assert.match(r.json().message, /test seams are active and the origin URL is not a local path/, url);
+    assert.doesNotMatch(r.stderr, DID_ANYTHING, url);
+  }
   assert.equal(fx.git('tag', '--list'), '');
 });
 
@@ -830,11 +1019,11 @@ test('the tag push ignores push.followTags: origin gains only the release tag', 
   // A second annotated local tag on a commit the push would carry, and an unpushed local branch.
   fx.git('tag', '-a', '-m', 'other', 'v0.0.1-other', head);
   fx.git('branch', 'release/unpushed');
-  passGates(fx);
+  ready(fx);
   const before = originRefs(fx);
   const r = fx.run(['tag', '--json']);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stderr, new RegExp(`^\\$ git -c push\\.followTags=false push origin refs/tags/v${VERSION.replace(/\./g, '\\.')}$`, 'm'));
+  assert.match(r.stderr, PUSH_LINE);
   assert.equal(otherRefs(fx), before);
   const tags = fx.git('--git-dir', fx.origin, 'tag', '--list').split('\n').filter(Boolean);
   assert.deepEqual(tags, [`v${VERSION}`]);
@@ -851,15 +1040,15 @@ test('tag fails when origin has a lightweight tag at another commit, and overwri
   fx.git('push', 'origin', `refs/tags/v${VERSION}`);
   fx.git('tag', '-d', `v${VERSION}`);
   fx.git('config', 'remote.origin.tagOpt', '--no-tags');
-  passGates(fx);
+  ready(fx);
   const refsBefore = originRefs(fx);
   assert.equal(fx.git('--git-dir', fx.origin, 'cat-file', '-t', `refs/tags/v${VERSION}`), 'commit', 'the tag on origin is lightweight');
-  const r = fx.run(['tag', '--commit', second, '--json']);
+  const r = tagAt(fx, second);
   assert.equal(r.status, 1);
   assert.match(r.json().message, new RegExp(`origin has v${VERSION.replace(/\./g, '\\.')} at ${first.slice(0, 12)}, not ${second.slice(0, 12)}; it was not overwritten`));
   assert.equal(fx.git('tag', '--list'), '');
   assert.equal(originRefs(fx), refsBefore);
-  assert.doesNotMatch(r.stderr, /git push/);
+  assert.doesNotMatch(r.stderr, DID_PUSH);
 });
 
 test('a tag that appears on origin between the read and the push is rejected, and nothing is overwritten', t => {
@@ -867,18 +1056,34 @@ test('a tag that appears on origin between the read and the push is rejected, an
   const first = fx.git('rev-parse', 'HEAD');
   const second = fx.commit('c.txt', 'c');
   fx.git('push', 'origin', 'HEAD');
-  passGates(fx);
+  ready(fx);
   // The race: while origin receives the push, another tag appears at the first commit, as if a second person pushed just before.
   const hook = path.join(fx.origin, 'hooks/pre-receive');
   fs.mkdirSync(path.dirname(hook), { recursive: true });
   fs.writeFileSync(hook, `#!/bin/sh\nmkdir -p refs/tags\necho ${first} > refs/tags/v${VERSION}\nexit 0\n`, { mode: 0o755 });
-  const r = fx.run(['tag', '--commit', second, '--json']);
+  const r = tagAt(fx, second);
   assert.equal(r.status, 1, r.stderr);
   assert.equal(r.json().outcome, 'failed');
   assert.match(r.json().message, /^git push failed: /);
   assert.equal(r.json().message.includes('\n'), false, 'one line');
   assert.equal(fx.git('--git-dir', fx.origin, 'rev-parse', `refs/tags/v${VERSION}`), first, 'the other tag on origin is untouched');
   assert.equal(allFiles(path.join(fx.repo, '.trellis/release/receipts')).filter(f => f.includes('tag')).length, 0, 'no tag receipt');
+});
+
+test('every JSON result lists the active test seams, and a run without seams has no seams key', t => {
+  const fx = makeFixture(t);
+  const r = fx.run(['status', '--json']);
+  assert.deepEqual(r.json().seams.sort(), ['--repo', 'BOWERLOOM_RELEASE_FREE_GIB', 'BOWERLOOM_RELEASE_NPM', 'BOWERLOOM_RELEASE_PACK']);
+  const failed = fx.run(['tag', '--json']);
+  assert.equal(failed.status, 1);
+  assert.equal(failed.json().seams.length, 4, 'a failure lists them too');
+  const usage = fx.run(['tag', '--commit', 'zz', '--json']);
+  assert.equal(usage.status, 2);
+  assert.equal(usage.json().seams.length, 4, 'a usage error found after the seams were read lists them too');
+  // No seam: a usage error in the real repository (no network, no git write).
+  const real = spawnSync(process.execPath, [scriptPath, 'tag', '--commit', 'zz', '--json'], { env: { PATH: fx.baseEnv.PATH, HOME: fx.baseEnv.HOME, TMPDIR: fx.tmp }, encoding: 'utf8' });
+  assert.equal(real.status, 2, real.stderr);
+  assert.equal(JSON.parse(real.stdout).seams, undefined);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -919,12 +1124,14 @@ test('status follows the steps: receipts, registry state, desktop version, hashe
   fx.commit('.keep', 'x', 'Record the desktop hashes');
   fx.git('push', 'origin', 'HEAD');
   assert.equal(fx.run(['verify']).status, 0);
-  // The gates receipt belongs to the published commit, so the tag goes on that commit. The newest dry run is on an ancestor of HEAD.
+  // The verify receipt belongs to the hash commit, so the tag goes on that commit (or on a later one). The tag step needs gates for it too.
   assert.equal(fx.run(['tag']).status, 1);
-  assert.equal(fx.run(['tag', '--commit', published]).status, 0);
+  assert.equal(fx.run(['tag', '--commit', published, '--branch', BRANCH]).status, 1, 'the verify receipt is on a later commit than the published one');
+  passGates(fx);
+  assert.equal(fx.run(['tag']).status, 0);
   let phases = phaseMap(fx.run(['status', '--json']).json());
-  // The receipts for gates and the dry run belong to the commit before the hash commit.
-  assert.deepEqual(phases, { record: 'todo', gates: 'todo', 'dry-run': 'todo', publish: 'done', 'dist-tag': 'done', 'desktop-version': 'done', hashes: 'done', verify: 'done (with test seams)', tag: 'done', 'tag-on-origin': 'done' });
+  // The receipt for the dry run belongs to the commit before the hash commit.
+  assert.deepEqual(phases, { record: 'todo', gates: 'done (with test seams)', 'dry-run': 'todo', publish: 'done', 'dist-tag': 'done', 'desktop-version': 'done', hashes: 'done', verify: 'done (with test seams)', tag: 'done', 'tag-on-origin': 'done' });
 
   fx.setNpm({ distTags: { beta: '0.0.1' }, versions: {} });
   phases = phaseMap(fx.run(['status', '--json']).json());
@@ -959,12 +1166,17 @@ test('status marks the tag done only when it points at the release commit, and t
   const fx = makeFixture(t);
   const first = fx.git('rev-parse', 'HEAD');
   passGates(fx);
-  // A local tag that nobody pushed is not on origin.
+  // A local tag that nobody pushed is not on origin, and the tag phase says it is local only.
   fx.git('tag', '-a', '-m', 'local only', `v${VERSION}`, first);
   const unpushed = fx.run(['status', '--json']).json().phases.find(p => p.phase === 'tag-on-origin');
   assert.equal(unpushed.state, 'todo');
   assert.match(unpushed.reason, /not on origin/);
+  const localOnly = fx.run(['status', '--json']).json().phases.find(p => p.phase === 'tag');
+  assert.equal(localOnly.state, 'done');
+  assert.match(localOnly.reason, /\(local only\)/);
+  fx.verified(first);
   assert.equal(fx.run(['tag']).status, 0);
+  assert.doesNotMatch(fx.run(['status', '--json']).json().phases.find(p => p.phase === 'tag').reason, /local only/, 'once origin has it, the tag is not local only');
   fx.commit('e.txt', 'e');
   fx.git('push', 'origin', 'HEAD');
   let phases = fx.run(['status', '--json']).json().phases;
@@ -981,6 +1193,21 @@ test('status marks the tag done only when it points at the release commit, and t
   assert.match(pushed.reason, /not at/);
   fx.git('push', '-f', 'origin', `v${VERSION}`);
   assert.equal(phaseMap(fx.run(['status', '--json']).json())['tag-on-origin'], 'done');
+});
+
+test('status marks the tag unknown, not todo, when the local tag ref cannot be read', t => {
+  const fx = makeFixture(t);
+  ready(fx);
+  // A tag ref that names an object this clone does not have.
+  const ref = path.join(fx.repo, '.git/refs/tags', `v${VERSION}`);
+  fs.mkdirSync(path.dirname(ref), { recursive: true });
+  fs.writeFileSync(ref, '1'.repeat(40) + '\n');
+  const tag = fx.run(['status', '--json']).json().phases.find(p => p.phase === 'tag');
+  assert.equal(tag.state, 'unknown');
+  assert.match(tag.reason, /cannot read the local tag/);
+  // A missing tag is still todo.
+  fs.rmSync(ref);
+  assert.equal(fx.run(['status', '--json']).json().phases.find(p => p.phase === 'tag').state, 'todo');
 });
 
 test('status reports a tag that origin has but this clone lacks, with a fetch hint, and not todo', t => {
@@ -1244,7 +1471,7 @@ test('dry-run refuses a tarball whose entry count differs from the pack report p
 test('dry-run refuses an entry that must never ship, and does not hold bundled third-party code to that list', t => {
   const fx = makeFixture(t);
   passGates(fx);
-  const never = ['.env', '.env.local', 'config/.env', 'dist/app.js.map', 'dist/types.d.ts', 'dist/types.d.mts', 'test/helper.js', 'dist/tests/a.js', '.trellis/release/x.json', '.git/config', 'sub/.git/HEAD'];
+  const never = ['.env', '.env.local', '.env.example', 'config/.env.sample', 'config/.env', 'dist/app.js.map', 'dist/types.d.ts', 'dist/types.d.mts', 'test/helper.js', 'dist/tests/a.js', '.trellis/release/x.json', '.git/config', 'sub/.git/HEAD'];
   for (const bad of never) {
     // The extra entry replaces one of the package's own files, so only the never-ship rule can fail.
     const r = dryRunWith(fx, fx.tarballWith('bad.tgz', { own: 6, bundled: 3, extra: [bad] }));
@@ -1263,13 +1490,29 @@ test('dry-run refuses an entry that must never ship, and does not hold bundled t
 test('dry-run applies the .env, .git, and .trellis never-ship rules to bundled node_modules entries too', t => {
   const fx = makeFixture(t);
   passGates(fx);
-  for (const bad of ['node_modules/dep/.env', 'node_modules/dep/.env.local', 'node_modules/dep/.git/config', 'node_modules/@scope/dep/.trellis/release/x.json']) {
+  for (const bad of ['node_modules/dep/.env', 'node_modules/dep/.env.local', 'node_modules/dep/.env.production', 'node_modules/dep/.env.example.local', 'node_modules/dep/.env.examples', 'node_modules/dep/.env.', 'node_modules/dep/.git/config', 'node_modules/@scope/dep/.trellis/release/x.json']) {
     const r = dryRunWith(fx, fx.tarballWith('bad-bundled.tgz', { own: 7, bundled: 0, extra: [bad] }));
     assert.equal(r.status, 1, bad);
     assert.match(r.json().message, new RegExp(`that must never ship: ${bad.replace(/[.]/g, '\\.')}$`), bad);
   }
   const lookalike = dryRunWith(fx, fx.tarballWith('ok-bundled.tgz', { own: 7, bundled: 0, extra: ['node_modules/dep/environment.js', 'node_modules/dep/.github/x.yml', 'node_modules/dep/lib/.envelope'] }));
   assert.equal(lookalike.status, 0, lookalike.stderr + lookalike.stdout);
+});
+
+test('dry-run lets a bundled package ship .env.example, .env.sample, .env.template, and .env.dist, but not the same names in the package itself', t => {
+  const fx = makeFixture(t);
+  passGates(fx);
+  for (const bad of ['.env.example', 'dist/.env.sample', '.env.template', '.env.dist']) {
+    const r = dryRunWith(fx, fx.tarballWith('own-env.tgz', { own: 6, bundled: 3, extra: [bad] }));
+    assert.equal(r.status, 1, bad);
+    assert.match(r.json().message, /an environment file that must never ship/, bad);
+  }
+  const first = dryRunWith(fx, fx.tarballWith('templates.tgz', { own: 7, bundled: 0, extra: ['node_modules/dep/.env.example', 'node_modules/dep/.env.sample', 'node_modules/dep/.env.template'] }));
+  assert.equal(first.status, 0, first.stderr + first.stdout);
+  const second = fx.run(['dry-run', '--force', '--json'], { env: { FAKE_PACK_TGZ: fx.tarballWith('dist.tgz', { own: 7, bundled: 2, extra: ['node_modules/@scope/dep/.env.dist'] }) } });
+  assert.equal(second.json().outcome, 'done');
+  assert.equal(second.status, 0, second.stderr + second.stdout);
+  assert.equal(second.json().entries, 10);
 });
 
 test('dry-run refuses a tarball that is not a readable archive', t => {

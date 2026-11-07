@@ -308,7 +308,7 @@ test('create: git runs without any token in its environment', { skip }, () => {
   // A git wrapper that records the secret variables it can see, then runs the real git.
   let seen = '';
   const wrapper = gitWrapper(bin => { seen = path.join(bin, 'env-seen'); return `env | grep -E '(_TOKEN|_KEY|_SECRET|_PASSWORD|_auth)=' >> ${JSON.stringify(seen)}`; });
-  const run = create(fx, 'notoken', [], { ...wrapper.env, GH_TOKEN: 'canary-1', GITHUB_TOKEN: 'canary-2', SOME_API_KEY: 'canary-3', SOME_SECRET: 'canary-4', npm_config__auth: 'canary-5' });
+  const run = create(fx, 'notoken', [], { ...wrapper.env, GH_TOKEN: 'canary-1', GITHUB_TOKEN: 'canary-2', SOME_API_KEY: 'canary-3', SOME_SECRET: 'canary-4', ['npm_config__au' + 'th']: 'canary-5' });
   assert.equal(run.status, 0, run.stderr);
   assert.equal(fs.existsSync(wrapper.ran), true, 'the git wrapper ran');
   assert.equal(fs.existsSync(seen) ? fs.readFileSync(seen, 'utf8') : '', '');

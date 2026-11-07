@@ -23,7 +23,7 @@ import { GIB, freeBytes, runChild } from './lib/run-child.mjs';
 import { parseCounts, firstFailure } from './lib/output-parse.mjs';
 import { emptyNpmConfigEnv, redact } from './lib/safe-env.mjs';
 import { splitFlag, jsonWanted, seamRefusal, boolValueRefusal, flagLikeValueRefusal, reportUsage, guarded, entryState, mismatchMessage } from './lib/cli.mjs';
-import { installInterruptHandlers, onInterrupt } from './lib/interrupt.mjs';
+import { installInterruptHandlers, isStopping, onInterrupt } from './lib/interrupt.mjs';
 
 export const DEFAULT_FLOOR_GIB = 12;
 // The machine-wide e2e lock: a folder that one process makes and removes (see tools/docs-visuals/lock.mjs and apps/desktop/README.md).
@@ -325,7 +325,8 @@ export async function runGates(args, root) {
   } finally {
     forgetConfig();
     fs.rmSync(configDir, { recursive: true, force: true });
-    if (args.clean || args.cleanInstallers) {
+    // An interrupted run deletes nothing: the person who pressed Ctrl-C may want the outputs.
+    if ((args.clean || args.cleanInstallers) && !isStopping()) {
       try { summary.clean = cleanUp(root, args); } catch (error) { summary.clean = { removed: [], refused: [], freedBytes: 0, error: String(error?.message ?? error).slice(0, 200) }; }
     }
   }

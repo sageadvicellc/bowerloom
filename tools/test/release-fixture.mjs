@@ -218,9 +218,19 @@ export function makeFixture(t, { config = testConfig(), branch = BRANCH, record 
     fs.mkdirSync(dir, { recursive: true });
     for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text);
   };
+  /**
+   * Writes a verify receipt for `commit` (default HEAD) as a run under the fixture's four test seams would (or under `seams`), without running verify.
+   * `status` of a check can be changed to make a receipt that does not count.
+   */
+  const verified = (commit = git('rev-parse', 'HEAD'), { version = VERSION, status = 'pass', seams = ['BOWERLOOM_RELEASE_NPM', 'BOWERLOOM_RELEASE_PACK', 'BOWERLOOM_RELEASE_FREE_GIB', '--repo'] } = {}) => {
+    const file = path.join(repo, '.trellis/release/receipts', `verify-${version}-${commit}.json`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ schema: 'bowerloom/release-receipt/v2', step: 'verify', version, commit, at: new Date().toISOString(), seams, checks: [{ name: 'dist-tag', status: 'pass' }, { name: 'integrity', status }] }));
+    return commit;
+  };
   /** Writes a tarball into the fixture and returns its path, for FAKE_PACK_TGZ. */
   const tarballWith = (name, options) => { const file = path.join(root, name); fs.writeFileSync(file, makeTarball(options)); return file; };
-  return { root, tmp, repo, origin, tarballWith, baseEnv, run, start, git, setNpm, npmCalls, packCalls, commit, artifacts, config, fakeNpm, fakePack, npmLog };
+  return { root, tmp, repo, origin, tarballWith, verified, baseEnv, run, start, git, setNpm, npmCalls, packCalls, commit, artifacts, config, fakeNpm, fakePack, npmLog };
 }
 
 /** Streams that collect text, for in-process runs. */
