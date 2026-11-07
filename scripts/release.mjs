@@ -107,7 +107,7 @@ export function scrubUrls(text) {
   let out = String(text ?? '');
   for (const known of KNOWN_URLS) out = out.split(known).join('[url]');
   return out
-    .replace(/\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s'"<>]*/g, '[url]')
+    .replace(/\b[A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/[^\s'"<>]*/g, '[url]')
     .replace(/(?<![\w.@-])[\w.-]+@[\w.-]+:[^\s'"<>]*/g, '[url]');
 }
 const failLine = text => {

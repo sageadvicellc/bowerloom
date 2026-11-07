@@ -216,6 +216,8 @@ A file that it cannot read is a file that it did not check, so that is a failure
 
 ## Known limits
 
+- `tools/public-scan.mjs` does not flag these fallback shapes after a code value: a fallback inside parentheses, a template literal in backticks, a ternary with a literal, a literal on the next physical line, and a parenthesised literal. On a line longer than 4000 characters, a fallback that starts near the edge of a scan window can be missed, because each window is read alone.
+- The URL mask in failure lines also hides text of the form `name@version:` in ordinary npm messages. That loses detail and leaks nothing.
 - `tools/public-scan.mjs` does not scan branch names or other ref names. It scans added lines, file paths, commit messages, author names, binary content, and the pull request text.
 - `tools/public-scan.mjs` reads a binary file as raw bytes. It does not look inside a compressed format: zip, gz, dmg, docx, or the compressed streams of a pdf. Its output says so. A binary file that a commit added and a later commit removed is listed under `binaryIntermediate` as a warning, and the exit is 1 unless `--allow-intermediate-binary` is given. It was never read.
 - `tools/public-scan.mjs` scans a binary file only at its final (HEAD) version. A binary file changed A, then B, then C inside the range is read as C. The output's `binaryNote` says so.
