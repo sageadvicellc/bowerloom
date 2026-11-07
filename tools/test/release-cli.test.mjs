@@ -105,7 +105,7 @@ test('--json prints one object with the schema, command, ok, outcome, exit and m
   assert.equal(out.exit, 0);
   assert.equal(out.version, VERSION);
   assert.match(out.commit, /^[0-9a-f]{40}$/);
-  assert.match(r.stderr, /^\$ git -c core\.hooksPath=\/dev\/null fetch --prune origin$/m);
+  assert.match(r.stderr, /^\$ git -c core\.fsmonitor=false -c core\.hooksPath=\/dev\/null fetch --prune origin$/m);
   assert.ok(!r.stdout.includes('$ git'));
 });
 

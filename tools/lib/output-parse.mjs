@@ -52,41 +52,61 @@ const total = counts => ({
 });
 
 /**
- * Counts from the summaries in real tool output: node --test (spec `ℹ pass N`, tap `# pass N`) or Playwright (`N passed (Ts)`, `N failed`, `N skipped`).
- * Every summary block is read, and `pass`, `skipped`, and `fail` are each the total over all blocks. A step with two runners (the first ran 0 tests, the second
- * ran 5) is judged by the combined totals, and a failing block is never hidden by an earlier or later block that passes. `cancelled` tests count as failures. A node summary wins over a Playwright-looking line.
- * Null when no summary is found.
+ * Reads the summary lines of one block into counts. `read(line)` returns [key, field, amount] or null. When a key repeats inside the block, the repeat starts a new
+ * summary (two runs printed back to back), so an earlier run is never overwritten by a later one.
+ */
+function countBlock(block, read) {
+  const results = [];
+  let one = { pass: 0, fail: 0, skipped: 0 }, seen = new Set(), any = false;
+  for (const line of block) {
+    const entry = read(line);
+    if (!entry) continue;
+    const [key, field, amount] = entry;
+    if (seen.has(key)) { results.push(one); one = { pass: 0, fail: 0, skipped: 0 }; seen = new Set(); }
+    seen.add(key);
+    any = true;
+    if (field) one[field] += amount;
+  }
+  if (any) results.push(one);
+  return results;
+}
+
+/**
+ * Counts from the summaries in real tool output: node --test (spec `ℹ pass N`, tap `# pass N`) and Playwright (`N passed (Ts)`, `N failed`, `N skipped`,
+ * `N interrupted`, `N did not run`). What it does, exactly:
+ *  - Every summary block is read, node and Playwright alike, and `pass`, `skipped`, and `fail` are each the SUM over all blocks of both kinds. So a step with two
+ *    runners (the first ran 0 tests, the second ran 5) is judged by the combined totals, and a failing block is never hidden by another block that passes.
+ *  - A key that repeats inside a block (`pass` twice in a row) starts a new summary, so two runs printed back to back both count.
+ *  - `cancelled` (node), and `interrupted` and `did not run` (Playwright), count as failures. `flaky` counts as neither: the test passed on retry.
+ *  - A Playwright `N passed (Ts)` line counts wherever it sits, so a test that prints one adds to the totals. A node summary line must be a line of its own
+ *    (`ℹ pass 7` or `# pass 7`); `this will pass 4 times` is not one.
+ * Null when no summary is found. These counts are read only after the step has exited 0: a step that exits non-zero fails whatever the counts say (see judge in tools/gates.mjs).
  */
 export function parseCounts(text) {
   const lines = linesOf(text);
+  const counts = [];
   const nodeBlocks = allBlocks(lines, line => NODE_LINE.test(line));
-  if (nodeBlocks.length) {
-    const counts = nodeBlocks.map(block => {
-      const one = { pass: 0, fail: 0, skipped: 0 };
-      for (const line of block) {
-        const [, key, value] = NODE_LINE.exec(line);
-        if (key === 'pass') one.pass = Number(value);
-        else if (key === 'fail' || key === 'cancelled') one.fail += Number(value);
-        else if (key === 'skipped') one.skipped = Number(value);
-      }
-      return one;
-    });
-    return total(counts);
+  for (const block of nodeBlocks) {
+    counts.push(...countBlock(block, line => {
+      const [, key, value] = NODE_LINE.exec(line);
+      if (key === 'pass') return [key, 'pass', Number(value)];
+      if (key === 'fail' || key === 'cancelled') return [key, 'fail', Number(value)];
+      if (key === 'skipped') return [key, 'skipped', Number(value)];
+      return [key, null, 0]; // tests, suites, todo, duration_ms: not counted, but a repeat of one still starts a new summary
+    }));
   }
   const isSummary = line => PW_PASSED.test(line) || PW_OTHER.test(line);
   const pwBlocks = allBlocks(lines, isSummary, line => PW_DETAIL.test(line)).filter(block => block.some(isSummary));
-  if (pwBlocks.length === 0) return null;
-  const counts = pwBlocks.map(block => {
-    const one = { pass: 0, fail: 0, skipped: 0 };
-    for (const line of block) {
-      let match = PW_PASSED.exec(line);
-      if (match) { one.pass += Number(match[1]); continue; }
-      match = PW_OTHER.exec(line);
-      if (!match) continue;
-      if (match[2] === 'failed' || match[2] === 'interrupted') one.fail += Number(match[1]);
-      else if (match[2] === 'skipped') one.skipped += Number(match[1]);
-    }
-    return one;
-  });
-  return total(counts);
+  for (const block of pwBlocks) {
+    counts.push(...countBlock(block, line => {
+      const passed = PW_PASSED.exec(line);
+      if (passed) return ['passed', 'pass', Number(passed[1])];
+      const other = PW_OTHER.exec(line);
+      if (!other) return null;
+      if (other[2] === 'failed' || other[2] === 'interrupted' || other[2] === 'did not run') return [other[2], 'fail', Number(other[1])];
+      if (other[2] === 'skipped') return ['skipped', 'skipped', Number(other[1])];
+      return null;
+    }));
+  }
+  return counts.length === 0 ? null : total(counts);
 }

@@ -347,6 +347,8 @@ test('mcp_exposure follows the shared rules: expose only read-only tools that ar
     }
   }
   // Pin the policy: release:verify is read-only but installs and runs the published package in a temporary folder, so it is held back.
+  // release:preflight is read-only but runs git fetch --prune (it changes remote-tracking refs) and takes --repo, so it is held back too.
   assert.ok(manifest.tools.find(entry => entry.name === 'release:verify').mcp_exposure === 'hidden');
-  assert.deepEqual(exposed.filter(name => name.startsWith('release:')).sort(), ['release:claims', 'release:preflight', 'release:status']);
+  assert.ok(manifest.tools.find(entry => entry.name === 'release:preflight').mcp_exposure === 'hidden');
+  assert.deepEqual(exposed.filter(name => name.startsWith('release:')).sort(), ['release:claims', 'release:status']);
 });

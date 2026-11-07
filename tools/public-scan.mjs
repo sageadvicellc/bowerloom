@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // Release tooling, never shipped. Safety class: read-only (it runs git diff and git log, and reads the files it is given).
 // Checks that a branch and its pull request text leak no private detail into a public repository:
-//   node tools/public-scan.mjs [--base REF] [--pr-body FILE] [--terms-file ABS_FILE] [--allow-empty] [--json]
+//   node tools/public-scan.mjs [--base REF] [--pr-body FILE] [--terms-file ABS_FILE] [--allow-empty] [--allow-intermediate-binary] [--json]
 // (a) The added lines of `git diff <base>...HEAD`, the added lines of EVERY commit patch in `<base>..HEAD` (so a secret added in one commit and removed in a later one
 //     is still found), the file paths the diff touches, every commit message in `<base>..HEAD`, and the author and committer name and address of each of those
 //     commits are scanned for structural leaks only: home paths, session links and ids, scratch folders, email addresses, and likely secrets (token shapes, JWTs,
-//     Slack and Google keys, _authToken and password assignments, passwords inside URLs, private key headers). A password assignment whose unquoted value is code
-//     (a call, a member access, an index, a template, a variable such as $NAME, or a keyword such as undefined) is not a secret. A bare word is flagged only when it
-//     has 8 or more characters (and, after a colon, a digit); a shorter bare word is a known limit. A quoted value is flagged unless it is a placeholder.
-//     A line that holds the text "public-scan: allow" is skipped by these structural patterns (the private terms of (b) still apply to it).
+//     Slack and Google keys, _authToken and password assignments, passwords inside URLs, private key headers). A password assignment whose unquoted value is code in one of
+//     five strict shapes (a call or index on an identifier, a member chain with no digit, a ${...} template, a $name variable, a keyword such as undefined) is not a secret,
+//     unless a hardcoded fallback follows it (`?? "literal"`, `|| "literal"`, `or "literal"`). Any other bare word is flagged when it has 8 or more characters (and, after
+//     a colon, a digit); a shorter bare word is a known limit. A quoted value (also with escaped quotes) is flagged unless it is a placeholder.
+//     A marker "public-scan: allow <kind>" (kind: secret, email, home-path, url-credential; whole words) skips that kind of finding on its own physical line, in an
+//     ADDED TEXT LINE of the diff only. A bare marker or an unknown kind skips nothing. It is never honoured in file paths, binary files, commit messages, author names, or the
+//     PR body, and never skips the private terms of (b). Every skipped finding is listed in the result as allowedLines (count, file, line, kind).
 // (b) --terms-file names a file OUTSIDE the repository with one private term per line (blank lines and lines starting with # are skipped; lines end in LF, CR LF, or
 //     CR; a file with no terms is an error). Each term is matched case-insensitively as a whole word (letters and digits make a word; an underscore does not) in the
 //     added lines, paths, commit messages and names, and the PR body. A finding shows the file, the line, and the line number in the terms file, and never the term.
@@ -23,9 +26,11 @@
 // An empty range (no commits, or nothing added) exits 1 unless --allow-empty is given; with it the output says "accepted by --allow-empty", never "clean".
 // Binary content is read as raw bytes (latin1). A compressed format (zip, gz, dmg, docx, pdf streams) is not inspected, and the output says so (binaryNote).
 // Only committed work is scanned: a change that is not committed is not in `<base>...HEAD`. A binary file added (or changed) and then removed (or put back) inside the
-// branch is not scanned, because only the HEAD blob of a binary file the net diff adds is. Such files are listed as binaryIntermediate and printed as a warning; the
-// exit code does not change.
-// Exit 0: nothing found. Exit 1: findings, an unscanned binary file, or an empty range. Exit 2: wrong use, an unreadable base or repository, or an internal error
+// branch is not scanned, because only the HEAD blob of a binary file the net diff adds is. Such files are listed as binaryIntermediate and printed as a warning, and the
+// exit is 1 unless --allow-intermediate-binary is given (the files stay listed).
+// A binary file is scanned line by line (a line break is LF, CR LF, or CR). The file name in EVERY finding is shown as "[path withheld]" when the name itself matches a leak
+// pattern or a term.
+// Exit 0: nothing found. Exit 1: findings, an unscanned binary file, an intermediate binary file, or an empty range. Exit 2: wrong use, an unreadable base or repository, or an internal error
 // (with --json, one object {ok:false, exit:2, error}). Exit 130: interrupted.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -50,14 +55,15 @@ export const MAX_BINARY_BYTES = 5 * 1024 * 1024;
 /** Said in every result: what the binary scan can and cannot see. */
 export const BINARY_NOTE = 'binary files are read as raw bytes; compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected, so a leak inside one is not found; a binary file changed A->B->C inside the range is scanned only at its final (HEAD) version, never at A or B';
 
-const USAGE = `Usage: node tools/public-scan.mjs [--base REF] [--pr-body FILE] [--terms-file ABS_FILE] [--allow-empty] [--json]
+const USAGE = `Usage: node tools/public-scan.mjs [--base REF] [--pr-body FILE] [--terms-file ABS_FILE] [--allow-empty] [--allow-intermediate-binary] [--json]
   --base REF           scan git diff REF...HEAD and the commits REF..HEAD (default ${DEFAULT_BASE})
   --pr-body FILE       check the pull request text: alert opener first, at most ${MAX_WORDS} words, no leaks
   --terms-file ABS_FILE  private terms, one per line, in a file outside the repository; findings never print a term
   --allow-empty        accept a range with no commits or nothing added (otherwise exit 1)
+  --allow-intermediate-binary  accept a binary file that a commit added and a later commit removed (it was never scanned); otherwise exit 1
   --json               print one JSON object on stdout (also for a usage error: {ok:false, exit:2, error})
 A flag that takes no value rejects one: --json=x is a usage error.
-Exit 0: nothing found. Exit 1: findings, an unscanned binary file, or an empty range. Exit 2: wrong use. Exit 130: interrupted.`;
+Exit 0: nothing found. Exit 1: findings, an unscanned binary file, an intermediate binary file, or an empty range. Exit 2: wrong use. Exit 130: interrupted.`;
 
 // Names that stand for "a person" in an example. Anything in angle brackets never matches the patterns below, because a name must start with a letter or digit.
 const PLACEHOLDER_NAMES = new Set(['you', 'user', 'name', 'example', 'username', 'me', 'runner', 'shared', 'public', 'default']);
@@ -77,17 +83,18 @@ const OTHER_PLACEHOLDER = /^(?:<[^<>]*>|\$?\{\{[^{}]*\}\}|\*+|x+|\.+)$/i;
 const inUrlCredential = match => /:\/\/[^\s:@/'"]*:$/.test(match.input.slice(Math.max(0, match.index - 200), match.index));
 const isPlaceholderValue = value => ENV_REFERENCE.test(value) || OTHER_PLACEHOLDER.test(value);
 
-/**
- * A secret assignment: a name (`password`, `_authToken`), an optional closing quote of the name, `=` or `:`, an optional opening quote, and the value. The value is a
- * template or an angle-bracket placeholder that ends the value, or a run of characters that are not white space or quotes. Groups: 1 the separator, 2 the quote, 3 the value.
- */
-function assignment(name) {
-  return new RegExp(name + String.raw`["']?\s*([=:])\s*(["']?)((?:\$?\{\{[^{}\n]*\}\}|<[^<>\n]*>)(?![^\s'"])|[^\s'"]{3,})`, 'gi');
-}
-// Things that make an unquoted value code and not a secret: a call, a member access, an index, a template or a variable (`(`, `)`, `.`, `[`, `]`, `$`, `{`, `}`), or a keyword.
-const CODE_CHARACTERS = /[().[\]${}]/;
+// An unquoted value is code, and not a secret, only in one of these five strict shapes. Anything else goes to the length and digit rule.
+//  (a) a call or an index on an identifier: `name(`, `a.b.c(`, `name[`, with brackets that close at the end of the token or run on past it (`f(a,` ends at a space)
+//  (b) a plain member chain: `opts.password`, `process.env.DB_PASSWORD`. A segment with a digit makes it a possible token (`Sup3r.Secret1`, `abc.def.ghi1234567890`), so it is not code.
+//  (c) a template: `${name}`, `${opts.password}`
+//  (d) a variable: `$name`, `$DB_PASS`
+//  (e) a keyword: undefined, null, true, false, None, nil (and a typed-array name such as Uint8Array)
+// A value such as `Pass{word}12`, `pa$$w0rd123`, `my$ecretpass1`, or `Tr0ub4dor.&3x` is none of these.
 const CODE_KEYWORDS = /^(?:undefined|null|true|false|none|nil)$/i;
 const TYPED_ARRAY = /^(?:Big)?(?:Int|Uint|Float)\d+(?:Clamped)?Array$/;
+const IDENTIFIER_CHAIN = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/;
+const MEMBER_CHAIN = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+;?$/;
+const TEMPLATE_REFERENCE = /^\$\{[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*\}$/;
 // `$name` or `${name}`. In capitals it is an environment reference (ENV_REFERENCE). In any case it is a variable when the name holds no digit; `$ecret99` is a secret.
 const VARIABLE_REFERENCE = /^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/;
 const isVariableReference = value => VARIABLE_REFERENCE.test(value) && !/\d/.test(value);
@@ -102,28 +109,87 @@ function trimClosers(value) {
   }
   return text;
 }
+/** (a) A call or an index: an identifier chain, then `(` or `[`. A bracket that closes inside the token must be the last thing in it. */
+function isCallOrIndex(raw) {
+  const text = raw.replace(/[;,]+$/, '');
+  const head = IDENTIFIER_CHAIN.exec(text);
+  if (!head || !'(['.includes(text[head[0].length] ?? '')) return false;
+  let depth = 0;
+  for (const character of text) { if ('([{'.includes(character)) depth++; else if (')]}'.includes(character)) depth--; }
+  return depth > 0 || ')]'.includes(text.at(-1));
+}
+function isCodeValue(raw, trimmed) {
+  if (CODE_KEYWORDS.test(trimmed) || TYPED_ARRAY.test(trimmed)) return true;
+  if (isCallOrIndex(raw)) return true;
+  if (MEMBER_CHAIN.test(trimmed) && !/\d/.test(trimmed)) return true;
+  return TEMPLATE_REFERENCE.test(trimmed) && !/\d/.test(trimmed);
+}
+
 /**
- * A match of `assignment` is allowed when its value is a placeholder, a variable reference, or (unquoted) code: it holds a call, a member access, an index, a template
- * or a variable, or it is a keyword or a typed-array name. An unquoted bare word is a secret only when it is 8 or more characters long and, after a colon, holds a digit
- * (after `=` any such word counts). A shorter bare word is not flagged: this is a known limit. A quoted value that is not a placeholder is always a secret.
+ * A secret assignment: a name (`password`, `_authToken`), an optional closing quote of the name, `=` or `:`, an optional opening quote, and the value. A quote may carry a
+ * backslash (`\"`), as in JSON inside a string. The value is a template or an angle-bracket placeholder that ends the value, or a run of characters that are not white space or quotes.
+ * Groups: 1 the separator, 2 the quote ('' when none), 3 the value.
+ */
+function assignment(name) {
+  return new RegExp(name + String.raw`(?:\\?["'])?\s*([=:])\s*(\\?["']|)((?:\$?\{\{[^{}\n]*\}\}|<[^<>\n]*>)(?![^\s'"\\])|[^\s'"]{3,})`, 'gi');
+}
+// A fallback after the value: `?? "literal"`, `|| 'literal'`, `or "literal"` on the same statement. The literal is a secret unless it is empty or a placeholder.
+const FALLBACK = /(?:\?\?|\|\||(?<![\w$])or(?![\w$]))\s*\\?(["'])([^"'\\\n]*)/g;
+function hasHardcodedFallback(match) {
+  const rest = match.input.slice(match.index + match[0].length).split(';')[0];
+  for (const fallback of rest.matchAll(FALLBACK)) if (fallback[2] !== '' && !isPlaceholderValue(fallback[2])) return true;
+  return false;
+}
+/**
+ * A match of `assignment` is allowed when its value is a placeholder, a variable reference, or (unquoted) code in one of the five shapes above. An unquoted bare word is a secret
+ * only when it is 8 or more characters long and, after a colon, holds a digit (after `=` any such word counts). A shorter bare word is not flagged: this is a known limit.
+ * A quoted value that is not a placeholder is always a secret. A code value followed by a hardcoded fallback (`?? "literal"`) is a secret.
  */
 function allowedAssignment(match) {
-  const [, separator, quote, raw] = match;
+  const [, separator, quote, rawValue] = match;
+  const raw = quote.startsWith('\\') ? rawValue.replace(/\\+$/, '') : rawValue;
   const value = quote === '' ? trimClosers(raw) : raw;
-  if (value === '' || isPlaceholderValue(value) || isVariableReference(value)) return true;
-  if (quote !== '') return false;
-  if (CODE_KEYWORDS.test(value) || TYPED_ARRAY.test(value)) return true;
-  if (value.startsWith('$') && VARIABLE_REFERENCE.test(value)) return false;
-  if (CODE_CHARACTERS.test(value)) return true;
-  if (value.length < 8) return true;
-  return separator === ':' && !/\d/.test(value);
+  let allowed;
+  if (value === '' || isPlaceholderValue(value) || isVariableReference(value)) allowed = true;
+  else if (quote !== '' || (value.startsWith('$') && VARIABLE_REFERENCE.test(value))) allowed = false;
+  else allowed = isCodeValue(raw, value) || value.length < 8 || (separator === ':' && !/\d/.test(value));
+  return allowed && !hasHardcodedFallback(match);
 }
 
 // A password inside a URL: a scheme, `://`, a user, a colon, the secret, `@`, a host. Group 1 is the password. A URL with only a user, or with an empty or placeholder password, is allowed.
 const URL_CREDENTIAL = /(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s:@/'"]*:([^\s@/'"]+)@[^\s/'"]+/g;
-const allowedUrlCredential = match => isPlaceholderValue(match[1]) || VARIABLE_REFERENCE.test(match[1]) && !/\d/.test(match[1]);
-// The line marker that skips the structural patterns on its line.
+// A URL password that only stands for one: `{name}`, `%s`, `%d`, as well as the placeholders and variables above.
+const URL_PLACEHOLDER = /^(?:\{[A-Za-z_][\w.]*\}|%[sd])$/;
+const allowedUrlCredential = match => isPlaceholderValue(match[1]) || URL_PLACEHOLDER.test(match[1]) || isVariableReference(match[1]);
+/** True when an email match sits inside a URL credential that is itself allowed (`postgres://u:$pass@db.example.org`), so it is not an address. */
+function inAllowedUrlCredential(match) {
+  const from = Math.max(0, match.index - 300);
+  const text = match.input.slice(from, match.index + match[0].length + 1);
+  const at = match.index - from;
+  for (const url of text.matchAll(URL_CREDENTIAL)) {
+    if (url.index <= at && at < url.index + url[0].length && allowedUrlCredential(url)) return true;
+  }
+  return false;
+}
+// The line marker: `public-scan: allow <kind>`. The kind is required and matched as a whole word. It skips that kind of finding on its own physical line, in an added line
+// of the diff only. A bare marker or an unknown kind skips nothing.
 const ALLOW_MARKER = 'public-scan' + ': allow';
+export const MARKER_KINDS = ['secret', 'email', 'home-path', 'url-credential'];
+const MARKER_EXPRESSION = new RegExp(String.raw`(?<![\w-])` + ALLOW_MARKER + String.raw`[ \t]+(` + MARKER_KINDS.join('|') + String.raw`)(?![\w-])`, 'g');
+const LINE_BREAK = /[\r\n\v\f\u0085\u2028\u2029]/g;
+/** The physical lines of `text` that hold a marker with a kind: [{ start, end, kinds }]. Null when the text holds no marker at all. */
+function markerSegments(text) {
+  if (!text.includes(ALLOW_MARKER)) return null;
+  const segments = [];
+  let start = 0;
+  const close = end => {
+    const kinds = new Set([...text.slice(start, end).matchAll(MARKER_EXPRESSION)].map(match => match[1]));
+    if (kinds.size > 0) segments.push({ start, end, kinds });
+  };
+  for (const match of text.matchAll(LINE_BREAK)) { close(match.index); start = match.index + 1; }
+  close(text.length);
+  return segments.length > 0 ? segments : null;
+}
 
 // Each pattern: a kind, an expression (global), an optional `allow(match)`, and how the excerpt is written. Excerpts of secrets never hold the match, and
 // the excerpt of a home path or an email is a constant, so a real name or address is never printed.
@@ -133,11 +199,11 @@ const PATTERNS = [
   { kind: 'home-path', re: new RegExp(BEFORE + String.raw`\/Users\/` + NAME + AFTER_UNIX, 'g'), allow: allowedPlaceholder, excerpt: () => HOME_EXCERPT['unix-users'] },
   { kind: 'home-path', re: new RegExp(BEFORE + String.raw`\/home\/` + NAME + AFTER_UNIX, 'g'), allow: allowedPlaceholder, excerpt: () => HOME_EXCERPT['unix-home'] },
   { kind: 'home-path', re: new RegExp(String.raw`[A-Za-z]:\\{1,2}Users\\{1,2}` + NAME + AFTER_WIN, 'gi'), allow: allowedPlaceholder, excerpt: () => HOME_EXCERPT.windows },
-  { kind: 'session-link', re: /claude\.ai\/code\/session/g, excerpt: () => 'claude.ai/code/' + 'session…' },
-  { kind: 'tmp-path', re: /\/tmp\/claude-/g, excerpt: () => '/tmp/' + 'claude-…' },
-  { kind: 'session-id', re: /(?<![A-Za-z0-9])local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, excerpt: () => 'local_[id]' },
+  { kind: 'session-link', allowKind: null, re: /claude\.ai\/code\/session/g, excerpt: () => 'claude.ai/code/' + 'session…' },
+  { kind: 'tmp-path', allowKind: null, re: /\/tmp\/claude-/g, excerpt: () => '/tmp/' + 'claude-…' },
+  { kind: 'session-id', allowKind: null, re: /(?<![A-Za-z0-9])local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, excerpt: () => 'local_[id]' },
   // The local part is anchored (nothing local-looking before it) and capped at 64 characters, as in RFC 5321, so a long run cannot cost quadratic time.
-  { kind: 'email', re: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, needs: '@', allow: match => ALLOWED_EMAIL.test(match[0]) || inUrlCredential(match), excerpt: () => '[redacted]@domain' },
+  { kind: 'email', re: /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, needs: '@', allow: match => ALLOWED_EMAIL.test(match[0]) || inUrlCredential(match) || inAllowedUrlCredential(match), excerpt: () => '[redacted]@domain' },
   { kind: 'secret', re: /(?<![A-Za-z0-9])gh[p]_[A-Za-z0-9]{20,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])github_pa[t]_[A-Za-z0-9_]{20,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])np[m]_[A-Za-z0-9]{30,}/g, secret: true },
@@ -148,7 +214,7 @@ const PATTERNS = [
   { kind: 'secret', re: /(?<![A-Za-z0-9_-])ey[J][A-Za-z0-9_-]{8,}\.ey[J][A-Za-z0-9_-]{8,}/g, needs: '.', secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])xo[x][baprs]-[A-Za-z0-9-]{10,}/g, secret: true },
   { kind: 'secret', re: /(?<![A-Za-z0-9])AI[z]a[A-Za-z0-9_-]{35}/g, secret: true },
-  { kind: 'secret', re: URL_CREDENTIAL, needs: '://', secret: true, allow: allowedUrlCredential },
+  { kind: 'secret', re: URL_CREDENTIAL, needs: '://', secret: true, allowKind: 'url-credential', allow: allowedUrlCredential },
   { kind: 'secret', re: assignment('_auth(?:T[o]ken)?'), secret: true, allow: allowedAssignment },
   { kind: 'secret', re: assignment('pass[w]ord'), secret: true, allow: allowedAssignment },
 ];
@@ -172,15 +238,18 @@ const termExpression = term => new RegExp(String.raw`(?<![\p{L}\p{N}])` + escape
  * Scans one line of text. `terms` is the result of parseTerms. A line longer than WINDOW_CHARS is read in windows of WINDOW_CHARS characters that overlap by
  * WINDOW_OVERLAP; each window starts one character early, so the one-character look-behind of a pattern sees the real previous character, and a match that
  * only touches the front or the back edge of a window is left to the neighbouring window. Terms are matched on the whole line.
- * Returns [{ kind, excerpt, termLine? }]. A secret or a term is never in an excerpt, and a term that sits inside another finding is masked there too.
+ * With `options.allowMarker` (set only for the added lines of a diff), a marker `public-scan: allow <kind>` on the same physical line skips that kind. A carriage return,
+ * vertical tab, form feed, NEL, or line or paragraph separator ends a physical line, so one marker cannot cover a minified blob. The private terms are never skipped.
+ * Returns { found: [{ kind, excerpt, termLine? }], allowed: [kind] }. A secret or a term is never in an excerpt, and a term that sits inside another finding is masked there too.
  */
-export function scanLine(text, terms = []) {
+export function scanLineDetailed(text, terms = [], options = {}) {
   const found = [];
+  const allowed = [];
   const expressions = terms.map(entry => ({ entry, re: termExpression(entry.term) }));
   const mask = value => expressions.reduce((current, { re }) => current.replace(re, '[redacted]'), value);
   const seen = new Set();
-  // A line that holds the allow marker is skipped by every structural pattern. The private terms are still checked on it.
-  const allowed = text.includes(ALLOW_MARKER);
+  const segments = options.allowMarker === true ? markerSegments(text) : null;
+  const kindsAt = index => segments?.find(segment => segment.start <= index && index <= segment.end)?.kinds;
   const step = WINDOW_CHARS - WINDOW_OVERLAP;
   for (let start = 0; ; start += step) {
     const from = start === 0 ? 0 : start - 1;
@@ -190,7 +259,6 @@ export function scanLine(text, terms = []) {
     // Where the next window's slice begins (absolute); a match that starts after it and touches this window's end is found whole there.
     const nextFrom = start + step - 1;
     PATTERNS.forEach((pattern, index) => {
-      if (allowed) return;
       if (pattern.needs && !windowText.includes(pattern.needs)) return;
       for (const match of windowText.matchAll(pattern.re)) {
         if (from > 0 && match.index === 0) continue;
@@ -200,6 +268,8 @@ export function scanLine(text, terms = []) {
         if (seen.has(key)) continue;
         seen.add(key);
         if (pattern.allow?.(match)) continue;
+        const markerKind = 'allowKind' in pattern ? pattern.allowKind : (MARKER_KINDS.includes(pattern.kind) ? pattern.kind : null);
+        if (markerKind !== null && kindsAt(absolute)?.has(markerKind)) { if (!allowed.includes(markerKind)) allowed.push(markerKind); continue; }
         const excerpt = pattern.secret ? '[redacted]' : pattern.excerpt ? pattern.excerpt(match) : mask(match[0]).slice(0, 80);
         found.push({ kind: pattern.kind, excerpt });
       }
@@ -209,8 +279,11 @@ export function scanLine(text, terms = []) {
   for (const { entry, re } of expressions) {
     for (let count = [...text.matchAll(re)].length; count > 0; count--) found.push({ kind: 'term', excerpt: '[redacted]', termLine: entry.line });
   }
-  return found;
+  return { found, allowed };
 }
+
+/** Scans one line of text: the findings of scanLineDetailed. */
+export const scanLine = (text, terms = [], options = {}) => scanLineDetailed(text, terms, options).found;
 
 /** The added lines of a unified diff (made with --unified=0): [{ file, line, text }] with the line number in the new file. Deleted files and binary files add none. */
 export function addedLines(diff) {
@@ -249,9 +322,9 @@ export function checkPrBody(text, terms = []) {
 
 /** Reads the command line. Returns { help: true }, or { usage: message }, or the options. */
 export function parseArgs(argv) {
-  const out = { help: false, usage: null, base: DEFAULT_BASE, prBody: null, termsFile: null, json: false, allowEmpty: false };
+  const out = { help: false, usage: null, base: DEFAULT_BASE, prBody: null, termsFile: null, json: false, allowEmpty: false, allowIntermediateBinary: false };
   const bad = message => { out.usage = message; return out; };
-  const BOOLEAN = { '--help': 'help', '-h': 'help', '--json': 'json', '--allow-empty': 'allowEmpty' };
+  const BOOLEAN = { '--help': 'help', '-h': 'help', '--json': 'json', '--allow-empty': 'allowEmpty', '--allow-intermediate-binary': 'allowIntermediateBinary' };
   for (let i = 0; i < argv.length; i++) {
     const { flag, value: inline } = splitFlag(argv[i]);
     if (Object.hasOwn(BOOLEAN, flag)) {
@@ -354,17 +427,30 @@ export async function scanRepository(args, cwd = process.cwd()) {
   if (!patches.ok) return { exitCode: 2, error: `git log -p failed: ${failure(patches)}` };
 
   const findings = [];
+  const allowedLines = [];
+  // A file name that holds a leak (or a term) is never printed, in any kind of finding.
+  const shownNames = new Map();
+  const safeName = name => {
+    if (!shownNames.has(name)) shownNames.set(name, scanLine(name, terms).length ? WITHHELD : name);
+    return shownNames.get(name);
+  };
   const add = (hits, file, line, commit = null) => {
-    for (const hit of hits) findings.push({ kind: hit.kind, file, line, excerpt: hit.excerpt, ...(commit ? { commit } : {}), ...(hit.termLine ? { termLine: hit.termLine } : {}) });
+    const shown = file === 'file-path' || file === 'pr-body' || file.startsWith('commit:') ? file : safeName(file);
+    for (const hit of hits) findings.push({ kind: hit.kind, file: shown, line, excerpt: hit.excerpt, ...(commit ? { commit } : {}), ...(hit.termLine ? { termLine: hit.termLine } : {}) });
+  };
+  // The added lines of the diff are the only place the allow marker is honoured. A marker that skipped something is listed in allowedLines.
+  const addDiffLine = (entry, commit = null) => {
+    const { found, allowed } = scanLineDetailed(entry.text, terms, { allowMarker: true });
+    add(found, entry.file, entry.line, commit);
+    for (const kind of allowed) allowedLines.push({ file: safeName(entry.file), line: entry.line, kind, ...(commit ? { commit } : {}) });
   };
   // The net diff first. A line that it holds is not scanned again from a commit patch.
   const lines = addedLines(diff.stdout);
   const seen = new Set();
-  for (const entry of lines) { seen.add(`${entry.file}\0${entry.text}`); add(scanLine(entry.text, terms), entry.file, entry.line); }
+  for (const entry of lines) { seen.add(`${entry.file}\0${entry.text}`); addDiffLine(entry); }
   // A path can hold a leak too. The finding names no path: its line is the position in `git diff --name-only`.
   const paths = names.stdout.split('\0').filter(Boolean);
   paths.forEach((name, index) => add(scanLine(name, terms), 'file-path', index + 1));
-  const safeName = name => (scanLine(name, terms).length ? WITHHELD : name);
 
   // Binary files the range adds or changes: scan the HEAD blob.
   const binaryNames = parseNumstat(numstat.stdout).filter(entry => entry.binary).map(entry => entry.path);
@@ -377,7 +463,8 @@ export async function scanRepository(args, cwd = process.cwd()) {
     const blob = await git(['cat-file', 'blob', `HEAD:${name}`], repoRoot, MAX_BINARY_BYTES + 1, { encoding: 'latin1' });
     if (!blob.ok) { unscanned.push({ file: shown, reason: 'the blob could not be read' }); continue; }
     binaryScanned.push(shown);
-    add(scanLine(blob.stdout, terms), shown, 0);
+    // A binary file is read line by line and never honours the allow marker.
+    blob.stdout.split(/\r\n|\r|\n/).forEach((text, index) => add(scanLine(text, terms), name, index + 1));
   }
 
   // A binary file that some commit added or changed but that the net diff does not carry (it was removed again, or put back) is never read.
@@ -400,7 +487,7 @@ export async function scanRepository(args, cwd = process.cwd()) {
       const key = `${entry.file}\0${entry.text}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      add(scanLine(entry.text, terms), entry.file, entry.line, sha.slice(0, 7));
+      addDiffLine(entry, sha.slice(0, 7));
     }
   }
 
@@ -415,9 +502,11 @@ export async function scanRepository(args, cwd = process.cwd()) {
   for (const finding of findings) counts[finding.kind] = (counts[finding.kind] ?? 0) + 1;
   const empty = commits.length === 0 || (lines.length === 0 && patchLines === 0 && binaryScanned.length === 0 && unscanned.length === 0);
   const emptyNote = empty ? `the range ${args.base}...HEAD has ${commits.length === 0 ? 'no commits' : 'no added lines'}; nothing was scanned (use --allow-empty to accept that)` : null;
+  const intermediateRefused = binaryIntermediate.length > 0 && !args.allowIntermediateBinary;
   const result = {
-    ok: findings.length === 0 && unscanned.length === 0 && (!empty || args.allowEmpty), base: args.base, commits: commits.length, files: new Set(lines.map(l => l.file)).size, addedLines: lines.length,
-    patchLines, paths: paths.length, binaryFiles: binaryNames.length, binaryScanned, binaryIntermediate, binaryNote: BINARY_NOTE, unscanned, empty, emptyNote: args.allowEmpty ? null : emptyNote,
+    ok: findings.length === 0 && unscanned.length === 0 && !intermediateRefused && (!empty || args.allowEmpty), base: args.base, commits: commits.length, files: new Set(lines.map(l => l.file)).size, addedLines: lines.length,
+    patchLines, paths: paths.length, binaryFiles: binaryNames.length, binaryScanned, binaryIntermediate, intermediateRefused, binaryNote: BINARY_NOTE,
+    allowedLines: { count: allowedLines.length, items: allowedLines.slice(0, MAX_FINDINGS) }, unscanned, empty, emptyNote: args.allowEmpty ? null : emptyNote,
     termsChecked: args.termsFile === null ? null : terms.length, prBody, counts, findings: findings.slice(0, MAX_FINDINGS), truncated: findings.length > MAX_FINDINGS, total: findings.length,
   };
   return { exitCode: result.ok ? 0 : 1, result };
@@ -428,21 +517,25 @@ export async function scanRepository(args, cwd = process.cwd()) {
 export function formatResult(result) {
   const lines = [];
   const unscannedText = result.unscanned.length ? `${plural(result.unscanned.length, 'unscanned binary file')}: ${result.unscanned.slice(0, 5).map(u => `${u.file} (${u.reason})`).join(', ')}` : null;
+  const intermediate = result.binaryIntermediate ?? [];
+  const intermediateText = intermediate.length > 0 ? `${plural(intermediate.length, 'binary file')} ${intermediate.length === 1 ? 'was' : 'were'} added and removed again inside the range and ${intermediate.length === 1 ? 'was' : 'were'} never scanned: ${intermediate.slice(0, 5).join(', ')}${intermediate.length > 5 ? ', ...' : ''}` : null;
+  const refusedText = result.intermediateRefused && intermediateText ? `${intermediateText}. Use --allow-intermediate-binary to accept that.` : null;
   if (result.ok && result.empty) lines.push(`public-scan: nothing to scan (${plural(result.commits, 'commit')}, ${plural(result.addedLines, 'added line')}; accepted by --allow-empty)`);
   else if (result.ok) lines.push(`public-scan: clean (${plural(result.commits, 'commit')}, ${plural(result.addedLines, 'added line')} in ${plural(result.files, 'file')}${result.patchLines > result.addedLines ? `; ${plural(result.patchLines, 'patch line')} across all commits` : ''})`);
-  else if (result.total === 0) lines.push(`public-scan: NOT CLEAN. ${[result.emptyNote, unscannedText].filter(Boolean).join(' ')}`);
+  else if (result.total === 0) lines.push(`public-scan: NOT CLEAN. ${[result.emptyNote, unscannedText, refusedText].filter(Boolean).join(' ')}`);
   else {
     const kinds = Object.entries(result.counts).map(([kind, n]) => `${kind} ${n}`).join(', ');
     lines.push(`public-scan: ${result.total} findings (${kinds})`);
     for (const f of result.findings.slice(0, MAX_SHOWN)) lines.push(`  ${f.kind} ${f.file}:${f.line} ${f.excerpt}${f.commit ? ` (in commit ${f.commit})` : ''}${f.termLine ? ` (terms file line ${f.termLine})` : ''}`);
     if (result.total > MAX_SHOWN) lines.push(`  ... and ${result.total - MAX_SHOWN} more; use --json for the list`);
     if (result.emptyNote) lines.push(`public-scan: ${result.emptyNote}`);
-    if (unscannedText) lines.push(`public-scan: NOT CLEAN. ${unscannedText}`);
+    if (unscannedText || refusedText) lines.push(`public-scan: NOT CLEAN. ${[unscannedText, refusedText].filter(Boolean).join(' ')}`);
   }
   lines.push(result.termsChecked === null ? 'terms: NOT checked' : `terms: ${result.termsChecked} checked`);
   lines.push(`binary: ${(result.binaryNote ?? BINARY_NOTE).replace(/^binary /, '')}`);
-  const intermediate = result.binaryIntermediate ?? [];
-  if (intermediate.length > 0) lines.push(`warning: ${plural(intermediate.length, 'binary file')} ${intermediate.length === 1 ? 'was' : 'were'} added and removed again inside the range and ${intermediate.length === 1 ? 'was' : 'were'} never scanned: ${intermediate.slice(0, 5).join(', ')}${intermediate.length > 5 ? ', ...' : ''}`);
+  if (intermediateText) lines.push(`warning: ${intermediateText}`);
+  const allowed = result.allowedLines?.items ?? [];
+  if ((result.allowedLines?.count ?? 0) > 0) lines.push(`allowed: ${plural(result.allowedLines.count, 'line')} skipped by a marker: ${allowed.slice(0, 5).map(a => `${a.file}:${a.line} ${a.kind}`).join(', ')}${result.allowedLines.count > 5 ? ', ...' : ''}`);
   if (result.binaryScanned.length > 0) lines.push(`binary: ${plural(result.binaryScanned.length, 'file')} scanned from its HEAD blob: ${result.binaryScanned.slice(0, 5).join(', ')}${result.binaryScanned.length > 5 ? ', ...' : ''}`);
   return lines.join('\n') + '\n';
 }

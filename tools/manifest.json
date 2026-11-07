@@ -61,7 +61,7 @@
           "lockWarning": "string|null",
           "logDir": "string"
         },
-        "note": "Each step has name, command, cwd, exitCode, passed, reason, ms, rawBytes, counts, firstFailure, and log. A reason is null, TIME_LIMIT, LOG_LIMIT, START_FAILED, NO_SUMMARY, TEST_FAILURES, or NO_TESTS_RAN. clean has removed, refused, freedBytes, and error. Full logs, with secrets redacted, are in .trellis/gates/<step>.log. A usage error or crash prints {ok:false, exit:2, error} instead."
+        "note": "Each step has name, command, cwd, exitCode, passed, reason, ms, rawBytes, counts, firstFailure, and log. A reason is null, TIME_LIMIT, LOG_LIMIT, START_FAILED, NO_SUMMARY, TEST_FAILURES, or NO_TESTS_RAN. clean has removed, refused, freedBytes, and error, and skipped (true only when an interrupt stopped the clean-up). Full logs, with secrets redacted, are in .trellis/gates/<step>.log. A usage error or crash prints {ok:false, exit:2, error} instead."
       },
       "example": "node tools/gates.mjs --e2e --clean --json"
     },
@@ -161,7 +161,7 @@
       "safetyClass": "read-only",
       "destructive": false,
       "mcp_exposure": "expose",
-      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets (token shapes, passwords inside URLs, and password or auth-token assignments in plain, quoted, and colon forms; ordinary code such as a call, a member access, or a variable is not a secret, and a line with the text public-scan: allow is skipped except for private terms), and private terms, and checks the pull request shape.",
+      "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets (token shapes, passwords inside URLs, and password or auth-token assignments in plain, quoted, and colon forms; ordinary code in one of five strict shapes is not a secret, but a hardcoded fallback after it is; a marker public-scan: allow followed by a kind skips only that kind on its own added line), and private terms, and checks the pull request shape.",
       "args": [
         {
           "name": "--base REF",
@@ -184,6 +184,11 @@
           "description": "Accept a range with no commits or nothing added; without it an empty range exits 1. The output then says it was accepted, never clean."
         },
         {
+          "name": "--allow-intermediate-binary",
+          "required": false,
+          "description": "Accept a binary file that a commit added and a later commit removed (it was never scanned); without it that exits 1. The files stay listed as a warning."
+        },
+        {
           "name": "--json",
           "required": false,
           "description": "Print exactly one JSON object on stdout, also for a usage error."
@@ -202,6 +207,8 @@
           "binaryFiles": "number",
           "binaryScanned": "array",
           "binaryIntermediate": "array",
+          "intermediateRefused": "boolean",
+          "allowedLines": "object",
           "binaryNote": "string",
           "unscanned": "array",
           "empty": "boolean",
@@ -213,7 +220,7 @@
           "truncated": "boolean",
           "total": "number"
         },
-        "note": "Each finding has kind, file, line, excerpt, and for a term the termLine in the terms file; a finding on a line that only an earlier commit patch added (it was removed again later) also has commit. A path finding has the file file-path and the position of the path in git diff --name-only as its line. A finding inside a binary file has that file and the line 0. addedLines counts the net diff and patchLines every commit patch. A line over 4000 characters is scanned in overlapping 4000-character windows, never skipped. binaryScanned names the binary files scanned from their HEAD blob (a name that matches a leak pattern is shown as [path withheld]); unscanned lists { file, reason } for a binary file over 5 MiB or unreadable, and makes the exit 1. binaryIntermediate lists the binary files that a commit in the range added or changed but that the net diff does not carry (added and removed again, or put back); they were never read, the exit code does not change, and a name that matches a leak pattern is shown as [path withheld]. binaryNote says that binary content is read as raw bytes and that compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected. It also says that a binary file changed A to B to C inside the range is scanned only at its final (HEAD) version. termsChecked is null when no terms file was given. A usage error or crash prints {ok:false, exit:2, error} instead."
+        "note": "Each finding has kind, file, line, excerpt, and for a term the termLine in the terms file; a finding on a line that only an earlier commit patch added (it was removed again later) also has commit. A path finding has the file file-path and the position of the path in git diff --name-only as its line. A finding inside a binary file has that file and its line number in the file (a binary file is read line by line). addedLines counts the net diff and patchLines every commit patch. A line over 4000 characters is scanned in overlapping 4000-character windows, never skipped. binaryScanned names the binary files scanned from their HEAD blob (a name that matches a leak pattern is shown as [path withheld]); unscanned lists { file, reason } for a binary file over 5 MiB or unreadable, and makes the exit 1. binaryIntermediate lists the binary files that a commit in the range added or changed but that the net diff does not carry (added and removed again, or put back); they were never read, the exit is 1 unless --allow-intermediate-binary is given (intermediateRefused says whether it was refused), and a name that matches a leak pattern is shown as [path withheld]. binaryNote says that binary content is read as raw bytes and that compressed formats (zip, gz, dmg, docx, pdf streams) are not inspected. It also says that a binary file changed A to B to C inside the range is scanned only at its final (HEAD) version. termsChecked is null when no terms file was given. allowedLines is { count, items } where each item has file, line, and kind (and commit when only a commit patch had the line): the findings that a public-scan: allow marker with a kind skipped, in added lines of the diff only. A file name that matches a leak pattern is shown as [path withheld] in every finding. A usage error or crash prints {ok:false, exit:2, error} instead."
       },
       "example": "node tools/public-scan.mjs --pr-body /abs/path/body.md --terms-file /abs/path/terms.txt --json"
     },
@@ -251,7 +258,7 @@
           "phases": "array",
           "seams": "array"
         },
-        "note": "phases lists each release phase as { phase, state, reason }. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
+        "note": "phases lists each release phase as { phase, state, reason }. The tag phase is done only when origin has the tag at the release commit; a tag only this clone holds is todo with (local only) in the reason, and an unreachable origin is unknown. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",
@@ -267,7 +274,7 @@
       "help": true,
       "safetyClass": "read-only",
       "destructive": false,
-      "mcp_exposure": "expose",
+      "mcp_exposure": "hidden",
       "description": "Fetch origin, then check branch, sync with origin, and a clean tree. Print the commit.",
       "args": [
         {
@@ -627,7 +634,7 @@
         {
           "name": "--commit",
           "required": false,
-          "description": "HASH. The full 40-character commit to tag. Needs --branch. The step fetches with --prune, then the commit must be an ancestor of exactly origin/<--branch>."
+          "description": "HASH. The full 40-character commit to tag. Needs --branch. The step fetches with --prune and fetches the branch on its own, the tip on origin must equal the tracking ref, then the commit must be an ancestor of exactly origin/<--branch>."
         },
         {
           "name": "--branch",
@@ -650,7 +657,7 @@
           "existing": "string",
           "seams": "array"
         },
-        "note": "The tag is created locally, then only refs/tags/<tag> is pushed to origin with git -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/<tag>; never a branch, never --force or --tags, and no repository hook runs. The step needs a passing gates receipt and a passing verify receipt (same version, on the tagged commit or an ancestor of it), origin push URL equal to its fetch URL, and, under a test seam, a local-path origin. A tag already on origin at another commit is a failure and is never overwritten. With --commit, --branch is required and the commit must be an ancestor of exactly origin/<branch> after git fetch --prune. existing appears only when the local tag or the tag on origin is at another commit. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
+        "note": "The tag is created locally with git -c core.fsmonitor=false -c core.hooksPath=/dev/null tag -a, then only refs/tags/<tag> is pushed to origin with git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c push.followTags=false push --no-verify --no-recurse-submodules origin refs/tags/<tag>; never a branch, never --force or --tags, and no repository hook runs for the push, the fetches, or the local tag. The step needs a passing gates receipt and a passing verify receipt (same version, on the tagged commit or an ancestor of it), exactly one fetch URL and one push URL on origin, equal, and, under a test seam, a local-path origin. A tag already on origin at another commit is a failure and is never overwritten. With --commit, --branch is required and the branch is fetched on its own, git ls-remote --heads must show a tip equal to the tracking ref, and the commit must be an ancestor of exactly origin/<branch>. existing appears only when the local tag or the tag on origin is at another commit. seams (any result, present only when a test seam is active) lists the active test seams; a real run has no seams key.",
         "optional": [
           "command",
           "version",

@@ -658,11 +658,23 @@ test('gates: an interrupt skips the --clean clean-up, so the build outputs stay'
   fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
   fs.writeFileSync(path.join(root, 'test-results/keep.txt'), 'keep');
   const child = spawn(process.execPath, [script, '--root', root, '--json', '--clean', '--only', 'root-test'], { env: { ...process.env, ...MODE }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  child.stdout.on('data', chunk => { stdout += chunk; });
   const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
   assert.equal(await waitFor(ready), true, 'the step started');
   child.kill('SIGINT');
   assert.equal((await exited).code, 130);
   assert.equal(fs.existsSync(path.join(root, 'test-results/keep.txt')), true, 'an interrupted run does not delete build outputs');
+  // When the run still gets to print its summary, the summary says the clean-up was skipped because of the interrupt.
+  if (stdout.trim() !== '') assert.equal(JSON.parse(stdout).clean?.skipped, true, stdout);
+});
+
+test('gates: formatSummary says "cleanup skipped (interrupted)" for a skipped clean-up, and not for a normal one', async () => {
+  const { formatSummary } = await import('../gates.mjs');
+  const base = { ok: false, steps: [], notRun: [], failedStep: null, refused: null, lockWarning: null };
+  assert.match(formatSummary({ ...base, clean: { removed: [], refused: [], freedBytes: 0, error: null, skipped: true } }), /^gates: cleanup skipped \(interrupted\)$/m);
+  assert.doesNotMatch(formatSummary({ ...base, clean: { removed: [], refused: [], freedBytes: 0, error: null } }), /cleanup skipped/);
+  assert.doesNotMatch(formatSummary({ ...base, clean: { removed: [], refused: [], freedBytes: 0, error: null, skipped: true } }), /freed 0 bytes/);
 });
 
 test('gates: the seams --root, --lock-dir, and --timeout-seconds are refused without the test-mode variable', () => {

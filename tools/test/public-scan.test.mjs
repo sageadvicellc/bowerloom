@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { scanLine, addedLines, parseTerms, checkPrBody, parseArgs, formatResult, DEFAULT_BASE, WINDOW_CHARS, WINDOW_OVERLAP, MAX_BINARY_BYTES } from '../public-scan.mjs';
+import { scanLine, scanLineDetailed, addedLines, parseTerms, checkPrBody, parseArgs, formatResult, DEFAULT_BASE, WINDOW_CHARS, WINDOW_OVERLAP, MAX_BINARY_BYTES } from '../public-scan.mjs';
 
 const script = fileURLToPath(new URL('../public-scan.mjs', import.meta.url));
 const made = [];
@@ -413,7 +413,7 @@ test('scan: a leak inside a binary file is found, and its file is named only by 
   commit(dir, { 'assets/icon.png': bytes, 'ok.txt': 'fine\n' });
   const run = scan(dir);
   assert.equal(run.status, 1);
-  assert.deepEqual(run.json.findings.map(f => [f.kind, f.file, f.line]).sort(), [['email', 'assets/icon.png', 0], ['secret', 'assets/icon.png', 0]]);
+  assert.deepEqual(run.json.findings.map(f => [f.kind, f.file, f.line]).sort(), [['email', 'assets/icon.png', 1], ['secret', 'assets/icon.png', 1]]);
   assert.deepEqual(run.json.binaryScanned, ['assets/icon.png']);
   assert.equal(run.stdout.includes(secrets.ghp), false);
   assert.equal(run.stdout.includes('corp-mail'), false);
@@ -664,15 +664,83 @@ test('scanLine still flags a literal password in every form', () => {
   }
 });
 
-test('scanLine: the allow marker skips structural findings on that line only, and never the private terms', () => {
+test('scanLine: a bare marker, an unknown kind, or a marker that is not asked for skips nothing', () => {
   const MARK = 'public-scan' + ': allow';
   const leak = 'const pass' + 'word = "abc12345"';
   assert.deepEqual(kinds(leak), ['secret']);
-  assert.deepEqual(kinds(leak + ' // ' + MARK), []);
-  assert.deepEqual(kinds('/* ' + MARK + ' */ ' + USERS + 'someone/x ' + EMAIL), []);
-  assert.deepEqual(kinds(leak + ' // ' + MARK.replace('allow', 'deny')), ['secret']);
-  const withTerm = scanLine(leak + ' // ' + MARK + ' ' + TERM, [{ term: TERM, line: 3 }]);
-  assert.deepEqual(withTerm.map(f => f.kind), ['term']);
+  const marked = text => scanLine(text, [], { allowMarker: true }).map(f => f.kind);
+  assert.deepEqual(marked(leak + ' // ' + MARK), ['secret'], 'a bare marker');
+  assert.deepEqual(marked(leak + ' // ' + MARK + ' everything'), ['secret'], 'an unknown kind');
+  assert.deepEqual(marked(leak + ' // ' + MARK + ' secretly'), ['secret'], 'no word boundary after the kind');
+  assert.deepEqual(marked(leak + ' // x' + MARK + ' secret'), ['secret'], 'no word boundary before the marker');
+  assert.deepEqual(marked(leak + ' // ' + MARK.replace('allow', 'deny') + ' secret'), ['secret']);
+  assert.deepEqual(marked(leak + ' // ' + MARK + ' email'), ['secret'], 'the wrong kind');
+  assert.deepEqual(scanLine(leak + ' // ' + MARK + ' secret').map(f => f.kind), ['secret'], 'the marker is ignored unless the caller asks for it');
+});
+
+test('scanLine: a marker with a kind skips only that kind on that physical line, and never the private terms', () => {
+  const MARK = 'public-scan' + ': allow';
+  const leak = 'const pass' + 'word = "abc12345"';
+  const marked = (text, terms = []) => scanLine(text, terms, { allowMarker: true });
+  assert.deepEqual(marked(leak + ' // ' + MARK + ' secret').map(f => f.kind), []);
+  assert.deepEqual(marked(USERS + 'someone/x ' + EMAIL + ' /* ' + MARK + ' email */').map(f => f.kind), ['home-path']);
+  assert.deepEqual(marked(USERS + 'someone/x ' + EMAIL + ' /* ' + MARK + ' email ' + MARK + ' home-path */').map(f => f.kind), []);
+  assert.deepEqual(marked(SESSION + ' ' + MARK + ' secret ' + MARK + ' email').map(f => f.kind), ['session-link'], 'a session link can never be allowed');
+  const url = 'postgres://svc:' + 'pw1234' + '@db.example.org';
+  assert.deepEqual(marked(url + ' ' + MARK + ' secret').map(f => f.kind), ['secret'], 'a URL credential needs its own kind');
+  assert.deepEqual(marked(url + ' ' + MARK + ' url-credential').map(f => f.kind), []);
+  assert.deepEqual(marked(leak + ' ' + MARK + ' secret ' + TERM, parseTerms(TERM)).map(f => f.kind), ['term']);
+  // Another physical line (a CR inside one added line) is not covered.
+  assert.deepEqual(marked(leak + '\r' + MARK + ' secret').map(f => f.kind), ['secret']);
+  assert.deepEqual(marked(leak + ' ' + MARK + ' secret\r' + leak).map(f => f.kind), ['secret']);
+  const detailed = scanLineDetailed(leak + ' ' + MARK + ' secret', [], { allowMarker: true });
+  assert.deepEqual(detailed.found, []);
+  assert.deepEqual(detailed.allowed, ['secret']);
+  assert.deepEqual(scanLineDetailed(leak, [], { allowMarker: true }).allowed, []);
+});
+
+test('scanLine: an unquoted value is code only in one of five strict shapes', () => {
+  const PW = 'pass' + 'word';
+  const secretsLike = [
+    PW + '=Tr0ub4dor.&3x', PW.toUpperCase() + '=Sup3r.Secret1', PW + '=my$ecretpass1', PW + '=Abc.12345.xyz', PW + '=pa$$w0rd123', '_auth' + 'Token=abc.def.ghi1234567890',
+    PW + '=Pass{word}12', PW + '=Pass(word)12', PW + '=hunter2(abc)xyz', PW + ': eyJhbGciOiJI.UzI1NiJ9.c2lnbmF0dXJl1',
+  ];
+  for (const line of secretsLike) assert.deepEqual(kinds(line), ['secret'], line);
+  const code = [
+    PW + ': process.env.DB_PASSWORD', PW + ': z.string().min(8)', PW + '=${' + PW + '}', PW + '=$DB_PASS;', PW + ': string', PW + ': Uint8Array', PW + ': opts.' + PW,
+    PW + '=os.environ["X"]', PW + ': z.string().min(8, { message: "x" })', PW + ': getSecret(name,', PW + '=undefined', PW + '=None', PW + '=nil', PW + ': false', PW + '=$' + PW,
+    PW + '=process.env.DB_PASSWORD;', PW + ': config[key],',
+  ];
+  for (const line of code) assert.deepEqual(kinds(line), [], line);
+});
+
+test('scanLine: a hardcoded fallback after a code value is a secret', () => {
+  const PW = 'pass' + 'word';
+  for (const line of [
+    PW + ': process.env.X ?? "changeme123"', PW + ": process.env.X || 'hunter2hunter2'", PW + ' = os.environ.get("X") or "hunter2hunter2"', PW + '=$DB_PASS || "hunter2hunter2"',
+    PW + ': process.env.X ?? \\"changeme123\\"',
+  ]) assert.deepEqual(kinds(line), ['secret'], line);
+  for (const line of [PW + ': process.env.X ?? ""', PW + ': process.env.X ?? "<your password>"', PW + ': process.env.X ?? undefined', PW + ': process.env.X || null', PW + ' = os.environ.get("X")']) {
+    assert.deepEqual(kinds(line), [], line);
+  }
+});
+
+test('scanLine: an escaped quote, in a string inside a string, is read like a quote', () => {
+  const PW = 'pass' + 'word';
+  for (const line of [PW + '=\\"hunter2hunter2\\"', '{\\"' + PW + '\\":\\"hunter2hunter2\\"}', '{\\"' + PW + '\\": \\"x12345678\\"}']) {
+    const found = scanLine(line);
+    assert.deepEqual(found.map(f => f.kind), ['secret'], line);
+    assert.equal(JSON.stringify(found).includes('hunter2'), false);
+  }
+  for (const line of [PW + '=\\"${NPM_PASS}\\"', '{\\"' + PW + '\\":\\"<your password>\\"}', PW + '=\\"\\"']) assert.deepEqual(kinds(line), [], line);
+});
+
+test('scanLine: URL placeholders {name}, %s and %d are not passwords, and an email inside an allowed URL credential is not an email', () => {
+  for (const line of ['postgres://u:{password}@db.example.org/app', 'postgres://u:%s@db.example.org/app', 'postgres://u:%d@db.example.org', 'postgres://u:$pass@db.example.org', 'postgres://u:${DB_PASS}@db.example.org']) {
+    assert.deepEqual(kinds(line), [], line);
+  }
+  assert.deepEqual(kinds('postgres://u:{pass1234}@db.example.org'), [], 'a {name} placeholder');
+  assert.deepEqual(kinds('postgres://u:hunter2pw' + '@db.example.org'), ['secret'], 'a real password is one finding');
 });
 
 test('scanLine finds a password inside a URL, and not a URL without one', () => {
@@ -835,7 +903,7 @@ test('scan: the output says binary content is read as raw bytes and compressed f
   assert.doesNotMatch(human, /warning:/);
 });
 
-test('scan: a binary file added and removed again inside the range is listed as binaryIntermediate, with a warning and no change of exit', () => {
+test('scan: a binary file added and removed again inside the range is listed as binaryIntermediate and makes the exit 1 unless --allow-intermediate-binary is given', () => {
   const dir = repo();
   fs.writeFileSync(path.join(dir, 'temp.bin'), Buffer.from([0, 1, 2, 3, 0, 255]));
   fs.writeFileSync(path.join(dir, 'keep.bin'), Buffer.from([0, 9, 9, 0, 1]));
@@ -843,11 +911,22 @@ test('scan: a binary file added and removed again inside the range is listed as 
   fs.rmSync(path.join(dir, 'temp.bin'));
   commit(dir, { 'c.txt': 'still clean\n' }, 'remove one');
   const run = scan(dir);
-  assert.equal(run.status, 0, run.stdout);
+  assert.equal(run.status, 1, run.stdout);
   assert.deepEqual(run.json.binaryIntermediate, ['temp.bin']);
   assert.deepEqual(run.json.binaryScanned, ['keep.bin']);
-  assert.equal(run.json.ok, true);
-  assert.match(scan(dir, [], { json: false }).stdout, /^warning: 1 binary file was added and removed again inside the range and was never scanned: temp\.bin$/m);
+  assert.equal(run.json.ok, false);
+  assert.deepEqual(run.json.findings, []);
+  const human = scan(dir, [], { json: false });
+  assert.equal(human.status, 1);
+  assert.match(human.stdout, /^public-scan: NOT CLEAN\. 1 binary file was added and removed again inside the range and was never scanned: temp\.bin/m);
+  assert.match(human.stdout, /--allow-intermediate-binary/);
+  const accepted = scan(dir, ['--allow-intermediate-binary']);
+  assert.equal(accepted.status, 0, accepted.stdout);
+  assert.equal(accepted.json.ok, true);
+  assert.deepEqual(accepted.json.binaryIntermediate, ['temp.bin'], 'still listed when accepted');
+  assert.match(scan(dir, ['--allow-intermediate-binary'], { json: false }).stdout, /^warning: 1 binary file was added and removed again inside the range and was never scanned: temp\.bin$/m);
+  assert.equal(parseArgs(['--allow-intermediate-binary']).allowIntermediateBinary, true);
+  assert.ok(parseArgs(['--allow-intermediate-binary=1']).usage);
 });
 
 test('scan: a binary file whose name holds a leak is withheld in binaryIntermediate too', () => {
@@ -856,8 +935,66 @@ test('scan: a binary file whose name holds a leak is withheld in binaryIntermedi
   commit(dir, { [name]: Buffer.from([0, 1, 0, 2]), 'b.txt': 'clean\n' }, 'add');
   fs.rmSync(path.join(dir, name));
   commit(dir, { 'c.txt': 'clean again\n' }, 'remove');
-  const run = scan(dir);
+  const run = scan(dir, ['--allow-intermediate-binary']);
   assert.equal(run.json.binaryIntermediate.length, 1);
   assert.match(run.json.binaryIntermediate[0], /withheld/);
   assert.equal(run.stdout.includes('corp-mail'), false);
+});
+
+test('scan: a finding in a file whose name holds a leak names the file as withheld, in every kind of finding', () => {
+  const dir = repo();
+  const name = `docs/${EMAIL}.txt`;
+  commit(dir, { [name]: `${USERS}jane/x\n` });
+  const run = scan(dir);
+  assert.equal(run.status, 1);
+  assert.equal(run.stdout.includes('corp-mail'), false);
+  assert.equal(run.stderr.includes('corp-mail'), false);
+  const files = run.json.findings.map(f => [f.kind, f.file]);
+  assert.deepEqual(files.sort(), [['email', 'file-path'], ['home-path', '[path withheld]']]);
+  assert.equal(scan(dir, [], { json: false }).stdout.includes('corp-mail'), false);
+});
+
+test('scan: the allow marker needs a kind, skips only that kind, and is reported as allowedLines', () => {
+  const MARK = 'public-scan' + ': allow';
+  const dir = repo();
+  const leak = 'const pass' + 'word = "abc12345"';
+  commit(dir, { 'src/a.js': [`${leak} // ${MARK} secret`, `${leak} // ${MARK}`, `${USERS}jane/x ${EMAIL} // ${MARK} email`, 'clean'].join('\n') + '\n' });
+  const run = scan(dir);
+  assert.equal(run.status, 1);
+  assert.deepEqual(run.json.findings.map(f => [f.kind, f.file, f.line]), [['secret', 'src/a.js', 2], ['home-path', 'src/a.js', 3]]);
+  assert.deepEqual(run.json.allowedLines, { count: 2, items: [{ file: 'src/a.js', line: 1, kind: 'secret' }, { file: 'src/a.js', line: 3, kind: 'email' }] });
+  const human = scan(dir, [], { json: false }).stdout;
+  assert.match(human, /^allowed: 2 lines? skipped by a marker: src\/a\.js:1 secret, src\/a\.js:3 email$/m);
+});
+
+test('scan: the allow marker is not honoured in a commit message, a file name, a PR body, an author name, or a binary file', () => {
+  const MARK = 'public-scan' + ': allow';
+  const dir = repo();
+  const body = path.join(tmp(), 'body.md');
+  fs.writeFileSync(body, `> [!NOTE]\nsee ${SESSION} ${EMAIL} ${MARK} email ${MARK} secret\n`);
+  fs.writeFileSync(path.join(dir, 'blob.bin'), Buffer.concat([Buffer.from([0, 1]), Buffer.from(` ${EMAIL} ${MARK} email `, 'latin1'), Buffer.from([0, 2])]));
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'clean\n');
+  git(dir, 'add', '.');
+  const made = spawnSync('git', ['commit', '-qm', `Change ${EMAIL} ${MARK} email`], { cwd: dir, encoding: 'utf8', env: { ...GIT_ENV, GIT_AUTHOR_NAME: `${EMAIL} ${MARK} email` } });
+  assert.equal(made.status, 0, made.stderr);
+  const run = scan(dir, ['--pr-body', body]);
+  assert.equal(run.status, 1);
+  const where = run.json.findings.map(f => f.kind + ' ' + (f.file.startsWith('commit:') ? 'commit' : f.file));
+  assert.ok(where.includes('email commit'), where.join('\n'));
+  assert.ok(where.includes('email pr-body'), where.join('\n'));
+  assert.ok(where.includes('email blob.bin'), where.join('\n'));
+  assert.equal(run.json.allowedLines.count, 0);
+});
+
+test('scan: one marker cannot cover a whole minified line or a whole binary file', () => {
+  const MARK = 'public-scan' + ': allow';
+  const dir = repo();
+  const lines = [`${EMAIL} ${MARK} secret`, `${secrets.ghp} ${MARK} email`];
+  commit(dir, { 'min.js': lines.join('\r') + '\n', 'p.bin': Buffer.concat([Buffer.from([0]), Buffer.from(`${secrets.ghp}\n${EMAIL}\n${MARK} email \n${MARK} secret`, 'latin1'), Buffer.from([0])]) });
+  const run = scan(dir);
+  assert.equal(run.status, 1);
+  assert.deepEqual(run.json.findings.map(f => [f.kind, f.file]).sort(), [['email', 'min.js'], ['email', 'p.bin'], ['secret', 'min.js'], ['secret', 'p.bin']]);
+  assert.equal(run.json.allowedLines.count, 0);
+  const blob = run.json.findings.filter(f => f.file === 'p.bin').map(f => [f.kind, f.line]).sort();
+  assert.deepEqual(blob, [['email', 2], ['secret', 1]], 'a binary file is read line by line');
 });

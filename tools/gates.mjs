@@ -325,9 +325,12 @@ export async function runGates(args, root) {
   } finally {
     forgetConfig();
     fs.rmSync(configDir, { recursive: true, force: true });
-    // An interrupted run deletes nothing: the person who pressed Ctrl-C may want the outputs.
-    if ((args.clean || args.cleanInstallers) && !isStopping()) {
-      try { summary.clean = cleanUp(root, args); } catch (error) { summary.clean = { removed: [], refused: [], freedBytes: 0, error: String(error?.message ?? error).slice(0, 200) }; }
+    // An interrupted run deletes nothing: the person who pressed Ctrl-C may want the outputs. The summary says so (clean.skipped).
+    if (args.clean || args.cleanInstallers) {
+      if (isStopping()) summary.clean = { removed: [], refused: [], freedBytes: 0, error: null, skipped: true };
+      else {
+        try { summary.clean = cleanUp(root, args); } catch (error) { summary.clean = { removed: [], refused: [], freedBytes: 0, error: String(error?.message ?? error).slice(0, 200) }; }
+      }
     }
   }
   summary.ok = summary.refused === null && summary.failedStep === null && (summary.clean?.error ?? null) === null && (summary.clean?.refused.length ?? 0) === 0 && summary.lockWarning === null;
@@ -349,7 +352,8 @@ export function formatSummary(summary) {
     for (const item of summary.clean.removed) lines.push(`gates: removed ${item.path} (${item.bytes} bytes)`);
     for (const item of summary.clean.refused) lines.push(`gates: refused to remove ${item.path}: ${item.reason}`);
     if (summary.clean.error) lines.push(`gates: cleanup error: ${summary.clean.error}`);
-    lines.push(`gates: freed ${summary.clean.freedBytes} bytes`);
+    if (summary.clean.skipped) lines.push('gates: cleanup skipped (interrupted)');
+    else lines.push(`gates: freed ${summary.clean.freedBytes} bytes`);
   }
   if (summary.ok) lines.push('gates: all steps passed');
   return lines.join('\n') + '\n';
