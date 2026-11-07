@@ -66,7 +66,7 @@ Shows each phase as `done`, `todo`, `unknown`, or `done (with test seams)`, with
 - `hashes` is `done` only when the recorded hashes equal the files on disk, with no unrecorded and no missing file.
 - `verify` is `done` only when the stored receipt has no skipped or failed check.
 - `tag` is `done` only when the local tag points at the release commit. That is HEAD, or the commit of the newest dry-run receipt that counts in this run and sits on HEAD or an ancestor of HEAD (`git merge-base --is-ancestor`). A dry run on another branch does not count.
-- `tag-on-origin` is `done` only when `git ls-remote` shows the tag on origin at the same commit as the local tag. It is `todo` when origin has no such tag, or has it at another commit, and `unknown` when origin cannot be reached.
+- `tag-on-origin` is `done` only when `git ls-remote` shows the tag on origin at the same commit as the local tag. It is `todo` when origin has no such tag, or has it at another commit, and `unknown` when origin cannot be reached. When this clone has no local tag but origin has one at the release commit, the phase is `done` and the reason says the tag exists on origin and to run `git fetch origin tag <tag>`.
 - If the registry answers 404 but the release record says `npm.published` is true, the `publish` and `dist-tag` phases are `unknown`, not `todo`.
 
 ### `preflight`
@@ -150,7 +150,7 @@ An unreachable registry fails the check with the reason `registry unreachable`. 
 
 Class: remote-write.
 
-Creates the annotated tag `v<version>` on the commit that `preflight` checked, then pushes that one tag to origin. It runs `git tag -a`, then `git push origin refs/tags/v<version>`. It never pushes a branch and never uses `--force` or `--tags`. In both forms `gates` must have passed for the tagged commit, and the step fails with no tag if it has not. Use `--commit HASH` to tag another commit. The hash must be all 40 characters. A `--commit` run does not fetch first.
+Creates the annotated tag `v<version>` on the commit that `preflight` checked, then pushes that one tag to origin. It runs `git tag -a`, then `git -c push.followTags=false push origin refs/tags/v<version>`, so a `push.followTags` setting never carries other tags along. It never pushes a branch and never uses `--force` or `--tags`. In both forms `gates` must have passed for the tagged commit, and the step fails with no tag if it has not. Use `--commit HASH` to tag another commit. The hash must be all 40 characters. A `--commit` run skips `preflight`, so it runs `git fetch origin` first and needs the commit to be on a published release branch: an ancestor of a remote-tracking branch `origin/<name>` whose name matches the `branchPattern` in the config. Otherwise it fails with `commit <hash> is not on a published release branch; push the branch first` and writes nothing. That check stops the tag from carrying an unpublished commit and its history to origin.
 
 The step reads the tag on origin (`git ls-remote origin refs/tags/v<version> refs/tags/v<version>^{}`) before it writes anything:
 
@@ -159,7 +159,8 @@ The step reads the tag on origin (`git ls-remote origin refs/tags/v<version> ref
 - Neither exists: the step creates the tag, then pushes it.
 - The local tag is at another commit, or origin has the tag at another commit: the step fails and changes nothing. It never overwrites a tag.
 - Origin has the tag at the commit but this clone has no such tag: the step fails. Fetch the tag, then run it again.
-- Origin cannot be read, or the push fails (authentication, network, or a rejection): the step fails with the first error line. No receipt is written. A tag made before the failed push stays, and the next run pushes it.
+- Origin cannot be read, or the push fails (authentication, network, or a rejection): the step fails with the first error line. No receipt is written. A tag made before the failed push stays, and the next run pushes it. If HEAD moved after a failed push, the old local tag is at another commit and `tag` fails. Delete it by hand with `git tag -d <tag>` after you check that nothing else needs it.
+- A tag appears on origin between the read and the push: git rejects the push, the step fails with the first error line, and the tag on origin is not changed.
 
 The push is the only write to a remote that the script makes, and it never touches the registry.
 

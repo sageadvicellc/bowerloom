@@ -11,7 +11,7 @@
 //   - It never reads, stores, or prints a token, a one-time code, or a password. Children start with a scrubbed environment and with
 //     empty npm config files, so a user's ~/.npmrc is never read. Output is redacted before it reaches a log or the screen.
 //   - Subcommands that publish or retire only print the commands. They print them to a person at a terminal.
-//   - The only thing it ever pushes is the one release tag: `tag` runs `git push origin refs/tags/<tag>`. Never --force, never --tags, never a branch.
+//   - The only thing it ever pushes is the one release tag: `tag` runs `git -c push.followTags=false push origin refs/tags/<tag>`. Never --force, never --tags, never a branch.
 //   - On SIGINT, SIGTERM or SIGHUP it kills every child process group, removes its temporary folders, and exits 130.
 //
 // Settings come from release.config.json at the repository root. The version comes from the release record that the config names.
@@ -962,6 +962,25 @@ async function cmdVerify(ctx, o) {
   return done(`verified ${config.package}@${version}`, data);
 }
 
+/**
+ * The --commit path skips preflight, so it must prove the commit is already public before the tag can carry it (and its history) to origin.
+ * Fetches, then needs the commit to be an ancestor of a remote-tracking branch whose name matches the config branch pattern.
+ */
+async function requirePublished(ctx, o, commit) {
+  const fetched = await git(ctx, ['fetch', 'origin']);
+  if (!fetched.ok) throw new StepFailure(`git fetch origin failed: ${failureLine(fetched)}`);
+  const listed = await git(ctx, ['for-each-ref', 'refs/remotes/origin', '--format=%(refname)']);
+  if (!listed.ok) throw new StepFailure(`cannot list the branches on origin: ${failureLine(listed)}`);
+  const prefix = 'refs/remotes/origin/';
+  const pattern = new RegExp(o.config.branchPattern);
+  const branches = listed.stdout.split('\n').map(l => l.trim()).filter(l => l.startsWith(prefix)).map(l => l.slice(prefix.length)).filter(name => name !== 'HEAD' && pattern.test(name));
+  for (const name of branches) {
+    const inside = await git(ctx, ['merge-base', '--is-ancestor', commit, `${prefix}${name}`]);
+    if (inside.ok) return;
+  }
+  throw new StepFailure(`commit ${commit} is not on a published release branch; push the branch first`);
+}
+
 async function cmdTag(ctx, o) {
   let commit = o.flags['--commit'];
   const tag = tagName(o);
@@ -969,6 +988,7 @@ async function cmdTag(ctx, o) {
     if (!FULL_HASH.test(commit)) throw new UsageError('--commit needs a full 40-character lowercase hex hash');
     const exists = await git(ctx, ['cat-file', '-e', `${commit}^{commit}`]);
     if (!exists.ok) throw new StepFailure(`commit ${commit} not found in this repository`);
+    await requirePublished(ctx, o, commit);
   } else {
     commit = (await cmdPreflight(ctx, o)).commit;
   }
@@ -987,7 +1007,8 @@ async function cmdTag(ctx, o) {
     if (!made.ok) throw new StepFailure(`git tag failed: ${failureLine(made)}`);
   }
   // One tag, by its full ref name. No --force, no --tags, no branch. Git refuses to move a tag that origin already has.
-  const pushed = await git(ctx, ['push', 'origin', `refs/tags/${tag}`]);
+  // `-c push.followTags=false` keeps a user's config from carrying other annotated tags along.
+  const pushed = await git(ctx, ['-c', 'push.followTags=false', 'push', 'origin', `refs/tags/${tag}`]);
   if (!pushed.ok) throw new StepFailure(`git push failed: ${failureLine(pushed)}`, { tag, commit });
   return done(`${localCommit ? 'pushed' : 'created and pushed'} tag ${tag} at ${short(commit)} to origin`, { tag, commit, version: o.version });
 }
@@ -1153,13 +1174,20 @@ async function cmdStatus(ctx, o) {
     if (releaseCommits.includes(localCommit)) add('tag', 'done', `${tag} at ${short(localCommit)}`);
     else add('tag', 'todo', `${tag} is at ${short(localCommit)}, not at the release commit ${commit ? short(commit) : 'unknown'}`);
   }
-  if (!localCommit) add('tag-on-origin', 'todo', 'no local tag to compare');
-  else {
+  {
     const remote = await originTagCommit(ctx, tag);
     if (!remote.ok) add('tag-on-origin', 'unknown', `cannot reach origin: ${remote.reason}`);
-    else if (!remote.commit) add('tag-on-origin', 'todo', `${tag} is not on origin`);
-    else if (remote.commit === localCommit) add('tag-on-origin', 'done', `${tag} is on origin at ${short(localCommit)}`);
-    else add('tag-on-origin', 'todo', `origin has ${tag} at ${short(remote.commit)}, not at ${short(localCommit)}`);
+    else if (!remote.commit) add('tag-on-origin', 'todo', localCommit ? `${tag} is not on origin` : `${tag} is not on origin and there is no local tag`);
+    else if (localCommit) {
+      if (remote.commit === localCommit) add('tag-on-origin', 'done', `${tag} is on origin at ${short(localCommit)}`);
+      else add('tag-on-origin', 'todo', `origin has ${tag} at ${short(remote.commit)}, not at ${short(localCommit)}`);
+    } else {
+      // No local tag: compare origin with the release commit instead.
+      const dry = await newestDryRun(ctx, version);
+      const releaseCommits = [commit, dry?.commit].filter(Boolean);
+      if (releaseCommits.includes(remote.commit)) add('tag-on-origin', 'done', `${tag} exists on origin at ${short(remote.commit)}; this clone has no local tag, run git fetch origin tag ${tag}`);
+      else add('tag-on-origin', 'todo', `origin has ${tag} at ${short(remote.commit)}, not at the release commit ${commit ? short(commit) : 'unknown'}; this clone has no local tag`);
+    }
   }
   return done(`${phases.filter(p => p.state === 'done').length} of ${phases.length} phases done`, { version, commit, phases });
 }

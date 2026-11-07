@@ -589,7 +589,7 @@
         {
           "name": "--commit",
           "required": false,
-          "description": "HASH. The full 40-character commit to tag."
+          "description": "HASH. The full 40-character commit to tag. It must be on a published release branch on origin; the step fetches first."
         },
         {
           "name": "--branch",
@@ -611,7 +611,7 @@
           "commit": "string",
           "existing": "string"
         },
-        "note": "The tag is created locally, then only refs/tags/<tag> is pushed to origin; never a branch, never --force or --tags. A tag already on origin at another commit is a failure and is never overwritten. existing appears only when the local tag or the tag on origin is at another commit.",
+        "note": "The tag is created locally, then only refs/tags/<tag> is pushed to origin; never a branch, never --force or --tags. A tag already on origin at another commit is a failure and is never overwritten. With --commit, the commit must be an ancestor of a branch on origin that matches the config branchPattern. existing appears only when the local tag or the tag on origin is at another commit.",
         "optional": [
           "command",
           "version",
