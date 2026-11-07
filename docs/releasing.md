@@ -252,3 +252,16 @@ The owner settled these on 2026-11-07.
 - Tags: agents and scripts can push the release tag. `release tag` pushes only that tag. It never moves or force-pushes an existing tag, and it refuses unless the commit passed the gates. Only the npm steps need the owner: `publish`, `retire`, and the registry login.
 - Hashes: the desktop installer hashes live in the tracked file `release/desktop-sha256.json`. The release pull request commits it. That moves HEAD, so tag with `tag --commit` or run the gates again.
 - Dry run: the beta.2 release pull request first sets `release/beta.json` to the next unreleased version. Then one real `dry-run` runs and records `expectedFileCount`.
+
+## Manifest and the MCP server
+
+`tools/manifest.json` lists every tool with its safety class. The shared workbench manifest has the same idea. Two things differ. This manifest names the class `safetyClass`, and the shared one names it `safety_class`. Any server that reads both must map the name.
+
+Each tool carries `destructive` (true or false) and `mcp_exposure` (`expose` or `hidden`). The rules match the shared manifest:
+
+- A missing `mcp_exposure` would mean `hidden`. This manifest states it for every tool.
+- A `human-only` tool is `hidden` and destructive.
+- A `local-write` or `remote-write` tool is `hidden`.
+- An exposed tool is `read-only` and says `destructive: false`.
+
+`release:verify` is read-only but stays `hidden`. It installs the published package in a temporary folder and runs it. A test pins the exposed release tools: `release:status`, `release:preflight`, and `release:claims`.

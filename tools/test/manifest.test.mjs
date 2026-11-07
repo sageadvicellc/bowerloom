@@ -31,7 +31,7 @@ test('every entry has the required fields in the right shape', () => {
   for (const entry of manifest.tools) {
     const where = `entry ${entry.name}`;
     for (const key of ['name', 'path', 'description', 'example']) assert.ok(typeof entry[key] === 'string' && entry[key].trim() !== '', `${where}: ${key}`);
-    const extra = Object.keys(entry).filter(key => !['name', 'path', 'description', 'args', 'output', 'safetyClass', 'example', 'help'].includes(key));
+    const extra = Object.keys(entry).filter(key => !['name', 'path', 'description', 'args', 'output', 'safetyClass', 'destructive', 'mcp_exposure', 'example', 'help'].includes(key));
     assert.deepEqual(extra, [], `${where}: unknown keys`);
     assert.ok(CLASSES.has(entry.safetyClass), `${where}: safetyClass ${entry.safetyClass}`);
     assert.ok(!entry.description.includes('\n') && /[.]$/.test(entry.description), `${where}: description is one line ending in a full stop`);
@@ -326,4 +326,27 @@ test('a usage error from each of the three tools is one JSON object with ok, exi
     assert.deepEqual(Object.keys(parseJson(run)).sort(), ['error', 'exit', 'ok'], name);
   }
   assert.ok(SUBCOMMANDS.has('create'));
+});
+
+test('mcp_exposure follows the shared rules: expose only read-only tools that are not destructive; everything else is hidden', () => {
+  // The shared manifest of the workbench lists the same field. A missing field would mean hidden; this manifest states it for every tool.
+  const exposed = [];
+  for (const entry of manifest.tools) {
+    const where = `entry ${entry.name}`;
+    assert.ok(['expose', 'hidden'].includes(entry.mcp_exposure), `${where}: mcp_exposure`);
+    assert.equal(typeof entry.destructive, 'boolean', `${where}: destructive`);
+    if (entry.safetyClass === 'human-only') {
+      assert.equal(entry.mcp_exposure, 'hidden', `${where}: a human-only tool is hidden`);
+      assert.equal(entry.destructive, true, `${where}: a human-only tool is marked destructive`);
+    }
+    if (entry.safetyClass === 'local-write' || entry.safetyClass === 'remote-write') assert.equal(entry.mcp_exposure, 'hidden', `${where}: a write tool is hidden`);
+    if (entry.mcp_exposure === 'expose') {
+      exposed.push(entry.name);
+      assert.equal(entry.safetyClass, 'read-only', `${where}: only a read-only tool is exposed`);
+      assert.equal(entry.destructive, false, `${where}: an exposed tool says destructive false`);
+    }
+  }
+  // Pin the policy: release:verify is read-only but installs and runs the published package in a temporary folder, so it is held back.
+  assert.ok(manifest.tools.find(entry => entry.name === 'release:verify').mcp_exposure === 'hidden');
+  assert.deepEqual(exposed.filter(name => name.startsWith('release:')).sort(), ['release:claims', 'release:preflight', 'release:status']);
 });

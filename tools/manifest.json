@@ -7,6 +7,8 @@
       "path": "tools/gates.mjs",
       "help": true,
       "safetyClass": "local-write",
+      "destructive": true,
+      "mcp_exposure": "hidden",
       "description": "Runs the root and desktop typecheck and unit tests (and optionally e2e and the desktop build), stops at the first failure, and reports counts and the first failing line instead of the log.",
       "args": [
         {
@@ -68,6 +70,8 @@
       "path": "tools/lane-tree.mjs",
       "help": true,
       "safetyClass": "local-write",
+      "destructive": true,
+      "mcp_exposure": "hidden",
       "description": "Creates, lists, and safely removes the separate working copy for one lane of work; list only reads, and remove is a dry run unless --apply is given.",
       "args": [
         {
@@ -155,6 +159,8 @@
       "path": "tools/public-scan.mjs",
       "help": true,
       "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Scans the added lines of the net diff and of every commit patch, the file paths, commit messages, author names, and the HEAD blob of each added binary file of a branch, and optionally its pull request text, for home paths, session links, emails, secrets (token shapes, passwords inside URLs, and password or auth-token assignments in plain, quoted, and colon forms; ordinary code such as a call, a member access, or a variable is not a secret, and a line with the text public-scan: allow is skipped except for private terms), and private terms, and checks the pull request shape.",
       "args": [
         {
@@ -216,6 +222,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Show each release phase as done, todo, or unknown, with a reason.",
       "args": [
         {
@@ -258,6 +266,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Fetch origin, then check branch, sync with origin, and a clean tree. Print the commit.",
       "args": [
         {
@@ -307,6 +317,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Run the gate commands from the config in order. Stop at the first failure.",
       "args": [
         {
@@ -377,6 +389,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Pack the tarball and run npm publish --dry-run on it. Report size, count, SHA-256, and integrity.",
       "args": [
         {
@@ -448,6 +462,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "human-only",
+      "destructive": true,
+      "mcp_exposure": "hidden",
       "description": "Print the publish commands for a person to run. Never runs them.",
       "args": [
         {
@@ -493,6 +509,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Write the SHA-256 of each desktop artifact to the hash file. Every artifact name must contain the release version.",
       "args": [
         {
@@ -545,6 +563,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Check the registry tag and integrity, an install from the registry, and the desktop hashes.",
       "args": [
         {
@@ -590,6 +610,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "remote-write",
+      "destructive": true,
+      "mcp_exposure": "hidden",
       "description": "Create the annotated git tag on the checked commit and push that one tag to origin.",
       "args": [
         {
@@ -645,6 +667,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "human-only",
+      "destructive": true,
+      "mcp_exposure": "hidden",
       "description": "Print the npm deprecate and dist-tag commands from the config. Never runs them.",
       "args": [
         {
@@ -686,6 +710,8 @@
       "path": "scripts/release.mjs",
       "help": true,
       "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Scan the configured files for stale wording. Exit 1 on any hit.",
       "args": [
         {
@@ -728,6 +754,9 @@
     {
       "name": "check-test-patterns",
       "path": "tools/check-test-patterns.mjs",
+      "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Fails when a test or test:* script of package.json lists a node --test pattern that matches no file.",
       "args": [],
       "output": {
@@ -735,48 +764,56 @@
         "keys": {},
         "note": "Exit 1 and a list on stderr when a pattern matches nothing; run it after a build, because some patterns name dist/ files."
       },
-      "safetyClass": "read-only",
       "example": "node tools/check-test-patterns.mjs"
     },
     {
       "name": "check-test-temp-cleanup",
       "path": "tools/check-test-temp-cleanup.mjs",
+      "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Fails when a test file makes a temp folder with mkdtemp and has no removal that runs after the test.",
       "args": [],
       "output": {
         "format": "text",
         "keys": {}
       },
-      "safetyClass": "read-only",
       "example": "node tools/check-test-temp-cleanup.mjs"
     },
     {
       "name": "check-not-built",
       "path": "tools/check-not-built.mjs",
+      "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Fails while a contract stub that throws \"not built\" is left in a file that ships.",
       "args": [],
       "output": {
         "format": "text",
         "keys": {}
       },
-      "safetyClass": "read-only",
       "example": "node tools/check-not-built.mjs"
     },
     {
       "name": "check-social-preview",
       "path": "tools/check-social-preview.mjs",
+      "safetyClass": "read-only",
+      "destructive": false,
+      "mcp_exposure": "expose",
       "description": "Checks the social card tags in the built landing and documentation pages and the size of both card images; needs the built apps.",
       "args": [],
       "output": {
         "format": "text",
         "keys": {}
       },
-      "safetyClass": "read-only",
       "example": "node tools/check-social-preview.mjs"
     },
     {
       "name": "render-social-preview",
       "path": "tools/render-social-preview.mjs",
+      "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Redraws the home and documentation social card images with playwright-cli and replaces the committed PNG files only after both pass.",
       "args": [],
       "output": {
@@ -784,12 +821,14 @@
         "keys": {},
         "note": "Writes apps/landing/public/social/*.png and a scratch folder under .trellis/; needs playwright-cli and its Chromium."
       },
-      "safetyClass": "local-write",
       "example": "node tools/render-social-preview.mjs"
     },
     {
       "name": "docs-visuals:capture-shots",
       "path": "tools/docs-visuals/capture-shots.mjs",
+      "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Takes the desktop documentation screenshots again under the machine-wide e2e lock and updates the shots half of the visuals manifest.",
       "args": [
         {
@@ -803,12 +842,14 @@
         "keys": {},
         "note": "Builds the root packages first; writes WebP files to apps/docs/public/visuals."
       },
-      "safetyClass": "local-write",
       "example": "node tools/docs-visuals/capture-shots.mjs"
     },
     {
       "name": "docs-visuals:capture-terminals",
       "path": "tools/docs-visuals/capture-terminals.mjs",
+      "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Records the real output of each terminal entry of the plan against a sample project in a private temporary home and writes it to the visuals manifest.",
       "args": [],
       "output": {
@@ -816,12 +857,14 @@
         "keys": {},
         "note": "Needs the CLI built first (npm run build at the root); writes apps/docs/src/visuals/manifest.json."
       },
-      "safetyClass": "local-write",
       "example": "node tools/docs-visuals/capture-terminals.mjs"
     },
     {
       "name": "docs-visuals:manifest-shots",
       "path": "tools/docs-visuals/manifest-shots.mjs",
+      "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Writes the shots half of the visuals manifest from the plan and the size of each light WebP file.",
       "args": [],
       "output": {
@@ -829,12 +872,14 @@
         "keys": {},
         "note": "Writes apps/docs/src/visuals/manifest.json."
       },
-      "safetyClass": "local-write",
       "example": "node tools/docs-visuals/manifest-shots.mjs"
     },
     {
       "name": "verify",
       "path": "tools/verify.mjs",
+      "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Runs the typecheck, the regression tests, the landing build, and a production dependency audit in order, and writes a JSON record per check.",
       "args": [
         {
@@ -848,12 +893,14 @@
         "keys": {},
         "note": "Prints one JSON line per check and writes logs and report.json to .trellis/verification/; the audit reads the npm registry."
       },
-      "safetyClass": "local-write",
       "example": "node tools/verify.mjs"
     },
     {
       "name": "run-node-tests",
       "path": "tools/run-node-tests.mjs",
+      "safetyClass": "local-write",
+      "destructive": false,
+      "mcp_exposure": "hidden",
       "description": "Runs node --test with the given arguments in its own process group under a wall-clock limit, and kills the group past the limit.",
       "args": [
         {
@@ -872,7 +919,6 @@
         "keys": {},
         "note": "Exit 124 on the time limit; the tests it runs may write temp files."
       },
-      "safetyClass": "local-write",
       "example": "node tools/run-node-tests.mjs --test-timeout=120000 tools/test/gates.test.mjs"
     }
   ]
