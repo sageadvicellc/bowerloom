@@ -22,7 +22,7 @@ These items come from the maintainer's stated direction of 2026-11-07 and 2026-1
 
 ## State of 0.8 on 2026-11-08
 
-- `main` holds `0.8.0-beta.1`. It is published.
+- `main` holds `0.8.0-beta.1`. Pull request 135 records it as published on npm. Git cannot confirm that.
 - `release/0.8.0-beta.2` is 8 merged pull requests ahead of `main`, and it is not published. These are the pull requests:
   - 149, the Overview grid.
   - 150, Discovery.
@@ -49,8 +49,8 @@ If a 0.9 item depends on a piece, the piece is Keep, and the line names the item
 - `packages/adoption` and the portable projection in `packages/project-sync`. Adoption reads engine files and writes a harness definition by copy. V9-2 needs the harness read from each engine.
 - Discovery and the scan cache (pull requests 150 and 152). V9-2 shows configuration across the whole environment. That needs a scan the user trusts, and the cache stops a rescan on every launch. Both sit in the unreleased beta.2 work, so decision 2 affects them.
 - The Electron shell: `apps/desktop/main`, `preload`, `shared`, and the security checks. V9-4 names the desktop app as a human surface. This sort keeps the shell and leaves the screens to Unsure.
-- The linking of a notes folder: `packages/notes-source` and `kits/wiki-keeper`. V9-1 starts from a linked knowledge root. The package treats the source as a pointer and never opens a page, so V9-1 will add a reader.
-- The wiki-linking part of issue 143. V9-1 depends on a link flow that is easy to find. The Context page part of the issue is Unsure.
+- The linking of a notes folder: `packages/notes-source` and `kits/wiki-keeper`. V9-1 probably starts from a linked knowledge root. That is an inference, because the V9-1 text does not say it. The package treats the source as a pointer and never opens a page, so V9-1 will add a reader.
+- The wiki-linking part of issue 143. V9-1 probably depends on a link flow that is easy to find. That is also an inference. The Context page part of the issue is Unsure.
 - The release script and workflow tools (pull request 161) and the files in `release/`. This is an exception to the sort rule: no V9 item depends on them. Releasing 0.9 needs them, and they are process, not product. They also sit in the unreleased beta.2 work.
 - `apps/cli`. V9-4 names the CLI as the agent surface.
 
@@ -78,17 +78,20 @@ No product code is a Drop. A Drop needs proof that no 0.9 item depends on a piec
 
 - The desktop screens: Overview grid, Projects, Start, Library, and the unmerged Compare and Runs. V9-3 says only that the memory explorer, the engine views, and the explorers ship as stock extensions. It does not mention these screens. No extension interface exists yet, so no evidence says whether any screen becomes an extension. This is decision 1.
 - Issue 145, Compare and Runs. Runs data can overlap the V9-6 traces API, which is not specified yet.
-- The unreleased beta.2 work itself. This is decision 2.
-- The documentation site and the landing site. They describe the 0.8 app. The new product concept will change them. No 0.9 item names them, and no decision in this round covers them.
-- The desktop end-to-end suite and the journey tests. They follow the screens decision.
+- The unreleased beta.2 work itself. No V9 item names it. This is decision 2.
+- The documentation site and the landing site. They describe the 0.8 app. The new product concept will change them. No 0.9 item names them, and no decision in this round covers them. Keep pieces read from them, so they cannot be dropped first: the desktop shell build copies fonts from `apps/landing`, two tests read `apps/landing` and `apps/docs`, and the root package lists `apps/landing` as a workspace.
+- The desktop end-to-end suite and the journey tests. No V9 item names them. They follow the screens decision.
 - Four packages that no Keep piece imports from source: `claude-adapter`, `roots`, `team`, and `workbench`. No 0.9 item names them. They are not proven safe to remove, because other files refer to them:
-  - `claude-adapter`: nothing imports it, and the CLI pack list omits it. It is a process launcher, not a configuration reader.
-  - `roots`, `team`, and `workbench`: the root test scripts and `tsconfig.json` refer to `roots` and `team`. The CLI pack list in `tools/cli-distribution/pack.mjs` names `roots` and `workbench`. A development tool under `tools/step5` imports `team`. Tests and the startup demo read `workbench` files.
+  - `claude-adapter`: nothing imports it, and the CLI pack list omits it. The test coverage check in `tools/test/test-coverage.test.mjs` lists its tests, so removal needs that entry gone first.
+  - `roots` and `team`: the root test scripts name both, and `tsconfig.json` includes the `roots` tests.
+  - `roots` and `workbench`: the CLI pack list in `tools/cli-distribution/pack.mjs` names both.
+  - `team`: a development tool under `tools/step5` imports it.
+  - `workbench`: three tests under `tests/` and one startup test read its fixtures.
   This is decision 3. A removal needs its own pull request that updates those references.
-- `apps/mcp`. It is a root workspace and a published `bowerloom-mcp` bin. The root test script runs its tests. It imports no package. No 0.9 item names it. No decision in this round covers it.
+- `apps/mcp`. It is a root workspace and a declared bin (`bowerloom-mcp`) of the private root package. The root test script runs its tests. It imports no package. No 0.9 item names it. No decision in this round covers it.
 - Export and import of harness bundles. It shipped in `0.8.0-beta.1`. The code (`packages/harness-bundle`) is a dependency of the Keep shell, so it stays. Whether export and import stays a supported feature is not a 0.9 call that any item makes.
 - The knowledge graph idea in closed pull request 106. V9-1 can reuse it. See "Branches".
-- Issues older than 138. This sort leaves them out. Issues 156 to 160 already group part of them as tech debt.
+- Issues older than 138. No V9 item names them. This sort leaves them out. Issues 156 to 160 already group part of them as tech debt.
 
 ### Missing data
 
