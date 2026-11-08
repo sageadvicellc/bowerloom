@@ -47,43 +47,45 @@ If a 0.9 item depends on a piece, the piece is Keep, and the line names the item
 - `packages/harness-definition`. Its README says every package that reads or writes a harness imports it. V9-1, V9-2, and V9-3 all read a harness.
 - `packages/fidelity`. It decides how each engine carries a harness, and it reports every loss. V9-2 needs exactly that per-engine view.
 - `packages/adoption` and the portable projection in `packages/project-sync`. Adoption reads engine files and writes a harness definition by copy. V9-2 needs the harness read from each engine.
-- Discovery and the scan cache (pull requests 150 and 152). V9-2 shows configuration across the whole environment. That needs a scan the user trusts, and the cache stops a rescan on every launch.
+- Discovery and the scan cache (pull requests 150 and 152). V9-2 shows configuration across the whole environment. That needs a scan the user trusts, and the cache stops a rescan on every launch. Both sit in the unreleased beta.2 work, so decision 2 affects them.
 - The Electron shell: `apps/desktop/main`, `preload`, `shared`, and the security checks. V9-4 names the desktop app as a human surface. This sort keeps the shell and leaves the screens to Unsure.
 - The linking of a notes folder: `packages/notes-source` and `kits/wiki-keeper`. V9-1 starts from a linked knowledge root. The package treats the source as a pointer and never opens a page, so V9-1 will add a reader.
 - The wiki-linking part of issue 143. V9-1 depends on a link flow that is easy to find. The Context page part of the issue is Unsure.
-- The release script and workflow tools (pull request 161) and the files in `release/`. No V9 item depends on them. Releasing 0.9 needs them, and they are process, not product.
+- The release script and workflow tools (pull request 161) and the files in `release/`. This is an exception to the sort rule: no V9 item depends on them. Releasing 0.9 needs them, and they are process, not product. They also sit in the unreleased beta.2 work.
 - `apps/cli`. V9-4 names the CLI as the agent surface.
-- `packages/claude-adapter` and `packages/codex-adapter`. V9-2 shows configuration per engine, and these two packages are the engine adapters.
 
 ### Needed by a Keep piece
 
-A scan of static imports on `main` found that the Keep pieces reach more packages than the Keep list names. These packages stay while their importer stays.
+A scan of imports on `main` found that the Keep pieces reach more packages than the Keep list names. These packages stay while their importer stays.
 
 - Reached from the desktop shell, the core packages, or the engine adapters, directly or through another package:
-  - `contracts`, `context-slices`, `harness-bundle`, and `crew`.
+  - `contracts`, `context-slices`, `harness-bundle`, `crew`, and `codex-adapter`.
   - `project-config`, `project-context`, `project-authoring`, and `managed-skills`.
   - `skill-manifest`, `skill-sources`, `diagnostics`, and `authoring`.
   - `admission`, `broker`, `mcp-connections`, and `runtime`.
   - `broker-postgres`, `controlled-tests`, `graph`, `portable`, and `startup`.
-- Reached only through `apps/cli`: `connections`, `harness-portability`, `local-backend`, `local-control`, `recipes`, `routines`, `runtime-bridge`, and `workspace-effects`.
+- Reached only through `apps/cli`: `connections`, `harness-portability`, `linux-browser`, `local-backend`, `local-control`, `recipes`, `routines`, `runtime-bridge`, and `workspace-effects`.
 
-Most of the 0.7-era packages are in this list. Removing them breaks a Keep piece.
+Most of the 0.7-era packages are in this list. Removing one breaks a Keep piece. The scan reads imports in non-test source, including dynamic `import()` calls.
 
 ### Drop
 
 - The 52 `task/0.8-*` branches, as branches. No 0.9 item depends on a branch name. Their work reached `main` inside pull request 110, which squash-merged the `release/0.8.0-beta.1` branch. Pull requests 111 to 123 merged into that release branch first. Only 110 and 120 appear in the history of `main`. No pull request has one of these branches as its head. History cannot prove that each branch is fully in `main`, so the drop waits for decision 4.
 
-No product code is a Drop. A Drop needs proof that no 0.9 item depends on a piece. The direction notes name no 0.9 item for any piece under Unsure, and none that rules it out.
+No product code is a Drop. A Drop needs proof that no 0.9 item depends on a piece. The stated direction names no 0.9 item for any piece under Unsure, and none that rules it out.
 
 ### Unsure
 
 - The desktop screens: Overview grid, Projects, Start, Library, and the unmerged Compare and Runs. V9-3 says only that the memory explorer, the engine views, and the explorers ship as stock extensions. It does not mention these screens. No extension interface exists yet, so no evidence says whether any screen becomes an extension. This is decision 1.
 - Issue 145, Compare and Runs. Runs data can overlap the V9-6 traces API, which is not specified yet.
 - The unreleased beta.2 work itself. This is decision 2.
-- The documentation site and the landing site. They describe the 0.8 app. The new product concept will change them.
+- The documentation site and the landing site. They describe the 0.8 app. The new product concept will change them. No 0.9 item names them, and no decision in this round covers them.
 - The desktop end-to-end suite and the journey tests. They follow the screens decision.
-- Four packages that no Keep piece imports: `linux-browser`, `roots`, `team`, and `workbench`. No 0.9 item names them either. They are the drop candidates in the code. The scan reads static imports in source files only. It does not read dynamic loads or scripts. This is decision 3.
-- `apps/mcp`. No 0.9 item names it, and the scan did not trace what imports it.
+- Four packages that no Keep piece imports from source: `claude-adapter`, `roots`, `team`, and `workbench`. No 0.9 item names them. They are not proven safe to remove, because other files refer to them:
+  - `claude-adapter`: nothing imports it, and the CLI pack list omits it. It is a process launcher, not a configuration reader.
+  - `roots`, `team`, and `workbench`: the root test scripts and `tsconfig.json` refer to `roots` and `team`. The CLI pack list in `tools/cli-distribution/pack.mjs` names `roots` and `workbench`. A development tool under `tools/step5` imports `team`. Tests and the startup demo read `workbench` files.
+  This is decision 3. A removal needs its own pull request that updates those references.
+- `apps/mcp`. It is a root workspace and a published `bowerloom-mcp` bin. The root test script runs its tests. It imports no package. No 0.9 item names it. No decision in this round covers it.
 - Export and import of harness bundles. It shipped in `0.8.0-beta.1`. The code (`packages/harness-bundle`) is a dependency of the Keep shell, so it stays. Whether export and import stays a supported feature is not a 0.9 call that any item makes.
 - The knowledge graph idea in closed pull request 106. V9-1 can reuse it. See "Branches".
 - Issues older than 138. This sort leaves them out. Issues 156 to 160 already group part of them as tech debt.
@@ -94,7 +96,7 @@ No product code is a Drop. A Drop needs proof that no 0.9 item depends on a piec
 - The claims about the external multi-engine environments are the maintainer's description. They are not checked against those products' documents.
 - Trademark and name checks for V9-7 are not done.
 - The state of issues and pull requests comes from GitHub, read on 2026-11-08. Git cannot confirm it.
-- The import scan reads static imports in source files of `main` at commit `d66fc965`. It skips tests.
+- The import scan reads static and dynamic imports in source files of `main` at commit `d66fc965`. It skips tests. It does not read scripts, configuration files, or string references.
 
 ## Branches
 
@@ -109,5 +111,5 @@ Each decision is a separate comment on the pull request. The comment says what t
 
 1. How much of the current desktop interface survives.
 2. What happens to the unreleased beta.2 work and the two unbuilt issues.
-3. What happens to the four packages that no Keep piece imports.
+3. What happens to the four packages that no Keep piece imports from source.
 4. What happens to the stale 0.8 branches.
