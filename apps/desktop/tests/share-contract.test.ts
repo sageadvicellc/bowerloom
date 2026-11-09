@@ -8,7 +8,7 @@ import {
 } from '../shared/engine/types.js';
 import type { ImportNoteChoices, ShareSecret, ShareTool } from '../shared/engine/types.js';
 import { BUNDLE_LIMITS, BUNDLE_MESSAGES } from '../../../packages/harness-bundle/src/index.js';
-import { engineCodeOf } from '../renderer/harness/real/engine-bridge.js';
+import { engineCodeOf } from '../renderer/api/client.js';
 import { callRefusal } from '../renderer/harness/sheets/call-lanes.js';
 
 const SHARE_CALLS = { planExport: 1, runExport: 3, chooseBundle: 0, planImport: 3, runImport: 5, discardBundle: 1 } as const;

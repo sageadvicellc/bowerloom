@@ -15,9 +15,8 @@ import '../home/kit/stepper.css';
 import { isHarnessHash, isRealHash } from '../../shared/harness/route.js';
 import { ErrorBoundary } from '../common/error-boundary.js';
 import { wireSkipLink } from '../home/route-latch.js';
-import { getBridge } from '../home/real/bridge.js';
+import { getApiClient } from '../api/client.js';
 import { HarnessApp } from './HarnessApp.js';
-import { getEngineBridge } from './real/engine-bridge.js';
 // The website's look on the app's parts. It loads after every screen's own sheet, so it wins a tie of specificity.
 import './brand-layer.css';
 
@@ -26,5 +25,6 @@ export { isHarnessHash };
 export function mountHarness(root: HTMLElement): void {
   wireSkipLink(document);
   const realMode = isRealHash(location.hash);
-  createRoot(root).render(<ErrorBoundary real={realMode}><HarnessApp realMode={realMode} real={realMode ? getBridge() : null} engine={realMode ? getEngineBridge() : undefined} /></ErrorBoundary>);
+  const api = realMode ? getApiClient() : null;
+  createRoot(root).render(<ErrorBoundary real={realMode}><HarnessApp realMode={realMode} real={api === null ? null : api.reader} engine={api === null ? undefined : api.engine} /></ErrorBoundary>);
 }

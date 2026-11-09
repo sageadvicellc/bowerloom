@@ -172,5 +172,5 @@ test('SL3: a refused line whose entry the definition does not hold is shown, but
 test('SL3: BUSY is neither declared nor read: the calls run one at a time in order', () => {
   assert.ok(!(ENGINE_CALL_REFUSALS as readonly string[]).includes('BUSY'));
   assert.doesNotMatch(readFileSync(join(DESKTOP, 'preload', 'real-preload.ts'), 'utf8').split('bowerloomEngine')[0]!.split('engineRefusal')[1] ?? '', /BUSY/);
-  assert.doesNotMatch(readFileSync(join(DESKTOP, 'renderer', 'harness', 'real', 'engine-bridge.ts'), 'utf8'), /BUSY/);
+  assert.doesNotMatch(readFileSync(join(DESKTOP, 'renderer', 'api', 'client.ts'), 'utf8'), /BUSY/);
 });

@@ -8,7 +8,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { RealBridge, RealResult } from '../../../shared/real/types.js';
 import { createSampleWorld } from '../../../shared/harness/sample.js';
-import { codeOf } from '../../home/real/bridge.js';
+import { readerCodeOf } from '../../api/client.js';
 import { selectedIds } from '../../home/real/flow.js';
 import { realNow, realNowMs } from '../clock.js';
 import { HButton } from '../parts/controls.js';
@@ -61,7 +61,7 @@ export function RealChoose({ bridge }: { bridge: RealBridge }): ReactElement {
   // Question one runs when the screen shows.
   useEffect(() => {
     if (state.step !== 'looking') return;
-    bridge.discoverPlaces().then(found => { if (live.current) send({ type: 'found', found }); }, (error: unknown) => { if (live.current) send({ type: 'fail', code: codeOf(error) }); });
+    bridge.discoverPlaces().then(found => { if (live.current) send({ type: 'found', found }); }, (error: unknown) => { if (live.current) send({ type: 'fail', code: readerCodeOf(error) }); });
   }, [state.step, bridge]);
   // Question two runs only after "Yes, read them", and only for the ticked folders.
   useEffect(() => {
@@ -82,7 +82,7 @@ export function RealChoose({ bridge }: { bridge: RealBridge }): ReactElement {
 
   const pick = (): void => {
     setBusy(true);
-    bridge.pickFolder().then(found => { if (live.current) send({ type: 'picked', found, cancelled: found.cancelled }); }, (error: unknown) => { if (live.current) send({ type: 'fail', code: codeOf(error) }); }).finally(() => { if (live.current) setBusy(false); });
+    bridge.pickFolder().then(found => { if (live.current) send({ type: 'picked', found, cancelled: found.cancelled }); }, (error: unknown) => { if (live.current) send({ type: 'fail', code: readerCodeOf(error) }); }).finally(() => { if (live.current) setBusy(false); });
   };
   const leave = (): void => go({ name: 'harnesses' });
   const useSampleNow = (): void => { setAsking(false); ui.replaceWorld(createSampleWorld(realNow())); go({ name: 'read' }); };
