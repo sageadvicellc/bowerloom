@@ -1,9 +1,9 @@
 // The loader reads manifests that sit inside the bundle root, and nothing from outside it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadBundledManifest, loadBundledManifests } from '../main/extension-loader.js';
+import { MANIFEST_MAX_BYTES, loadBundledManifest, loadBundledManifests } from '../main/extension-loader.js';
 import { tempDir } from './support.js';
 
 const manifest = (id: string, extra: Record<string, unknown> = {}): string => JSON.stringify({ id, title: id, kind: 'ui', routes: [`${id}-route`], protected: false, ...extra });
@@ -19,13 +19,63 @@ test('loads a valid bundled manifest and lists nothing skipped', t => {
   assert.deepEqual(loadBundledManifest(root, 'alpha'), { ok: true, value: result.manifests[0] });
 });
 
-test('loads nothing when the bundle root has no extensions folder, or none at all', t => {
+test('a root that exists but has no extensions folder is a deliberate empty result, with nothing skipped', t => {
   const root = tempDir(t);
   assert.deepEqual(loadBundledManifests(root), { manifests: [], skipped: [] });
+});
+
+test('an empty extensions folder loads nothing and skips nothing', t => {
+  const root = tempDir(t);
   mkdirSync(join(root, 'extensions'));
   assert.deepEqual(loadBundledManifests(root), { manifests: [], skipped: [] });
-  assert.deepEqual(loadBundledManifests(join(root, 'missing')), { manifests: [], skipped: [] });
-  assert.deepEqual(loadBundledManifests(''), { manifests: [], skipped: [] });
+});
+
+test('a bundle root the loader could not look at is reported as UNREADABLE, never as a silent empty result', t => {
+  const root = tempDir(t);
+  for (const bad of [join(root, 'missing'), '', 'relative/path', '.', undefined, null, 7] as unknown[]) {
+    const result = loadBundledManifests(bad as string);
+    assert.deepEqual(result.manifests, [], String(bad));
+    assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['extensions', 'UNREADABLE']], String(bad));
+    assert.ok(result.skipped[0]!.message.length > 0);
+  }
+  assert.match(loadBundledManifests(join(root, 'missing')).skipped[0]!.message, /ENOENT/, 'the error code stays in the message');
+});
+
+test('both loaders require an absolute bundle root', t => {
+  const root = tempDir(t);
+  put(root, 'alpha', manifest('alpha'));
+  for (const bad of ['', 'relative', '.', '../x']) {
+    const answer = loadBundledManifest(bad, 'alpha');
+    assert.equal(answer.ok, false, bad);
+    if (!answer.ok) assert.equal(answer.refusal.code, 'UNREADABLE', bad);
+  }
+  assert.equal(loadBundledManifest(root, 'alpha').ok, true);
+});
+
+test('an extensions entry that is a file is reported as UNREADABLE', t => {
+  const root = tempDir(t);
+  writeFileSync(join(root, 'extensions'), 'not a folder');
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests, []);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['extensions', 'UNREADABLE']]);
+});
+
+test('an extensions entry that is a dangling link is reported as UNREADABLE', t => {
+  const root = tempDir(t);
+  symlinkSync(join(root, 'nowhere'), join(root, 'extensions'));
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['extensions', 'UNREADABLE']]);
+});
+
+test('an extensions folder that cannot be read is reported as UNREADABLE with the error code in the message', t => {
+  if (process.getuid?.() === 0) return t.skip('root can read any folder');
+  const root = tempDir(t);
+  put(root, 'alpha', manifest('alpha'));
+  chmodSync(join(root, 'extensions'), 0o000);
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests, []);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['extensions', 'UNREADABLE']]);
+  assert.match(result.skipped[0]!.message, /EACCES/);
 });
 
 test('a folder with no manifest.json is skipped and reported', t => {
@@ -34,6 +84,7 @@ test('a folder with no manifest.json is skipped and reported', t => {
   const result = loadBundledManifests(root);
   assert.deepEqual(result.manifests, []);
   assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['empty', 'UNREADABLE']]);
+  assert.match(result.skipped[0]!.message, /ENOENT/, 'the error code stays in the message');
 });
 
 test('refuses a name with .. , a path separator or an absolute path, and reads nothing', t => {
@@ -78,13 +129,57 @@ test('refuses an extensions folder that is itself a link to the outside', t => {
   assert.equal(result.skipped[0]?.code, 'OUTSIDE_ROOT');
 });
 
-test('a link that stays inside the bundle root is allowed', t => {
+test('a link that stays inside the bundle root is allowed, but the same folder is loaded once: the second alias is a DUPLICATE', t => {
   const root = tempDir(t);
   put(root, 'real', manifest('real'));
   symlinkSync(join(root, 'extensions', 'real'), join(root, 'extensions', 'alias'));
   const result = loadBundledManifests(root);
-  assert.deepEqual(result.manifests.map(m => m.id).sort(), ['real', 'real']);
+  assert.deepEqual(result.manifests.map(m => m.id), ['real']);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['real', 'DUPLICATE']]);
+  assert.equal(loadBundledManifest(root, 'alias').ok, true, 'one alias on its own still loads');
+});
+
+test('a link that stays inside the bundle root and points to a folder with a different name is loaded', t => {
+  const root = tempDir(t);
+  mkdirSync(join(root, 'store'));
+  mkdirSync(join(root, 'store', 'inner'));
+  writeFileSync(join(root, 'store', 'inner', 'manifest.json'), manifest('inner'));
+  mkdirSync(join(root, 'extensions'));
+  symlinkSync(join(root, 'store', 'inner'), join(root, 'extensions', 'linked'));
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests.map(m => m.id), ['inner']);
   assert.deepEqual(result.skipped, []);
+});
+
+test('a manifest.json that is a link to another file name inside the root is refused', t => {
+  const root = tempDir(t);
+  mkdirSync(join(root, 'extensions', 'sneaky'), { recursive: true });
+  writeFileSync(join(root, 'extensions', 'sneaky', 'other.json'), manifest('sneaky'));
+  symlinkSync(join(root, 'extensions', 'sneaky', 'other.json'), join(root, 'extensions', 'sneaky', 'manifest.json'));
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests, []);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['sneaky', 'BAD_NAME']]);
+});
+
+test('a manifest.json that is a folder is UNREADABLE', t => {
+  const root = tempDir(t);
+  mkdirSync(join(root, 'extensions', 'dir', 'manifest.json'), { recursive: true });
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['dir', 'UNREADABLE']]);
+});
+
+test('a folder name with control or bidi characters is cleaned and cut to 64 characters in the skip report', t => {
+  const root = tempDir(t);
+  const names = ['evil\u202Ename\u0007\n', 'x'.repeat(200)];
+  for (const name of names) mkdirSync(join(root, 'extensions', name), { recursive: true });
+  const result = loadBundledManifests(root);
+  assert.equal(result.skipped.length, 2);
+  for (const s of result.skipped) {
+    assert.doesNotMatch(s.name, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/, 'name');
+    assert.doesNotMatch(s.message, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/, 'message');
+    assert.ok([...s.name].length <= 65, `${s.name.length}`);
+  }
+  assert.ok(result.skipped.some(s => s.name.startsWith('x'.repeat(64)) && !s.name.includes('x'.repeat(65))));
 });
 
 test('skips a manifest that is not valid JSON or fails the manifest check, reports it, and still loads the others', t => {
@@ -102,6 +197,19 @@ test('skips a manifest that is not valid JSON or fails the manifest check, repor
   for (const s of result.skipped) assert.ok(s.message.length > 0, s.name);
 });
 
+test('a manifest that is exactly at the size limit is read, and one byte over is TOO_LARGE', t => {
+  const root = tempDir(t);
+  const base = manifest('edge', { title: '' }).length;
+  const pad = (n: number): string => manifest('edge', { title: 'x'.repeat(n) }) + ' '.repeat(Math.max(0, MANIFEST_MAX_BYTES - (base + n)));
+  const fit = pad(10);
+  assert.equal(fit.length, MANIFEST_MAX_BYTES);
+  put(root, 'fit', fit);
+  put(root, 'over', fit + ' ');
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests.map(m => m.id), ['edge']);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['over', 'TOO_LARGE']]);
+});
+
 test('a manifest file that is far too large is skipped without being parsed', t => {
   const root = tempDir(t);
   put(root, 'huge', manifest('huge', { title: 'x'.repeat(200_000) }));
@@ -117,4 +225,5 @@ test('a loose file in the extensions folder is skipped and reported, not loaded'
   const result = loadBundledManifests(root);
   assert.deepEqual(result.manifests, []);
   assert.equal(result.skipped[0]?.name, 'stray.json');
+  assert.equal(result.skipped[0]?.code, 'UNREADABLE');
 });

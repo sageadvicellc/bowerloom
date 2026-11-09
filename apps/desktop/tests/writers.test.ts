@@ -11,10 +11,15 @@ const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').re
 function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
 const read = (file: string): string => strip(readFileSync(join(DESKTOP, file), 'utf8'));
 
-test('the app\'s source writes a file in only four modules of main: the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
+test('the app\'s source writes a file in only five modules of main (the extension loader only opens a manifest for reading): the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(read(f)) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
-  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
+  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/extension-loader.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
+  // The extension loader matches the scan only for its one openSync, which opens a manifest for reading: the string flag 'r', and no name that changes a file.
+  const loader = read('main/extension-loader.ts');
+  assert.equal((loader.match(/\bopenSync\(/g) ?? []).length, 1);
+  assert.match(loader, /openSync\(file, 'r'\)/);
+  assert.doesNotMatch(loader, /\b(writeFileSync|writeFile|mkdirSync|rmSync|renameSync|unlinkSync|copyFileSync|cpSync|symlinkSync|chmodSync|appendFileSync|createWriteStream|O_CREAT|O_WRONLY|O_RDWR|O_APPEND|O_TRUNC)\b/);
   // The work module of export and import (it runs on a worker thread): its one call that changes a file by itself is `unlinkSync`, in the undo of the empty harness it made
   // a moment before, only while the file still holds the bytes it wrote. Every other write goes through the portable file layer and the journaled save of the packages.
   const work = read('main/engine-bundle-work.ts');

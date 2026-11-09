@@ -20,7 +20,7 @@ export interface ExtensionManifest {
 }
 
 /** The refusal codes of the extension mechanism. */
-export const EXTENSION_CODES = Object.freeze(['PROTECTED', 'UNKNOWN_EXTENSION', 'BAD_MANIFEST', 'ROUTE_TAKEN', 'EXTENSION_EXISTS'] as const);
+export const EXTENSION_CODES = Object.freeze(['PROTECTED', 'UNKNOWN_EXTENSION', 'BAD_MANIFEST', 'ROUTE_TAKEN', 'EXTENSION_EXISTS', 'RESERVED'] as const);
 export type ExtensionCode = (typeof EXTENSION_CODES)[number];
 
 /** The answer of resolve when a route has an owner: the mount it registered. */

@@ -7,25 +7,47 @@ import type { RouteName } from '../harness/route.js';
 import { checkManifest } from './manifest.js';
 import type { ExtensionManifest } from './types.js';
 
-/** The 15 base routes of the harness app (RouteName in shared/harness/route.ts). */
-export const BASE_ROUTES: readonly RouteName[] = Object.freeze(['welcome', 'choose', 'read', 'notes', 'overview', 'harnesses', 'builder', 'file', 'library', 'projects', 'runs', 'compare', 'interfaces', 'history', 'help'] as const);
-
 /** The ids of the six work areas, in the order the app shows them. */
 export const DEFAULT_IDS = Object.freeze(['overview', 'harnesses', 'library', 'projects', 'interfaces-history-help', 'first-run'] as const);
 export type DefaultId = (typeof DEFAULT_IDS)[number];
 
-const AREAS: readonly { readonly id: DefaultId; readonly title: string; readonly routes: readonly RouteName[] }[] = [
-  { id: 'overview', title: 'Overview', routes: ['overview'] },
-  { id: 'harnesses', title: 'Harnesses', routes: ['harnesses', 'builder', 'file'] },
-  { id: 'library', title: 'Library', routes: ['library'] },
-  { id: 'projects', title: 'Projects', routes: ['projects', 'runs', 'compare'] },
-  { id: 'interfaces-history-help', title: 'Interfaces, history and help', routes: ['interfaces', 'history', 'help'] },
-  { id: 'first-run', title: 'First run', routes: ['welcome', 'choose', 'read', 'notes'] },
-];
+/**
+ * The owner of every route. The type is Record<RouteName, DefaultId>, so a new member of the Route union (shared/harness/route.ts) is a type error here
+ * until it has an owner, and a key that is not a route is a type error too. The key order is the order of the base routes.
+ */
+export const ROUTE_OWNERS: Readonly<Record<RouteName, DefaultId>> = Object.freeze({
+  welcome: 'first-run',
+  choose: 'first-run',
+  read: 'first-run',
+  notes: 'first-run',
+  overview: 'overview',
+  harnesses: 'harnesses',
+  builder: 'harnesses',
+  file: 'harnesses',
+  library: 'library',
+  projects: 'projects',
+  runs: 'projects',
+  compare: 'projects',
+  interfaces: 'interfaces-history-help',
+  history: 'interfaces-history-help',
+  help: 'interfaces-history-help',
+});
 
-/** The six default manifests, each checked and frozen. */
-export const DEFAULT_EXTENSIONS: readonly ExtensionManifest[] = Object.freeze(AREAS.map(area => {
-  const checked = checkManifest({ ...area, kind: 'ui', protected: true });
-  if (!checked.ok) throw new Error(`The default extension "${area.id}" is not valid: ${checked.refusal.message}`);
+/** The 15 base routes of the harness app (RouteName in shared/harness/route.ts), taken from the owner table. */
+export const BASE_ROUTES: readonly RouteName[] = Object.freeze(Object.keys(ROUTE_OWNERS) as RouteName[]);
+
+const TITLES: Readonly<Record<DefaultId, string>> = Object.freeze({
+  overview: 'Overview',
+  harnesses: 'Harnesses',
+  library: 'Library',
+  projects: 'Projects',
+  'interfaces-history-help': 'Interfaces, history and help',
+  'first-run': 'First run',
+});
+
+/** The six default manifests, each checked and frozen. The routes of each come from the owner table. */
+export const DEFAULT_EXTENSIONS: readonly ExtensionManifest[] = Object.freeze(DEFAULT_IDS.map(id => {
+  const checked = checkManifest({ id, title: TITLES[id], kind: 'ui', routes: BASE_ROUTES.filter(route => ROUTE_OWNERS[route] === id), protected: true });
+  if (!checked.ok) throw new Error(`The default extension "${id}" is not valid: ${checked.refusal.message}`);
   return checked.value;
 }));

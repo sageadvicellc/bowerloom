@@ -46,7 +46,7 @@ const FS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'main/engine-bundle.ts': ['realpathSync', 'statSync'],
   'main/engine-save.ts': ['lstatSync', 'readdirSync'],
   'main/engine-service.ts': ['lstatSync', 'readFileSync', 'realpathSync'],
-  'main/extension-loader.ts': ['readFileSync', 'readdirSync', 'realpathSync', 'statSync'],
+  'main/extension-loader.ts': ['closeSync', 'fstatSync', 'lstatSync', 'openSync', 'readSync', 'readdirSync', 'realpathSync', 'statSync'],
   'main/kit.ts': ['lstatSync', 'readFileSync', 'readdirSync'],
   'main/main.ts': ['readFile'],
   'main/notes-report.ts': ['closeSync', 'constants', 'fchmodSync', 'fstatSync', 'lstatSync', 'mkdtempSync', 'openSync', 'readSync', 'realpathSync', 'rmSync', 'writeSync'],
@@ -91,8 +91,8 @@ test('the files that can create, change or remove a file are the four listed, an
     ['main/scan-cache.ts', ['chmodSync', 'rmSync', 'writeSync']],
     ['main/temp-data.mjs', ['chmodSync', 'mkdtempSync', 'rmSync']],
   ]);
-  // openSync can create a file when it is given the right flags: only the report copy and the saved read pass O_CREAT (tests/writers.test.ts holds their flags), and the reader passes read flags only (tests/real-static.test.ts holds the flags).
-  assert.deepEqual(Object.entries(FS_ALLOWED).filter(([, names]) => names.includes('openSync')).map(([file]) => file), ['main/notes-report.ts', 'main/real-fs.ts', 'main/scan-cache.ts']);
+  // openSync can create a file when it is given the right flags: the extension loader opens the string flag 'r' only (tests/extensions-loader.test.ts), only the report copy and the saved read pass O_CREAT (tests/writers.test.ts holds their flags), and the reader passes read flags only (tests/real-static.test.ts holds the flags).
+  assert.deepEqual(Object.entries(FS_ALLOWED).filter(([, names]) => names.includes('openSync')).map(([file]) => file), ['main/extension-loader.ts', 'main/notes-report.ts', 'main/real-fs.ts', 'main/scan-cache.ts']);
   const reader = plainJs({ 'main/real-fs.ts': readFileSync(join(DESKTOP, 'main', 'real-fs.ts'), 'utf8') }, DESKTOP)['main/real-fs.ts']!;
   assert.equal(reader.error, undefined, reader.error);
   assert.deepEqual(tokenize(reader.js ?? '').filter(t => t.type === 'id' && /^O_(?:CREAT|WRONLY|RDWR|APPEND|TRUNC)$/.test(t.text)).map(t => t.text), [], 'the reader opens for reading only');

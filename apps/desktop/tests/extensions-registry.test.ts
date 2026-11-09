@@ -5,8 +5,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRegistry } from '../shared/extensions/registry.js';
 import { checkManifest } from '../shared/extensions/manifest.js';
-import { BASE_ROUTES, DEFAULT_EXTENSIONS, DEFAULT_IDS } from '../shared/extensions/defaults.js';
+import { BASE_ROUTES, DEFAULT_EXTENSIONS, DEFAULT_IDS, ROUTE_OWNERS } from '../shared/extensions/defaults.js';
+import type { DefaultId } from '../shared/extensions/defaults.js';
 import type { Registry } from '../shared/extensions/registry.js';
+import { FIRST_RUN } from '../shared/harness/route.js';
 import type { RouteName } from '../shared/harness/route.js';
 import { DESKTOP } from './support.js';
 
@@ -32,6 +34,26 @@ test('resolve returns the mount for a registered route and a named not-found res
   const missing = registry.resolve('no-such-route');
   assert.deepEqual(missing, { found: false, code: 'ROUTE_NOT_FOUND', route: 'no-such-route' });
   assert.deepEqual(createRegistry<string>().resolve('overview'), { found: false, code: 'ROUTE_NOT_FOUND', route: 'overview' }, 'an empty registry has no route');
+});
+
+test('resolve and uninstall never throw for a value with no prototype, a symbol or an object that cannot become text', () => {
+  const registry = registryWith();
+  const strange: unknown[] = [Object.create(null), Symbol('x'), { toString() { throw new Error('no text'); } }, { toString: null, valueOf: null }, 10n, () => 'x'];
+  for (const value of strange) {
+    const found = registry.resolve(value as string);
+    assert.equal(found.found, false);
+    if (!found.found) { assert.equal(found.code, 'ROUTE_NOT_FOUND'); assert.equal(typeof found.route, 'string'); }
+    const gone = registry.uninstall(value as string);
+    assert.equal(gone.ok, false);
+    if (!gone.ok) { assert.equal(gone.refusal.code, 'UNKNOWN_EXTENSION'); assert.equal(typeof gone.refusal.message, 'string'); }
+  }
+  assert.equal(registry.list().length, 6);
+});
+
+test('the registry object is frozen: its methods cannot be swapped', () => {
+  const registry = registryWith();
+  assert.equal(Object.isFrozen(registry), true);
+  assert.throws(() => { (registry as { resolve: unknown }).resolve = () => ({ found: true }); }, TypeError);
 });
 
 test('resolve never throws and never answers blank for a strange route', () => {
@@ -83,6 +105,24 @@ test('uninstall of an unknown id is refused as UNKNOWN_EXTENSION, and an unprote
   assert.equal(registry.resolve('sample-route').found, false, 'its route is free again');
   assert.equal(registry.uninstall('sample').ok, false, 'it is gone');
   assert.equal(registry.register(good, 'm2').ok, true, 'the id and route can be registered again');
+});
+
+// Type-level check: every route name has an owner and every owner key is a route name. A new Route member is a type error until ROUTE_OWNERS names its owner.
+type OwnedKeys = keyof typeof ROUTE_OWNERS;
+const noMissingRoute: [Exclude<RouteName, OwnedKeys>] extends [never] ? true : never = true;
+const noExtraRoute: [Exclude<OwnedKeys, RouteName>] extends [never] ? true : never = true;
+const ownersAreDefaults: [(typeof ROUTE_OWNERS)[RouteName]] extends [DefaultId] ? true : never = true;
+
+test('the owner table covers exactly the routes of the Route union, and the first-run default owns exactly FIRST_RUN', () => {
+  assert.deepEqual([noMissingRoute, noExtraRoute, ownersAreDefaults], [true, true, true]);
+  assert.deepEqual(Object.keys(ROUTE_OWNERS), [...BASE_ROUTES]);
+  assert.equal(BASE_ROUTES.length, 15);
+  assert.equal(Object.isFrozen(ROUTE_OWNERS), true);
+  assert.equal(Object.isFrozen(BASE_ROUTES), true);
+  for (const owner of Object.values(ROUTE_OWNERS)) assert.ok((DEFAULT_IDS as readonly string[]).includes(owner), owner);
+  const firstRun = DEFAULT_EXTENSIONS.find(m => m.id === 'first-run')!;
+  assert.deepEqual([...firstRun.routes].sort(), [...FIRST_RUN].sort());
+  for (const manifest of DEFAULT_EXTENSIONS) for (const route of manifest.routes) assert.equal(ROUTE_OWNERS[route as RouteName], manifest.id, route);
 });
 
 test('the registry is the only route table: each of the 15 base routes is owned by exactly one default extension', () => {
@@ -178,6 +218,9 @@ test('shared/extensions is pure code: no electron, no node: module, no file, no 
     assert.doesNotMatch(code, /['"`]node:[a-z]/, `${file} imports a node: module`);
     assert.doesNotMatch(code, /\brequire\(/, `${file} uses require`);
     assert.doesNotMatch(code, /\bfetch\(|XMLHttpRequest|WebSocket|\beval\(|new Function\(/, `${file} reaches out or runs text`);
-    for (const m of code.matchAll(/from ['"]([^'"]+)['"]/g)) assert.match(m[1]!, /^\.\.?\//, `${file} imports ${m[1]}, only relative files are allowed`);
+    for (const m of code.matchAll(/\bfrom\s*['"]([^'"]+)['"]/g)) assert.match(m[1]!, /^\.\.?\//, `${file} imports ${m[1]}, only relative files are allowed`);
+    for (const m of code.matchAll(/\bimport\s*['"]([^'"]+)['"]/g)) assert.match(m[1]!, /^\.\.?\//, `${file} has a bare import of ${m[1]}, only relative files are allowed`);
+    assert.doesNotMatch(code, /\bimport\s*\(/, `${file} uses a dynamic import()`);
+    assert.doesNotMatch(code, /\bimport\.meta\b|\bprocess\b|\brequire\b/, `${file} reaches the host`);
   }
 });

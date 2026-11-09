@@ -7,7 +7,7 @@ import { checkManifest, refuse } from './manifest.js';
 import type { Answer, ExtensionManifest, RouteResolution } from './types.js';
 
 export interface Registry<M = unknown> {
-  /** Checks the manifest, then registers it with its mount. Refuses BAD_MANIFEST, EXTENSION_EXISTS or ROUTE_TAKEN, and then registers nothing. */
+  /** Checks the manifest, then registers it with its mount. Refuses BAD_MANIFEST, EXTENSION_EXISTS or ROUTE_TAKEN. The registry itself is frozen, and then registers nothing. */
   register(manifest: unknown, mount: M): Answer<ExtensionManifest>;
   /** Removes an extension and frees its routes. Refuses PROTECTED (the extension stays) or UNKNOWN_EXTENSION. */
   uninstall(id: string): Answer<ExtensionManifest>;
@@ -17,12 +17,18 @@ export interface Registry<M = unknown> {
   list(): readonly ExtensionManifest[];
 }
 
+/** A text for a value that is only shown. It never throws: an object with no prototype, a symbol or a toString that throws all become text. */
+function show(value: unknown): string {
+  try { return String(value); } catch { /* no usable toString */ }
+  try { return Object.prototype.toString.call(value); } catch { return '[unprintable]'; }
+}
+
 export function createRegistry<M = unknown>(): Registry<M> {
   // Maps hold the data, so a name such as "__proto__" is only a key.
   const entries = new Map<string, { readonly manifest: ExtensionManifest; readonly mount: M }>();
   const owners = new Map<string, string>();
 
-  return {
+  const registry: Registry<M> = {
     register(manifest, mount) {
       const checked = checkManifest(manifest);
       if (!checked.ok) return checked;
@@ -38,7 +44,7 @@ export function createRegistry<M = unknown>(): Registry<M> {
     },
     uninstall(id) {
       const entry = typeof id === 'string' ? entries.get(id) : undefined;
-      if (entry === undefined) return refuse('UNKNOWN_EXTENSION', `No extension has the id "${String(id)}".`);
+      if (entry === undefined) return refuse('UNKNOWN_EXTENSION', `No extension has the id "${show(id)}".`);
       if (entry.manifest.protected) return refuse('PROTECTED', `The extension "${entry.manifest.id}" is part of the app and cannot be uninstalled.`);
       entries.delete(entry.manifest.id);
       for (const route of entry.manifest.routes) owners.delete(route);
@@ -47,9 +53,10 @@ export function createRegistry<M = unknown>(): Registry<M> {
     resolve(route) {
       const id = typeof route === 'string' ? owners.get(route) : undefined;
       const entry = id === undefined ? undefined : entries.get(id);
-      if (id === undefined || entry === undefined) return { found: false, code: 'ROUTE_NOT_FOUND', route: typeof route === 'string' ? route : String(route) };
+      if (id === undefined || entry === undefined) return { found: false, code: 'ROUTE_NOT_FOUND', route: typeof route === 'string' ? route : show(route) };
       return { found: true, id, mount: entry.mount };
     },
     list() { return [...entries.values()].map(e => e.manifest); },
   };
+  return Object.freeze(registry);
 }
