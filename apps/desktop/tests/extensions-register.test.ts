@@ -107,3 +107,51 @@ test('registering { ...good, id: "library", protected: false } directly is refus
   assert.deepEqual(registry.resolve('library'), { found: true, id: 'library', mount: 'mount:library' });
   assert.equal(code(registry.uninstall('library')), 'PROTECTED');
 });
+
+test('registerDefaults is atomic: a taken route or id throws before any default is registered', () => {
+  const taken = createRegistry();
+  assert.equal(taken.register({ ...good, routes: ['help'] }, undefined).ok, true);
+  assert.throws(() => registerDefaults(taken), /"interfaces-history-help".*ROUTE_TAKEN/);
+  assert.deepEqual(taken.list().map(m => m.id), ['sample'], 'no default was registered');
+  const exists = createRegistry();
+  assert.equal(exists.register({ ...good, id: 'projects', routes: ['elsewhere'] }, undefined).ok, true);
+  assert.throws(() => registerDefaults(exists), /"projects".*EXTENSION_EXISTS/);
+  assert.deepEqual(exists.list().map(m => m.id), ['projects'], 'no default was registered');
+});
+
+test('registerDefaults: a mountOf that throws becomes an Error naming the id and MOUNT_FAILED, and nothing is registered', () => {
+  assert.ok((EXTENSION_CODES as readonly string[]).includes('MOUNT_FAILED'));
+  const registry = createRegistry<string>();
+  assert.throws(() => registerDefaults(registry, id => { if (id === 'library') throw new Error('no screen'); return `mount:${id}`; }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.match(error.message, /"library"/);
+    assert.match(error.message, /MOUNT_FAILED/);
+    return true;
+  });
+  assert.equal(registry.list().length, 0);
+  assert.throws(() => registerDefaults(registry, () => { throw { toString() { throw new Error('x'); } }; }), /"overview".*MOUNT_FAILED/, 'even a thrown value that cannot be printed');
+});
+
+test('registerLoaded: a mountOf that throws is a MOUNT_FAILED answer for that manifest only, and the others register', () => {
+  const registry = createRegistry<string>();
+  const results = registerLoaded(registry, [good, { ...good, id: 'other', routes: ['other-route'] }], m => { if (m.id === 'sample') throw new Error('no screen'); return `mount:${m.id}`; });
+  assert.deepEqual(results.map(r => r.ok ? 'ok' : r.refusal.code), ['MOUNT_FAILED', 'ok']);
+  assert.match(results[0]!.ok ? '' : results[0]!.refusal.message, /"sample"/);
+  assert.deepEqual(registry.list().map(m => m.id), ['other']);
+});
+
+test('a Registry with a concrete mount type needs the mountOf argument (checked by the compiler only)', () => {
+  const registry = createRegistry<string>();
+  const neverCalled = (): void => {
+    // @ts-expect-error a string mount cannot be left out
+    registerDefaults(registry);
+    // @ts-expect-error a string mount cannot be left out
+    registerLoaded(registry, []);
+    registerDefaults(createRegistry());
+    registerLoaded(createRegistry(), []);
+    registerDefaults(registry, id => id);
+    registerLoaded(registry, [], m => m.id);
+  };
+  assert.equal(typeof neverCalled, 'function');
+  assert.equal(registry.list().length, 0);
+});

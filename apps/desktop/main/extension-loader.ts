@@ -17,8 +17,10 @@ export const MANIFEST_FILE = 'manifest.json';
 export const MANIFEST_MAX_BYTES = 64 * 1024;
 /** A folder name in a report is cut to this many characters. */
 const NAME_SHOWN = 64;
+/** The parse error in a NOT_JSON message is cut to this many characters. */
+const NOT_JSON_SHOWN = 100;
 
-export type SkipCode = 'BAD_NAME' | 'OUTSIDE_ROOT' | 'UNREADABLE' | 'TOO_LARGE' | 'NOT_JSON' | 'BAD_MANIFEST' | 'DUPLICATE';
+export type SkipCode = 'BAD_NAME' | 'OUTSIDE_ROOT' | 'UNREADABLE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_JSON' | 'BAD_MANIFEST' | 'DUPLICATE';
 export interface Skipped { readonly name: string; readonly code: SkipCode; readonly message: string }
 export interface LoadResult { readonly manifests: readonly ExtensionManifest[]; readonly skipped: readonly Skipped[] }
 
@@ -31,12 +33,13 @@ function plainName(name: unknown): name is string {
   return typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !name.includes('..') && !/[\\/\0]/.test(name) && !isAbsolute(name);
 }
 
-/** A folder name made safe to show: control characters, bidi marks and zero-width marks become "?", and a long name is cut. */
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
-function shown(name: string): string {
-  const chars = [...name.replace(UNSAFE, '?')];
-  return chars.length > NAME_SHOWN ? `${chars.slice(0, NAME_SHOWN).join('')}…` : chars.join('');
+/** Text made safe to show: control characters, bidi marks, zero-width marks and other invisible characters become "?", and long text is cut. */
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\u{E0000}-\u{E007F}]/gu;
+function clean(text: string, max: number): string {
+  const chars = [...text.replace(UNSAFE, '?')];
+  return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
 }
+const shown = (name: string): string => clean(name, NAME_SHOWN);
 
 /** The error code of a failed call as plain text (such as ENOENT), or "unknown". Only a short upper-case code passes. */
 function codeOf(error: unknown): string {
@@ -49,10 +52,12 @@ function realOf(path: string): Real {
   try { return { ok: true, path: realpathSync(path) }; } catch (error) { return { ok: false, err: codeOf(error) }; }
 }
 
-/** Reads a file through one open descriptor: the size check and the read are about the same file. Never reads past the limit. */
+/** Reads a file through one open descriptor: the size check and the read are about the same file. Never reads past the limit. A path that is not a regular file is refused before it is opened. */
 function readManifestText(file: string, label: string): Answer<string> {
   let fd: number | undefined;
   try {
+    // Look at the path first: opening a FIFO for reading blocks until a writer comes, and that would stop the main thread.
+    if (!statSync(file).isFile()) return fail('NOT_A_FILE', `The ${MANIFEST_FILE} of "${label}" is not a regular file.`);
     fd = openSync(file, 'r');
     const stat = fstatSync(fd);
     if (!stat.isFile()) return fail('UNREADABLE', `The ${MANIFEST_FILE} of "${label}" is not a file.`);
@@ -95,7 +100,10 @@ function loadOne(bundleRoot: string, name: string): { readonly answer: Answer<Ex
   const read = readManifestText(file.path, label);
   if (!read.ok) return { answer: read, folder: folder.path };
   let parsed: unknown;
-  try { parsed = JSON.parse(read.value); } catch { return { answer: fail('NOT_JSON', `The ${MANIFEST_FILE} of "${label}" is not valid JSON.`), folder: folder.path }; }
+  try { parsed = JSON.parse(read.value); } catch (error) {
+    const why = clean(error instanceof SyntaxError ? error.message : '', NOT_JSON_SHOWN);
+    return { answer: fail('NOT_JSON', `The ${MANIFEST_FILE} of "${label}" is not valid JSON${why === '' ? '' : ` (${why})`}.`), folder: folder.path };
+  }
   return { answer: checkManifest(parsed), folder: folder.path };
 }
 
@@ -134,7 +142,7 @@ export function loadBundledManifests(bundleRoot: string): LoadResult {
     const { answer, folder } = loadOne(bundleRoot, name);
     if (folder !== undefined) {
       const first = seen.get(folder);
-      if (first !== undefined) { skipped.push({ name: shown(name), code: 'DUPLICATE', message: `The folder "${shown(name)}" is the same folder as "${first}", which is already loaded.` }); continue; }
+      if (first !== undefined) { skipped.push({ name: shown(name), code: 'DUPLICATE', message: `The folder "${shown(name)}" is the same real folder as "${first}".` }); continue; }
       seen.set(folder, shown(name));
     }
     if (answer.ok) manifests.push(answer.value);

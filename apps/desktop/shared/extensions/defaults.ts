@@ -13,7 +13,8 @@ export type DefaultId = (typeof DEFAULT_IDS)[number];
 
 /**
  * The owner of every route. The type is Record<RouteName, DefaultId>, so a new member of the Route union (shared/harness/route.ts) is a type error here
- * until it has an owner, and a key that is not a route is a type error too. The key order is the order of the base routes.
+ * until it has an owner. An extra key that is not a route is not a type error: tests/extensions-registry.test.ts catches it by comparing BASE_ROUTES with the 15 expected routes.
+ * The key order is the order of the base routes.
  */
 export const ROUTE_OWNERS: Readonly<Record<RouteName, DefaultId>> = Object.freeze({
   welcome: 'first-run',

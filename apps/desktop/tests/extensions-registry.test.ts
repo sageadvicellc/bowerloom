@@ -107,16 +107,18 @@ test('uninstall of an unknown id is refused as UNKNOWN_EXTENSION, and an unprote
   assert.equal(registry.register(good, 'm2').ok, true, 'the id and route can be registered again');
 });
 
-// Type-level check: every route name has an owner and every owner key is a route name. A new Route member is a type error until ROUTE_OWNERS names its owner.
+// Type-level check: every route name has an owner. A new Route member is a type error until ROUTE_OWNERS names its owner. A key that is not a route is caught at run time, below.
 type OwnedKeys = keyof typeof ROUTE_OWNERS;
 const noMissingRoute: [Exclude<RouteName, OwnedKeys>] extends [never] ? true : never = true;
-const noExtraRoute: [Exclude<OwnedKeys, RouteName>] extends [never] ? true : never = true;
 const ownersAreDefaults: [(typeof ROUTE_OWNERS)[RouteName]] extends [DefaultId] ? true : never = true;
 
+const ROUTE_NAMES_EXPECTED: readonly RouteName[] = ['welcome', 'choose', 'read', 'notes', 'overview', 'harnesses', 'builder', 'file', 'library', 'projects', 'runs', 'compare', 'interfaces', 'history', 'help'];
+
 test('the owner table covers exactly the routes of the Route union, and the first-run default owns exactly FIRST_RUN', () => {
-  assert.deepEqual([noMissingRoute, noExtraRoute, ownersAreDefaults], [true, true, true]);
+  assert.deepEqual([noMissingRoute, ownersAreDefaults], [true, true]);
   assert.deepEqual(Object.keys(ROUTE_OWNERS), [...BASE_ROUTES]);
   assert.equal(BASE_ROUTES.length, 15);
+  assert.deepEqual([...BASE_ROUTES].sort(), [...ROUTE_NAMES_EXPECTED].sort(), 'an extra key in the owner table is not a route');
   assert.equal(Object.isFrozen(ROUTE_OWNERS), true);
   assert.equal(Object.isFrozen(BASE_ROUTES), true);
   for (const owner of Object.values(ROUTE_OWNERS)) assert.ok((DEFAULT_IDS as readonly string[]).includes(owner), owner);

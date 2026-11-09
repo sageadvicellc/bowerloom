@@ -11,14 +11,67 @@ const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').re
 function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
 const read = (file: string): string => strip(readFileSync(join(DESKTOP, file), 'utf8'));
 
+// The guard for a file that may call openSync once, to read: it returns what is wrong, so the tests below can prove it rejects each hole.
+function readOnlyOpenProblems(source: string): string[] {
+  const problems: string[] = [];
+  const noImport = source.replace(/import\s*\{[^}]*\}\s*from\s*['"]node:fs['"]\s*;?/g, '');
+  const calls = [...noImport.matchAll(/\bopenSync\s*\(/g)];
+  if (calls.length !== 1) problems.push(`${calls.length} calls of openSync, not one`);
+  if ((noImport.match(/\bopenSync\b/g) ?? []).length !== calls.length) problems.push('openSync is used as a value, not only called');
+  if (/\bopenSync\s+as\b/.test(source) || /\bas\s+openSync\b/.test(source)) problems.push('openSync is renamed on import');
+  if (/\bimport\s+(\*\s+as\s+\w+|\w+)\s*(,\s*\{[^}]*\})?\s*from\s*['"](node:)?fs['"]/.test(source) || /\brequire\s*\(/.test(source)) problems.push('fs is imported as a whole, so openSync could be reached by a property');
+  if (/['"`]openSync['"`]/.test(source)) problems.push('openSync is named in a string');
+  const flag = noImport.match(/\bopenSync\s*\([^)]*?,\s*(['"`])([^'"`]*)\1/);
+  if (flag !== null && flag[2] !== 'r') problems.push(`the open flag is '${flag[2]}', not 'r'`);
+  if (calls.length === 1) {
+    let depth = 0, end = -1;
+    const open = calls[0]!.index! + calls[0]![0].length - 1;
+    for (let i = open; i < noImport.length && end < 0; i++) {
+      if (noImport[i] === '(') depth++;
+      else if (noImport[i] === ')' && --depth === 0) end = i;
+    }
+    const args = end < 0 ? '' : noImport.slice(open + 1, end).replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    if (args !== "file, 'r'") problems.push(`the arguments are (${args}), not (file, 'r')`);
+  }
+  return problems;
+}
+
+test('the openSync guard accepts the one read call and rejects each way round it', () => {
+  const head = "import { closeSync, openSync, readSync } from 'node:fs';\n";
+  assert.deepEqual(readOnlyOpenProblems(`${head}const fd = openSync(file, 'r');`), []);
+  assert.deepEqual(readOnlyOpenProblems(`${head}const fd = openSync( file ,\n  'r' );`), [], 'whitespace is allowed');
+  const holes: Record<string, string> = {
+    'a space before the paren': `${head}const fd = openSync (tmp, 'w');`,
+    'a second call': `${head}openSync(file, 'r'); openSync(file, 'r');`,
+    'no call': `${head}readSync(1);`,
+    'an alias value': `${head}const o = openSync; o(p, 'w');`,
+    'a bare reference beside the call': `${head}const fd = openSync(file, 'r'); list.push(openSync);`,
+    'a destructured name': `${head}const { openSync: o } = fs; const fd = openSync(file, 'r'); o(p, 'w');`,
+    'a renamed import': "import { openSync as o } from 'node:fs';\no(p, 'w');",
+    'a namespace import': "import * as fs from 'node:fs';\nfs.openSync(p, 'w');",
+    'a require': "const fs = require('node:fs');\nfs['openSync'](p, 'w');",
+    'a write flag': `${head}openSync(file, 'w');`,
+    'an append flag': `${head}openSync(file, "a");`,
+    'a read-write flag': `${head}openSync(file, 'r+');`,
+    'a write-plus flag': `${head}openSync(file, 'w+');`,
+    'an append-plus flag': `${head}openSync(file, 'a+');`,
+    'an exclusive-write flag': `${head}openSync(file, 'wx');`,
+    'an exclusive-append flag': `${head}openSync(file, 'ax');`,
+    'another path name': `${head}openSync(other, 'r');`,
+    'a third argument': `${head}openSync(file, 'r', 0o600);`,
+    'a numeric flag': `${head}openSync(file, 1);`,
+    'a nested call in the arguments': `${head}openSync(join(file), 'r');`,
+  };
+  for (const [what, source] of Object.entries(holes)) assert.notDeepEqual(readOnlyOpenProblems(source), [], what);
+});
+
 test('the app\'s source writes a file in only five modules of main (the extension loader only opens a manifest for reading): the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(read(f)) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
   assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/extension-loader.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
   // The extension loader matches the scan only for its one openSync, which opens a manifest for reading: the string flag 'r', and no name that changes a file.
   const loader = read('main/extension-loader.ts');
-  assert.equal((loader.match(/\bopenSync\(/g) ?? []).length, 1);
-  assert.match(loader, /openSync\(file, 'r'\)/);
+  assert.deepEqual(readOnlyOpenProblems(loader), []);
   assert.doesNotMatch(loader, /\b(writeFileSync|writeFile|mkdirSync|rmSync|renameSync|unlinkSync|copyFileSync|cpSync|symlinkSync|chmodSync|appendFileSync|createWriteStream|O_CREAT|O_WRONLY|O_RDWR|O_APPEND|O_TRUNC)\b/);
   // The work module of export and import (it runs on a worker thread): its one call that changes a file by itself is `unlinkSync`, in the undo of the empty harness it made
   // a moment before, only while the file still holds the bytes it wrote. Every other write goes through the portable file layer and the journaled save of the packages.
