@@ -10,7 +10,7 @@ The maintainer wants 0.9 to be a much larger upgrade of the app and the product 
 
 ## What 0.9 needs
 
-These items come from the maintainer's stated direction of 2026-11-07 and 2026-11-08. They are direction, not specifications. Each has an id, so the sort below can cite it.
+These items come from the maintainer's stated direction. V9-1 to V9-7 date from 2026-11-07 and 2026-11-08. V9-8 dates from 2026-11-09. They are direction, not specifications. Each has an id, so the sort below can cite it.
 
 - V9-1, memory explorer. It explores markdown memory in the style of a note-taking app, with analytics. It shows a user their memory against their harness context.
 - V9-2, engine views. For each engine, it shows harness configuration and usage across the whole environment. It adds visual explorers that show harnesses at work. The first move is modules for existing multi-engine environments. A Bowerloom-owned runtime interface over `relay` (the layer that launches one engine from another) is not first. The claims about the external environments are not verified yet.
@@ -57,7 +57,7 @@ If a 0.9 item depends on a piece, the piece is Keep, and the line names the item
 
 ### Needed by a Keep piece
 
-A scan of imports on `main` found that the Keep pieces reach more packages than the Keep list names. These packages stay while their importer stays.
+A scan of imports, run on `main` and again on the base `release/0.8.0-beta.2`, found that the Keep pieces reach more packages than the Keep list names. These packages stay while their importer stays.
 
 - Reached from the desktop shell, the core packages, or the engine adapters, directly or through another package:
   - `contracts`, `context-slices`, `harness-bundle`, `crew`, and `codex-adapter`.
@@ -112,7 +112,7 @@ Layer, as a proposal. The component schema and the submit contract belong to the
 
 Requirements sketch:
 
-1. A defined component schema. Agents emit components from this schema. The chat interface renders them with one consistent look. Agents do not send free-form HTML. This keeps rendering safe.
+1. A defined component schema. Agents emit components from this schema. The chat interface renders them with one consistent look. Agents do not send free-form HTML. The goal is safe rendering, and the limits that reach it are an open question below.
 2. Components an assistant needs to get the maintainer's attention and knowledge:
    - A decision card: the question, lettered options, the recommended option, a default with a deadline, and a submit button.
    - A status snapshot: lanes, pull requests, and counts.
