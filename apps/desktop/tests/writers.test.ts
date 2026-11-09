@@ -11,10 +11,124 @@ const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').re
 function sourceFiles(dir: string): string[] { return readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join(dir, (e as unknown as { parentPath: string }).parentPath.slice(join(DESKTOP, dir).length), e.name).replace(/\\/g, '/')); }
 const read = (file: string): string => strip(readFileSync(join(DESKTOP, file), 'utf8'));
 
-test('the app\'s source writes a file in only four modules of main: the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
+// The guard for a file that may call openSync once, to read: it returns what is wrong, so the tests below can prove it rejects each hole.
+function readOnlyOpenProblems(source: string): string[] {
+  const problems: string[] = [];
+  const noImport = source.replace(/import\s*\{[^}]*\}\s*from\s*['"]node:fs['"]\s*;?/g, '');
+  const calls = [...noImport.matchAll(/\bopenSync\s*\(/g)];
+  if (calls.length !== 1) problems.push(`${calls.length} calls of openSync, not one`);
+  if ((noImport.match(/\bopenSync\b/g) ?? []).length !== calls.length) problems.push('openSync is used as a value, not only called');
+  if (/\bopenSync\s+as\b/.test(source) || /\bas\s+openSync\b/.test(source)) problems.push('openSync is renamed on import');
+  if (/\bimport\s+(\*\s+as\s+\w+|\w+)\s*(,\s*\{[^}]*\})?\s*from\s*['"](node:)?fs['"]/.test(source) || /\brequire\s*\(/.test(source)) problems.push('fs is imported as a whole, so openSync could be reached by a property');
+  if (/['"`]openSync['"`]/.test(source)) problems.push('openSync is named in a string');
+  const flag = noImport.match(/\bopenSync\s*\([^)]*?,\s*(['"`])([^'"`]*)\1/);
+  if (flag !== null && flag[2] !== 'r') problems.push(`the open flag is '${flag[2]}', not 'r'`);
+  if (calls.length === 1) {
+    let depth = 0, end = -1;
+    const open = calls[0]!.index! + calls[0]![0].length - 1;
+    for (let i = open; i < noImport.length && end < 0; i++) {
+      if (noImport[i] === '(') depth++;
+      else if (noImport[i] === ')' && --depth === 0) end = i;
+    }
+    const args = end < 0 ? '' : noImport.slice(open + 1, end).replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    if (args !== "file, 'r'") problems.push(`the arguments are (${args}), not (file, 'r')`);
+  }
+  return problems;
+}
+
+// The eight names the extension loader may import from node:fs (the same list as FS_ALLOWED['main/extension-loader.ts'] in tests/writers-imports.test.ts, which pins them from the import itself).
+const LOADER_FS_NAMES = ['closeSync', 'fstatSync', 'lstatSync', 'openSync', 'readSync', 'readdirSync', 'realpathSync', 'statSync'];
+// The full write scan, without the one name the loader may call (openSync, held by readOnlyOpenProblems above).
+const WRITE_NO_OPEN = new RegExp(WRITE.source.replace('|openSync', ''));
+if (WRITE_NO_OPEN.source === WRITE.source) throw new Error('the loader guard could not take openSync out of the write scan');
+
+// The whole guard for the extension loader, on comment-stripped source: the open call is read-only (above), no other write name is called, no way round the import is used,
+// and the names imported from node:fs are exactly the eight. Each problem names the rule that fired.
+function loaderProblems(source: string): string[] {
+  const problems = readOnlyOpenProblems(source);
+  const call = WRITE_NO_OPEN.exec(source);
+  if (call !== null) problems.push(`a write name is called: ${call[1]}`);
+  if (/['"`](?:node:)?fs\/promises['"`]/.test(source)) problems.push('fs/promises is named');
+  if (/\bimport\s*\(/.test(source)) problems.push('a dynamic import( is used');
+  if (/\bgetBuiltinModule\b/.test(source)) problems.push('getBuiltinModule is used');
+  const imported = new Set<string>();
+  for (const m of source.matchAll(/\bimport\s+(type\s+)?\{([^}]*)\}\s*from\s*['"](?:node:)?fs['"]/g)) {
+    if (m[1] !== undefined) continue;
+    for (const part of m[2]!.split(',')) {
+      const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]!.trim();
+      if (name !== '') imported.add(name);
+    }
+  }
+  const extra = [...imported].filter(n => !LOADER_FS_NAMES.includes(n)).sort();
+  const missing = LOADER_FS_NAMES.filter(n => !imported.has(n));
+  if (extra.length > 0) problems.push(`imports names from node:fs that are not allowed: ${extra.join(', ')}`);
+  if (missing.length > 0) problems.push(`no longer imports: ${missing.join(', ')} (update the list here and in tests/writers-imports.test.ts)`);
+  return problems;
+}
+
+test('the openSync guard accepts the one read call and rejects each way round it', () => {
+  const head = "import { closeSync, openSync, readSync } from 'node:fs';\n";
+  assert.deepEqual(readOnlyOpenProblems(`${head}const fd = openSync(file, 'r');`), []);
+  assert.deepEqual(readOnlyOpenProblems(`${head}const fd = openSync( file ,\n  'r' );`), [], 'whitespace is allowed');
+  const holes: Record<string, [string, RegExp]> = {
+    'a space before the paren': [`${head}const fd = openSync (tmp, 'w');`, /the open flag is 'w', not 'r'/],
+    'a second call': [`${head}openSync(file, 'r'); openSync(file, 'r');`, /2 calls of openSync, not one/],
+    'no call': [`${head}readSync(1);`, /0 calls of openSync, not one/],
+    'an alias value': [`${head}const o = openSync; o(p, 'w');`, /openSync is used as a value/],
+    'a bare reference beside the call': [`${head}const fd = openSync(file, 'r'); list.push(openSync);`, /openSync is used as a value/],
+    'a destructured name': [`${head}const { openSync: o } = fs; const fd = openSync(file, 'r'); o(p, 'w');`, /openSync is used as a value/],
+    'a renamed import': ["import { openSync as o } from 'node:fs';\no(p, 'w');", /openSync is renamed on import/],
+    'a namespace import': ["import * as fs from 'node:fs';\nfs.openSync(p, 'w');", /fs is imported as a whole/],
+    'a require': ["const fs = require('node:fs');\nfs['openSync'](p, 'w');", /fs is imported as a whole/],
+    'a write flag': [`${head}openSync(file, 'w');`, /the open flag is 'w', not 'r'/],
+    'an append flag': [`${head}openSync(file, "a");`, /the open flag is 'a', not 'r'/],
+    'a read-write flag': [`${head}openSync(file, 'r+');`, /the open flag is 'r\+', not 'r'/],
+    'a write-plus flag': [`${head}openSync(file, 'w+');`, /the open flag is 'w\+', not 'r'/],
+    'an append-plus flag': [`${head}openSync(file, 'a+');`, /the open flag is 'a\+', not 'r'/],
+    'an exclusive-write flag': [`${head}openSync(file, 'wx');`, /the open flag is 'wx', not 'r'/],
+    'an exclusive-append flag': [`${head}openSync(file, 'ax');`, /the open flag is 'ax', not 'r'/],
+    'another path name': [`${head}openSync(other, 'r');`, /the arguments are \(other, 'r'\), not \(file, 'r'\)/],
+    'a third argument': [`${head}openSync(file, 'r', 0o600);`, /the arguments are \(file, 'r', 0o600\), not \(file, 'r'\)/],
+    'a numeric flag': [`${head}openSync(file, 1);`, /the arguments are \(file, 1\), not \(file, 'r'\)/],
+    'a nested call in the arguments': [`${head}openSync(join(file), 'r');`, /the arguments are \(join\(file\), 'r'\), not \(file, 'r'\)/],
+  };
+  for (const [what, [source, rule]] of Object.entries(holes)) {
+    const problems = readOnlyOpenProblems(source);
+    assert.ok(problems.some(p => rule.test(p)), `${what}: expected ${rule}, got ${JSON.stringify(problems)}`);
+  }
+});
+
+test('the loader guard accepts the loader\'s own shape and rejects a write name, a new import, fs/promises, a dynamic import and getBuiltinModule, each by its own rule', () => {
+  const head = `import { ${LOADER_FS_NAMES.join(', ')} } from 'node:fs';\nimport { join } from 'node:path';\n`;
+  const body = "const fd = openSync(file, 'r');\n";
+  assert.deepEqual(loaderProblems(head + body), []);
+  assert.deepEqual(loaderProblems(`import {\n  ${LOADER_FS_NAMES.join(',\n  ')},\n} from 'node:fs';\n${body}`), [], 'a multi-line import with a trailing comma is the same import');
+  assert.deepEqual(loaderProblems(`import type { Stats } from 'node:fs';\n${head}${body}`), [], 'a type-only import names no member');
+  const holes: Record<string, [string, string]> = {
+    'an import of truncateSync': [`import { ${[...LOADER_FS_NAMES, 'truncateSync'].join(', ')} } from 'node:fs';\n${body}`, 'imports names from node:fs that are not allowed: truncateSync'],
+    'an import of open from node:fs': [`import { ${[...LOADER_FS_NAMES, 'open'].join(', ')} } from 'node:fs';\n${body}`, 'imports names from node:fs that are not allowed: open'],
+    'an aliased import of a new name': [`import { ${LOADER_FS_NAMES.join(', ')}, writev as harmless } from 'node:fs';\n${body}`, 'imports names from node:fs that are not allowed: writev'],
+    'an import of truncateSync from fs': [`${head}import { truncateSync } from 'fs';\n${body}`, 'imports names from node:fs that are not allowed: truncateSync'],
+    'an import from node:fs/promises': [`${head}import { writeFile } from 'node:fs/promises';\n${body}`, 'fs/promises is named'],
+    'an import from fs/promises': [`${head}import { rm } from "fs/promises";\n${body}`, 'fs/promises is named'],
+    'a dynamic import of node:fs': [`${head}${body}const fs = await import('node:fs');\n`, 'a dynamic import( is used'],
+    'getBuiltinModule': [`${head}${body}const fs = process.getBuiltinModule('node:fs');\n`, 'getBuiltinModule is used'],
+    'a write call of a name that is not imported': [`${head}${body}utimesSync(file, 1, 1);\n`, 'a write name is called: utimesSync'],
+    'a rename call': [`${head}${body}renameSync(a, b);\n`, 'a write name is called: renameSync'],
+    'a name left out of the import': [`import { ${LOADER_FS_NAMES.filter(n => n !== 'statSync').join(', ')} } from 'node:fs';\n${body}`, 'no longer imports: statSync (update the list here and in tests/writers-imports.test.ts)'],
+  };
+  // Each sample breaks one rule only, so that rule is the only problem reported.
+  for (const [what, [source, problem]] of Object.entries(holes)) assert.deepEqual(loaderProblems(source), [problem], what);
+});
+
+test('the app\'s source writes a file in only five modules of main (the extension loader only opens a manifest for reading): the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(read(f)) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
-  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
+  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/extension-loader.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
+  // The extension loader matches the scan only for its one openSync, which opens a manifest for reading: the string flag 'r', and no name that changes a file.
+  const loader = read('main/extension-loader.ts');
+  assert.deepEqual(loaderProblems(loader), []);
+  assert.doesNotMatch(loader, /\b(writeFileSync|writeFile|mkdirSync|rmSync|renameSync|unlinkSync|copyFileSync|cpSync|symlinkSync|chmodSync|appendFileSync|createWriteStream|O_CREAT|O_WRONLY|O_RDWR|O_APPEND|O_TRUNC)\b/);
   // The work module of export and import (it runs on a worker thread): its one call that changes a file by itself is `unlinkSync`, in the undo of the empty harness it made
   // a moment before, only while the file still holds the bytes it wrote. Every other write goes through the portable file layer and the journaled save of the packages.
   const work = read('main/engine-bundle-work.ts');
