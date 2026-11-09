@@ -482,9 +482,7 @@
           "apps/desktop/e2e/harness-install.spec.ts",
           "apps/desktop/e2e/harness-interfaces.spec.ts"
         ],
-        "real": [
-          "apps/desktop/e2e/harness-real-first-run.spec.ts"
-        ],
+        "real": [],
         "noBridge": []
       },
       "unit": [
@@ -492,7 +490,7 @@
         "apps/desktop/tests/harness-status.test.ts"
       ],
       "newSpec": "apps/desktop/e2e/harness-interfaces.spec.ts",
-      "notes": ""
+      "notes": "Real mode has a gap: no spec opens the Interfaces route on the #app launch. harness-real-first-run.spec.ts opens #sample/interfaces/codex after a real read, which is not an #app address, so it is not listed."
     },
     {
       "id": "route:history",

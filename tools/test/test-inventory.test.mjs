@@ -1,9 +1,18 @@
 // The frozen test and skip inventory (docs/v0.9/test-inventory.json) and the tool that checks a run against it.
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { MUST_RUN, NEEDS_DECISION, NEVER_RUNS, buildSuite, checkRun, readRun, skipKind } from '../test-inventory.mjs';
+import { spawnSync } from 'node:child_process';
+import os from 'node:os';
+import path from 'node:path';
+import { MUST_RUN, NEEDS_DECISION, NEVER_RUNS, buildSuite, checkRun, readRun, skipKind, validateRun, unusedKinds } from '../test-inventory.mjs';
+
+const tool = fileURLToPath(new URL('../test-inventory.mjs', import.meta.url));
+const cli = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: 'utf8' });
+const made = [];
+after(() => { for (const dir of made) fs.rmSync(dir, { recursive: true, force: true }); });
+const scratch = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'inv-test-')); made.push(dir); return dir; };
 
 const inventoryPath = fileURLToPath(new URL('../../docs/v0.9/test-inventory.json', import.meta.url));
 const inventory = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
@@ -28,7 +37,7 @@ test('buildSuite lists the names by file, counts each status, and keeps a must-r
 test('checkRun passes for the same run, and passes for an added test', () => {
   const rows = run(['a.js', 'one', 'pass'], ['a.js', 'two', 'pass']);
   const frozen = buildSuite({ runner: 'r', command: '', cwd: '', run: rows });
-  assert.deepEqual(checkRun({ frozen, run: rows }), { ok: true, problems: [] });
+  assert.deepEqual(checkRun({ frozen, run: rows }), { ok: true, problems: [], needsDecision: [] });
   assert.equal(checkRun({ frozen, run: [...rows, ...run(['a.js', 'three', 'pass'])] }).ok, true);
 });
 
@@ -98,4 +107,60 @@ test('the desktop and end-to-end inventories freeze the skips the base showed, b
   assert.equal(e2e.skips.filter(s => /(?:docs|landing|screen-tour)-shots\.spec\.ts$/.test(s.file)).length, e2e.skips.filter(s => s.status === 'skip').length);
   assert.ok(e2e.observedMustRun.some(s => /packaged-app\.spec\.ts$/.test(s.file)), 'the packaged-app skip is must-run');
   assert.equal(inventory.suites.desktop.skips.length, 0, 'no desktop unit test skips on an environment flag');
+});
+
+test('a must-run test that turns fixme or todo fails the gate like a skip', () => {
+  const frozen = buildSuite({ runner: 'r', command: '', cwd: '', run: run(['a.js', 't', 'skip']) });
+  for (const status of ['fixme', 'todo']) assert.deepEqual(checkRun({ frozen, run: run(['a.js', 't', status]) }).problems, ['must-run test skipped: a.js: t']);
+});
+
+test('checkRun reports needs-decision skips by name and keeps ok true', () => {
+  const frozen = buildSuite({ runner: 'r', command: '', cwd: '', kinds: { a: { kind: NEEDS_DECISION, reason: 'x' } }, run: run(['a', 'one', 'todo'], ['a', 'two', 'pass']) });
+  const result = checkRun({ frozen, run: run(['a', 'one', 'todo'], ['a', 'two', 'pass']) });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.needsDecision, ['a: one']);
+});
+
+test('validateRun refuses an empty run and a run with a failing test', () => {
+  assert.match(validateRun([]), /0 tests/);
+  assert.match(validateRun(run(['a', 'x', 'fail'])), /fail/);
+  assert.equal(validateRun(run(['a', 'x', 'pass'])), null);
+});
+
+test('unusedKinds names a kinds key that matches no skip', () => {
+  const rows = run(['a', 'x', 'skip']);
+  assert.deepEqual(unusedKinds(rows, { a: { kind: NEVER_RUNS, reason: 'r' }, b: { kind: NEVER_RUNS, reason: 'r' }, 'a::nope': { kind: NEVER_RUNS, reason: 'r' } }).sort(), ['a::nope', 'b']);
+});
+
+test('the command refuses an empty file, a failing run, an empty frozen suite and a misspelled flag', () => {
+  const dir = scratch();
+  const empty = path.join(dir, 'empty.jsonl'); fs.writeFileSync(empty, '');
+  const failing = path.join(dir, 'fail.jsonl'); fs.writeFileSync(failing, '{"file":"a","name":"x","status":"fail"}\n');
+  const good = path.join(dir, 'good.jsonl'); fs.writeFileSync(good, '{"file":"a","name":"x","status":"pass"}\n');
+  const kinds = path.join(dir, 'kinds.json'); fs.writeFileSync(kinds, '{}');
+  const inv = path.join(dir, 'inv.json');
+  assert.notEqual(cli('record', 'root', empty, kinds, '--merge', inv).status, 0);
+  assert.notEqual(cli('record', 'root', failing, kinds, '--merge', inv).status, 0);
+  assert.equal(fs.existsSync(inv), false, 'nothing is written for a refused run');
+  assert.notEqual(cli('record', 'root', good, kinds, '--mrege', inv).status, 0);
+  assert.equal(cli('record', 'root', good, kinds, '--merge', inv).status, 0);
+  fs.writeFileSync(inv, JSON.stringify({ suites: { root: { counts: { tests: 0 }, files: {}, skips: [] } } }));
+  assert.notEqual(cli('check', 'root', good, inv).status, 0);
+  assert.notEqual(cli('check', 'root', empty, inv).status, 0);
+});
+
+test('check prints the needs-decision line and exits 0 for the frozen inventory', () => {
+  const dir = scratch();
+  const rows = path.join(dir, 'r.jsonl');
+  const suite = inventory.suites.desktop;
+  fs.writeFileSync(rows, Object.entries(suite.files).flatMap(([file, names]) => names.map(name => JSON.stringify({ file, name, status: 'pass' }))).join('\n') + '\n');
+  const r = cli('check', 'desktop', rows);
+  assert.equal(r.status, 0, r.stderr);
+  const root = inventory.suites.root;
+  const rootRows = path.join(dir, 'root.jsonl');
+  const status = (file, name) => { const s = root.skips.find(x => x.file === file && x.name === name); return s === undefined ? 'pass' : s.status; };
+  fs.writeFileSync(rootRows, Object.entries(root.files).flatMap(([file, names]) => names.map(name => JSON.stringify({ file, name, status: status(file, name) }))).join('\n') + '\n');
+  const rr = cli('check', 'root', rootRows);
+  assert.equal(rr.status, 0, rr.stderr);
+  assert.match(rr.stdout, /needs-decision: 7 skips unsorted/);
 });

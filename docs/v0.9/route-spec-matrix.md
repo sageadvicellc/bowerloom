@@ -127,9 +127,9 @@ Count: 37 rows. 15 routes, 4 route params, 8 sheets, 4 launches, 3 shell chrome 
   - screen: `screens/Interfaces.tsx`
   - target extension: `interfaces-history-help`
   - e2e sample: `harness-install`, `harness-interfaces`
-  - e2e real: `harness-real-first-run`
   - unit: `harness-words`, `harness-status`
   - new spec: `harness-interfaces.spec.ts`
+  - note: Real mode has a gap: no spec opens the Interfaces route on the #app launch. harness-real-first-run.spec.ts opens #sample/interfaces/codex after a real read, which is not an #app address, so it is not listed.
 - **history** (`route:history`)
   - modes: sample, real
   - screen: `screens/History.tsx`, `undo-note.ts`

@@ -72,6 +72,21 @@ export function buildSuite({ runner, command, cwd, run, kinds = {} }) {
  * Compares a run with a frozen suite. Returns { ok, problems }. A name seen twice in one file counts twice (the frozen list keeps duplicates).
  * `mapped` is a list of { file, name } that a named decision moved or replaced; a mapped frozen test may be absent from the run.
  */
+const SKIPPED = ['skip', 'fixme', 'todo'];
+
+/** A reason a run cannot be recorded, or null: no tests, or a failing test. */
+export function validateRun(run) {
+  if (run.length === 0) return 'the run has 0 tests (an empty or truncated reporter file)';
+  const failed = run.filter(t => t.status === 'fail').length;
+  return failed > 0 ? `the run has ${failed} fail(s)` : null;
+}
+
+/** The kinds keys that match no skip of the run. */
+export function unusedKinds(run, kinds) {
+  const skipped = run.filter(t => SKIPPED.includes(t.status));
+  return Object.keys(kinds).filter(key => !skipped.some(t => key === t.file || key === `${t.file}::${t.name}`));
+}
+
 export function checkRun({ frozen, run, mapped = [] }) {
   const problems = [];
   const seen = new Map();
@@ -101,18 +116,26 @@ export function checkRun({ frozen, run, mapped = [] }) {
     if (!inFrozen && t.status === 'fail') problems.push(`failed (an addition): ${t.file}: ${t.name}`);
   }
   // A must-run test is not frozen as allowed to skip. The base skipped these on the machine that recorded the inventory; a skip of any of them fails the gate.
-  for (const s of frozen.observedMustRun ?? []) if ((seen.get(`${s.file}\u0000${s.name}`) ?? []).some(status => status === 'skip')) problems.push(`must-run test skipped: ${s.file}: ${s.name}`);
-  return { ok: problems.length === 0, problems: [...new Set(problems)] };
+  for (const s of frozen.observedMustRun ?? []) if ((seen.get(`${s.file}\u0000${s.name}`) ?? []).some(status => SKIPPED.includes(status))) problems.push(`must-run test skipped: ${s.file}: ${s.name}`);
+  const needsDecision = frozen.skips.filter(s => s.kind === NEEDS_DECISION).map(s => `${s.file}: ${s.name}`);
+  return { ok: problems.length === 0, problems: [...new Set(problems)], needsDecision };
 }
 
 function main(argv) {
   const [command, suiteName, runFile, extra, extra2, extra3] = argv;
   const usage = 'usage: test-inventory.mjs record <suite> <reporter-output> <kinds.json> [--merge <inventory.json>] | check <suite> <reporter-output> [<inventory.json>]';
   if (!['record', 'check'].includes(command) || suiteName === undefined || runFile === undefined) { process.stderr.write(usage + '\n'); return 2; }
+  if (command === 'record' && extra2 !== undefined && (extra2 !== '--merge' || extra3 === undefined)) { process.stderr.write(`unknown argument "${extra2}"\n${usage}\n`); return 2; }
+  if (command === 'record' && extra3 !== undefined && argv.length > 6) { process.stderr.write(usage + '\n'); return 2; }
+  if (command === 'check' && (argv.length > 4 || (extra ?? '').startsWith('-'))) { process.stderr.write(`unknown argument\n${usage}\n`); return 2; }
   const format = suiteName === 'e2e' ? 'playwright' : 'jsonl';
-  const run = readRun(fs.readFileSync(runFile, 'utf8'), format);
+  let run;
+  try { run = readRun(fs.readFileSync(runFile, 'utf8'), format); } catch (error) { process.stderr.write(`cannot read ${runFile}: ${error.message}\n`); return 2; }
+  const refused = validateRun(run);
+  if (refused !== null) { process.stderr.write(`${command}: ${refused}\n`); return 1; }
   if (command === 'record') {
     const kinds = extra === undefined ? {} : JSON.parse(fs.readFileSync(extra, 'utf8'));
+    for (const key of unusedKinds(run, kinds)) process.stderr.write(`warning: kinds key matches no skip: ${key}\n`);
     const suite = buildSuite({ runner: format === 'playwright' ? 'playwright' : 'node --test', command: '', cwd: '', run, kinds });
     const target = extra2 === '--merge' ? extra3 : null;
     if (target === null) { process.stdout.write(JSON.stringify(suite, null, 2) + '\n'); return 0; }
@@ -124,9 +147,11 @@ function main(argv) {
   const inventoryPath = extra ?? DEFAULT_INVENTORY;
   const frozen = JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).suites[suiteName];
   if (frozen === undefined) { process.stderr.write(`no suite "${suiteName}" in ${inventoryPath}\n`); return 2; }
+  if (!(frozen.counts?.tests > 0)) { process.stderr.write(`suite "${suiteName}" is frozen with 0 tests\n`); return 1; }
   const result = checkRun({ frozen, run });
   if (!result.ok) process.stderr.write(result.problems.map(p => `  ${p}\n`).join(''));
   process.stdout.write(`${suiteName}: ${result.ok ? 'matches the frozen inventory' : `${result.problems.length} problem(s)`} (${run.length} tests run, ${frozen.counts.tests} frozen)\n`);
+  if (result.needsDecision.length > 0) process.stdout.write(`needs-decision: ${result.needsDecision.length} skips unsorted\n${result.needsDecision.map(n => `  ${n}\n`).join('')}`);
   return result.ok ? 0 : 1;
 }
 
