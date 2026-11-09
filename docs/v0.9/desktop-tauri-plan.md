@@ -120,7 +120,7 @@ Each gate has pass and fail criteria. Each gate reports a result for each of mac
 
 Risk: the Tauri documents give no advice on lifecycle, and the Node example is short-lived.
 
-Gate 1 has two parts. Part A tests the process: protocol, events, restart, and cleanup. Part B tests packaging. Each part has its own written result. On each system, if all criteria of both parts hold, Gate 1 passes for that system.
+Gate 1 has three parts. Part A tests the sidecar process: protocol, events, restart, and cleanup. Part B tests Tauri packaging. Part C tests the Electron child process that Stage 3 uses. Each part has its own written result. On each system, if all criteria of all three parts hold, Gate 1 passes for that system. Stage 3 waits only for Part C.
 
 Part A, the process:
 - The Node core builds as one binary for each target triple, or as a runtime plus resource, and the shell starts it.
@@ -132,11 +132,16 @@ Part A, the process:
 - A kill during an in-flight write leaves the folder in a state that the existing recovery calls can repair. After a restart, the state "the plan shown last" is cleared, wherever it lives (open question 3). If it lives in the shell, the shell clears it when it restarts the sidecar. A write then returns the refusal `NOT_THE_PLAN_SHOWN`. It never runs a write that the page did not see planned.
 - No orphan sidecar remains after three tests: a normal quit, a forced end of the shell, and a shell crash. The forced end uses `kill -9` on macOS and Linux, and `taskkill /F` on Windows. The crash test makes the shell fault. In each test, the sidecar ends too. On Windows the shell puts the sidecar in a job object, or an equivalent that Stage 1 picks, so that it ends with the shell.
 - The core and the CLI tests run with no shell at all.
-- An Electron child process (`utilityProcess` or a bundled Node runtime) starts the core. It passes the ping, large payload, event, 30-second, kill-and-restart, in-flight, and plan-state tests above. It also ends with the app after a normal quit, a forced end, and an Electron crash. The Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` stay off. This is the path that Stage 3 uses.
 
-Part B, packaging:
+Part B, Tauri packaging:
 - The sidecar works from an install path with spaces and non-ASCII characters.
 - Packaging works inside a notarized macOS app, a Windows installer, and a Linux AppImage. The Electron build today has no hardened runtime. The pages read do not say whether a Node sidecar needs extra entitlements under the hardened runtime. This criterion tests a notarized build to find out. The notarized test starts only after the maintainer approves the Apple spend (open question 8).
+
+Part C, the Electron child process, on macOS, Windows, and Linux:
+- An Electron child process (`utilityProcess` or a bundled Node runtime) starts the core. It passes the ping, large payload, event, 30-second, kill-and-restart, in-flight, and plan-state tests of Part A.
+- It ends with the app after a normal quit, a forced end, and an Electron crash.
+- The Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` stay off.
+- The packaged Electron installers start the child: the macOS dmg and zip, the Windows installer, and the Linux AppImage. The test uses an install path with spaces and non-ASCII characters. It needs no Apple spend, because the macOS Electron build is ad-hoc signed.
 
 If any criterion fails on a system and the maintainer does not approve a fix, Gate 1 fails for that system. If the maintainer does not approve the Apple spend, Part B fails for macOS.
 
@@ -144,16 +149,16 @@ If any criterion fails on a system and the maintainer does not approve a fix, Ga
 
 Risk: Linux uses `webkit2gtk`, and Electron bundles its own Chromium.
 
-If all of these hold on at least two named Linux distributions with different `webkit2gtk` versions (proposal), the gate passes for Linux. The maintainer names the distributions, the reference machine, the key screens, and the screenshot viewport in a decision.
+If all of these hold on at least two named Linux distributions with different `webkit2gtk` versions (proposal), the gate passes for Linux. The maintainer names the test distributions, the reference machine, the key screens, and the screenshot viewport in a decision (open questions 7 and 10).
 - Each web feature in "Web features the renderer uses" has a test. "Works" means its test passes.
 - The custom page scheme, the content security policy, and the permission refusal work.
-- Before the gate runs, a baseline run compares Electron screenshots from two machines. If the baseline alone exceeds the pixel limit below, the maintainer sets the limit from the baseline (open question 7).
+- Before the gate runs, a baseline run compares Electron screenshots from two machines. A trial run compares Electron with Tauri on the reference machine. The maintainer sets the pixel limit below from both runs (open question 7).
 - Screenshots of the key screens match the Electron screenshots. If more than 1% of the pixels in a screenshot differ, that screenshot fails (proposal).
 - Scrolling, animation, and text input work on the reference machine. If more than 5% of the frames in a scroll test of 10 seconds (proposal) take longer than 33 ms, that test fails (proposal).
 - The gate records the `webkit2gtk` version of each named distribution, and whether each one passes. The Tauri documents give no minimum. Two samples cannot set one, so the gate sets none. The supported minimum is a decision (open question 10). It is the lowest version in the supported set, and it is only as strong as the samples.
-- The same feature tests also run on macOS (WKWebView) and Windows (WebView2). The gate records each macOS version that the tests ran on, and whether it passes. The maintainer sets the supported macOS version in a decision, in the same way.
+- The same feature tests also run on macOS (WKWebView) and Windows (WebView2). The gate records each macOS version that the tests ran on, and whether it passes. The maintainer sets the supported macOS versions in a decision, in the same way. On macOS and on Windows, Gate 2 passes for that system when its feature tests pass.
 
-If a blocking feature gap on a named distribution has no workaround, Gate 2 fails for Linux. The maintainer can drop that distribution from the supported set in a decision. Then the gate is judged on the distributions that remain, and at least two must remain. The same holds for a macOS version. A feature that fails only on macOS or Windows fails Gate 2 for that system.
+If a blocking feature gap on a named distribution has no workaround, Gate 2 fails for Linux. The maintainer can drop that distribution from the supported set in a decision. Then the gate is judged on the distributions that remain, and at least two with different `webkit2gtk` versions must remain (proposal). A dropped macOS version leaves at least one tested macOS version (proposal). A feature that fails only on macOS or Windows fails Gate 2 for that system.
 
 ### Gate 3: the end-to-end test path
 
@@ -163,11 +168,11 @@ If all of these hold, the gate passes:
 - A slice of at least 8 specs (proposal) runs green through WebdriverIO. Gate 3 reports a result for each of macOS, Windows, and Linux. The slice covers launch, folder pick, an adoption plan and run, the close guard, and the scan cache.
 - The dialog answer uses a test-only switch in the shell. The switch answers a dialog request from a test fixture. Stage 1 designs it. It replaces what `answerCloseQuestion` does in `e2e/hidden.ts`, which runs code in the Electron main process.
 - A run is one pass of the whole slice. The slice makes 100 runs, and at most 2 runs fail (proposal).
-- On macOS the test uses an embedded WebDriver server inside the app. So the slice also runs a smoke check (launch and one call) on the shipped build without that server. The result records any difference.
+- On macOS the test uses an embedded WebDriver server inside the app. So the slice also runs a smoke check (launch and one call) on the shipped build without that server. The smoke check passes if the shipped build launches and answers one call. A failure fails Gate 3 for macOS. The result records any other difference. The check runs after the maintainer approves the Apple spend.
 - A hidden or headless way to run exists for CI.
 - Stage 1 writes down what replaces each of the two specs that call `_electron` directly (`bundle-worker-asar.spec.ts` and `quit-menu.spec.ts`) and the helper `hidden.ts`.
 
-If macOS needs a paid vendor key that the maintainer does not approve, the gate fails. If the slice misses the flake limit on a system, Gate 3 fails for that system.
+If macOS needs a paid vendor key that the maintainer does not approve, Gate 3 fails for macOS. If the slice misses the flake limit on a system, Gate 3 fails for that system.
 
 ## Stages
 
@@ -176,24 +181,24 @@ Each stage has an exit rule and a rollback point. Until a gate passes, nothing s
 1. **Stage 0: answers.** The maintainer answers the decisions. Exit: each open question has an answer from the maintainer, or the maintainer defers it in writing. Rollback: none needed.
 2. **Stage 1: the gates.** Run the three gates in a spike branch. Product code does not change. Exit: a written result for each gate on each system. Rollback: delete the spike branch. Electron is untouched.
 3. **Stage 2: a call layer that does not depend on Electron.** Put the 42 calls behind one interface in the renderer. Electron still implements it. This is a refactor behind the current tests. It adds no process and no permission. If a gate fails, the layer still helps the 0.9 interface rebuild. This stage changes the shipped Electron app, and it starts before the gates are done. Exit: all current tests pass. Rollback: revert the change.
-4. **Stage 3: the core in its own process, under Electron.** This stage changes the shipped Electron app. It is the second change that starts before all gates are done. It starts only after Part A of Gate 1 has a written pass on all three systems, because the Electron app ships on all three. If one system fails, Stage 3 waits for a fix that the maintainer approves. Part A includes the Electron child process criterion. Run the Node core as a child process of the Electron app. Put it behind a switch that is off by default. The repository sets the Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` to off, and `tools/check-fuses.mjs` checks them. Stage 3 leaves them off. It starts the child another way, such as `utilityProcess` or a bundled Node runtime. Part A of Gate 1 shows which one works, and it can overturn the answer to open question 4. The channel to the child is private to the Electron app and opens no listening port. A renderer cannot turn the switch on, and neither can an environment variable, unless a deliberate setting allows it. Exit, all required: all current tests pass with the switch on. The kill-and-restart tests pass with the switch on. The packaged Windows and Linux installers start the child. The fuse check is unchanged. The maintainer signs off the security review of the new process boundary. Rollback: turn the switch off. The in-process path stays.
+4. **Stage 3: the core in its own process, under Electron.** This stage changes the shipped Electron app. It is the second change that starts before all gates are done. It starts only after Part C of Gate 1 has a written pass on all three systems, because the Electron app ships on all three. If one system fails, Stage 3 waits for a fix that the maintainer approves. A Tauri-only failure in Part A or B does not block Stage 3. A platform that the maintainer drops from the Tauri set does not change this rule. Run the Node core as a child process of the Electron app. Put it behind a switch that is off by default. The repository sets the Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` to off, and `tools/check-fuses.mjs` checks them. Stage 3 leaves them off. It starts the child another way, such as `utilityProcess` or a bundled Node runtime. Part C shows which one works. If Part C overturns the answer to open question 4, the maintainer decides again in a new decision comment. The channel to the child is private to the Electron app and opens no listening port. A renderer cannot turn the switch on, and neither can an environment variable, unless a deliberate setting allows it. That setting is a build-time or app setting that a renderer cannot reach. The Stage 3 security review confirms this. Exit, all required: all current tests pass with the switch on. The kill-and-restart tests pass with the switch on. The packaged installers for all three systems start the child (Part C). The fuse check is unchanged. The maintainer signs off the security review of the new process boundary. Rollback: turn the switch off. The in-process path stays.
 5. **Stage 4: a Tauri shell alpha.** Build the shell in parallel with a subset of calls. Electron stays the default build. Alpha builds stay as build-system artifacts. Nobody publishes one before Stage 6 meets its exit rule. Deliver the security mapping in "Security" below. Exit: the maintainer signs off the security review. Rollback: stop building the shell.
 6. **Stage 5: parity.** All 42 calls, dialogs, and the close guard work in Tauri. The end-to-end slice grows to every spec that still applies. Alpha builds stay unpublished. Exit: the maintainer signs off a second security review. Rollback: Electron stays the default.
-7. **Stage 6: builds, signing, and the updater.** Produce signed builds on the three systems, after the maintainer approves the Apple and Windows spend. Decide on the updater. Write and test the downgrade step: how a user returns from a Tauri build to the Electron build, with their data. Exit, all required: a signed build installs and launches on each system. The updater decision is recorded. The data choice below is made. The downgrade step passes its test on each system. Rollback: Electron builds stay available.
+7. **Stage 6: builds, signing, and the updater.** Produce signed builds on the three systems, after the maintainer approves the Apple and Windows spend. Decide on the updater. Write and test the downgrade step: how a user returns from a Tauri build to the Electron build, with their data. Exit, all required: a signed build installs and launches on each system. The updater decision is recorded. The data choice below holds and is tested. The downgrade step passes its test on each system. Rollback: Electron builds stay available.
 8. **Stage 7: the default switch, one platform at a time.** Hard exit rules, all required:
-   - The platform's gate passed.
+   - Gates 1, 2, and 3 each passed on that platform.
    - Signed builds exist (notarized on macOS).
-   - The maintainer signed off the security review.
-   - User data is handled (see below).
+   - The maintainer signed off the security review for that platform.
+   - User data is handled and tested (see below).
    - The downgrade step from Stage 6 is tested on that platform.
-   - The last Electron release is marked with a git tag.
+   - The last Electron release for that platform is marked with a protected git tag, which nobody can move or delete.
 
    Keep an Electron build for one release (proposal) after each switch. Rollback: use the downgrade step, and restore the Electron build as the default.
-9. **Stage 8: retire Electron.** Only the maintainer starts this stage. Nothing is deleted before it. Exit: the maintainer approves in writing, and the Electron code is removed in its own pull request. Rollback: restore the code from the git tag that marks the last Electron release.
+9. **Stage 8: retire Electron.** Only the maintainer starts this stage. Nothing is deleted before it. It needs Stage 7 done on every supported platform. A platform that stays on Electron (open question 6) blocks this stage. Exit: the maintainer approves in writing, and the Electron code is removed in its own pull request. Rollback: restore the code from the newest of the per-platform Electron tags.
 
-What stays on Electron: everything, until its gate passes. After a gate passes, only the platforms that passed it move, and only at Stage 7. Stages 2 and 3 are the only changes to the shipped Electron app before the gates are done. Both are behind the current tests, and Stage 3 is behind a switch.
+What stays on Electron: everything, until its gates pass. When Gates 1, 2, and 3 pass on a platform, only that platform can move, and only at Stage 7. Stages 2 and 3 are the only changes to the shipped Electron app before the gates are done. Both are behind the current tests, and Stage 3 is behind a switch.
 
-User data. Electron keeps settings and the scan cache in its own app data folder. The Tauri pages read for this plan do not say where Tauri keeps app data, so Stage 1 finds the path and records it. Before the exit of Stage 6, one of two things must hold: both shells find the same data, or a migration and a reverse migration exist and are tested. The Tauri updater page describes no downgrade. So the downgrade step in Stage 6 is a manual step that the plan writes down and tests.
+User data. Electron keeps settings and the scan cache in its own app data folder. The Tauri pages read for this plan do not say where Tauri keeps app data, so Stage 1 finds the path and records it. Before the exit of Stage 6, one of two things must hold. Either both shells find the same data, or a migration and a reverse migration exist and are tested. The Tauri updater page describes no downgrade. So the downgrade step in Stage 6 is a manual step that the plan writes down and tests.
 
 ## Security
 
@@ -204,12 +209,12 @@ The move changes the security model. These items are deliverables of Stage 4. Ea
 - The Electron fuses and the `contextBridge` objects, mapped to Tauri capabilities and the sidecar argument rules.
 - The channel between the shell and the sidecar. It needs a way to stop other local programs from calling the sidecar. Open question 2 covers the choice.
 
-The maintainer signs off the reviews at Stage 3, at Stage 4, before the exit of Stage 5, and before Stage 7. No Tauri build becomes the default without them. No alpha build from Stage 4 or Stage 5 is published before Stage 6 meets its exit rule.
+The maintainer signs off the reviews at Stage 3, at Stage 4, before the exit of Stage 5, and before Stage 7 for each platform. No Tauri build becomes the default without them. No alpha build from Stage 4 or Stage 5 is published before Stage 6 meets its exit rule. Alpha builds sit where only the maintainer can download them, such as short-lived CI artifacts with restricted access.
 
 ## Builds, signing, and the updater
 
 - Today: macOS builds are ad-hoc signed, Windows and Linux builds are unsigned, and the app has no updater.
-- Tauri on macOS: the documents require a Developer ID certificate and notarization for distribution. That means the paid Apple program. This is a spend, so it needs the maintainer. The Gate 1 notarized build waits for that approval.
+- Tauri on macOS: the documents require a Developer ID certificate and notarization for distribution. That means the paid Apple program. This is a spend, so it needs the maintainer. The Gate 1 notarized build waits for that approval. Without it, Part B fails for macOS.
 - Tauri on Windows: a code-signing certificate is not required to run, but without one users see SmartScreen warnings. Signing a Windows build from another system needs a custom signing command. This is also a spend.
 - Tauri on Linux: AppImage is today's target. The documents describe signing only for AppImage.
 - The Tauri updater is a new feature, not a port. It needs a signing key pair and an endpoint. Whether the first Tauri release ships it is a decision.
@@ -236,10 +241,10 @@ Each question becomes its own decision comment on the pull request.
 1. Goal weighting: performance, size, and cross-platform reach. Not answered. Not decided here.
 2. The protocol between the shell and the sidecar, and how the sidecar knows its caller: standard input and output lines, a local socket, or another way.
 3. Where the state "the plan shown last" lives: in the shell or in the sidecar.
-4. How to package and start Node: one compiled binary, or a runtime plus the JavaScript as a resource. This also decides how Stage 3 starts the child under Electron.
+4. How to package and start Node: one compiled binary, or a runtime plus the JavaScript as a resource. This also decides how Stage 3 starts the child under Electron. Part C can reopen it.
 5. The order against the interface rebuild.
 6. Which platform moves first, and whether any platform stays on Electron.
-7. The proposed gate thresholds: every number marked "proposal", the key screens, and the screenshot viewport.
+7. The proposed gate thresholds: every number marked "proposal", the key screens, the screenshot viewport, and the pixel limit after the baseline and trial runs.
 8. The updater in the first Tauri release, and the signing spend for Apple and Windows.
 9. The end-to-end tool: WebdriverIO with the Tauri service, or another tool.
-10. The supported platforms: the supported set of macOS versions and Linux distributions, the lowest `webkit2gtk` version in that set, and the reference machine.
+10. The supported platforms: the named test distributions, the supported macOS versions and Linux distributions, the lowest `webkit2gtk` version in that set, and the reference machine. The supported minimum must also be a version that its vendor still patches for security.
