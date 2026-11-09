@@ -1,0 +1,1225 @@
+{
+  "base": "release/0.8.0-beta.2",
+  "baseCommit": "5ca6df04",
+  "note": "Route-to-spec matrix of the v0.9 parity item. Paths are relative to the repository root. e2e lists the specs that visit or assert the row, by the mode of the spec; it does not say that every assertion of the row is covered. newSpec names the spec written for a route that had none.",
+  "modes": [
+    "sample",
+    "real",
+    "no-bridge"
+  ],
+  "rows": [
+    {
+      "id": "route:welcome",
+      "kind": "route",
+      "route": "welcome",
+      "params": [],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Welcome.tsx"
+      ],
+      "targetExtension": "first-run",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-first-run.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts",
+          "apps/desktop/e2e/harness-real-empty.spec.ts",
+          "apps/desktop/e2e/harness-real-saved-read.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:choose",
+      "kind": "route",
+      "route": "choose",
+      "params": [],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "real",
+        "no-bridge"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/ChooseSources.tsx",
+        "apps/desktop/renderer/harness/real/RealChoose.tsx",
+        "apps/desktop/renderer/harness/real/mode.ts"
+      ],
+      "targetExtension": "first-run",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-first-run.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts",
+          "apps/desktop/e2e/harness-real-empty.spec.ts",
+          "apps/desktop/e2e/harness-start-harness-real.spec.ts"
+        ],
+        "noBridge": [
+          "apps/desktop/e2e/harness-no-bridge.spec.ts"
+        ]
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts",
+        "apps/desktop/tests/harness-boundary.test.ts",
+        "apps/desktop/tests/harness-real-map.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:read",
+      "kind": "route",
+      "route": "read",
+      "params": [],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/ReadSources.tsx",
+        "apps/desktop/renderer/harness/real/ReadNotes.tsx",
+        "apps/desktop/renderer/harness/real/LastRead.tsx"
+      ],
+      "targetExtension": "first-run",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-first-run.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts",
+          "apps/desktop/e2e/harness-real-saved-read.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts",
+        "apps/desktop/tests/harness-real-map.test.ts",
+        "apps/desktop/tests/saved-scan.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:notes",
+      "kind": "route",
+      "route": "notes",
+      "params": [],
+      "sheets": [
+        "save"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/notes/NotesFirstRun.tsx",
+        "apps/desktop/renderer/harness/notes/NotesStep.tsx"
+      ],
+      "targetExtension": "first-run",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-notes.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-notes-real.spec.ts",
+          "apps/desktop/e2e/journey-5-notes-and-wiki-keeper.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/notes-route.test.ts",
+        "apps/desktop/tests/notes-logic.test.ts",
+        "apps/desktop/tests/notes-draft.test.ts",
+        "apps/desktop/tests/notes-screens-markup.test.ts",
+        "apps/desktop/tests/notes-words.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:overview",
+      "kind": "route",
+      "route": "overview",
+      "params": [],
+      "sheets": [
+        "adopt"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Overview.tsx",
+        "apps/desktop/renderer/harness/screens/OverviewGrid.tsx",
+        "apps/desktop/renderer/harness/screens/OverviewList.tsx",
+        "apps/desktop/renderer/harness/screens/OverviewGraph.tsx",
+        "apps/desktop/renderer/harness/screens/OverviewDetails.tsx"
+      ],
+      "targetExtension": "overview",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-overview-screen.spec.ts",
+          "apps/desktop/e2e/harness-overview-grid.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/journey-1-cold-start-and-adopt.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/overview-contract.test.ts",
+        "apps/desktop/tests/overview-model.test.ts",
+        "apps/desktop/tests/overview-markup.test.ts",
+        "apps/desktop/tests/overview-grid.test.ts",
+        "apps/desktop/tests/overview-real.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:harnesses",
+      "kind": "route",
+      "route": "harnesses",
+      "params": [
+        "id"
+      ],
+      "sheets": [
+        "adopt",
+        "import",
+        "install",
+        "start"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/HarnessList.tsx"
+      ],
+      "targetExtension": "harnesses",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-list.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts",
+          "apps/desktop/e2e/harness-start-real.spec.ts",
+          "apps/desktop/e2e/journey-4-export-and-import.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts",
+        "apps/desktop/tests/harness-real-map.test.ts",
+        "apps/desktop/tests/harness-status.test.ts",
+        "apps/desktop/tests/harness-store.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:builder",
+      "kind": "route",
+      "route": "builder",
+      "params": [
+        "id"
+      ],
+      "sheets": [
+        "adopt",
+        "export",
+        "project",
+        "save"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Builder.tsx",
+        "apps/desktop/renderer/harness/screens/builder/BuilderDetails.tsx",
+        "apps/desktop/renderer/harness/screens/builder/Graph.tsx",
+        "apps/desktop/renderer/harness/screens/builder/SavePointsDrawer.tsx",
+        "apps/desktop/renderer/harness/screens/builder/DiscardSheet.tsx",
+        "apps/desktop/renderer/harness/FolderEditor.tsx"
+      ],
+      "targetExtension": "harnesses",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-builder.spec.ts",
+          "apps/desktop/e2e/harness-builder-component.spec.ts",
+          "apps/desktop/e2e/harness-close-guard.spec.ts",
+          "apps/desktop/e2e/harness-share-component.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-builder-save-real.spec.ts",
+          "apps/desktop/e2e/journey-2-build-and-project.spec.ts",
+          "apps/desktop/e2e/journey-3-undo-and-versions.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/builder-draft.test.ts",
+        "apps/desktop/tests/builder-drop.test.ts",
+        "apps/desktop/tests/builder-words.test.ts",
+        "apps/desktop/tests/folder-draft.test.ts",
+        "apps/desktop/tests/folder-editor-markup.test.ts",
+        "apps/desktop/tests/draft-undo.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:file",
+      "kind": "route",
+      "route": "file",
+      "params": [
+        "partId"
+      ],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/FileView.tsx",
+        "apps/desktop/renderer/harness/parts/PathDisclosure.tsx"
+      ],
+      "targetExtension": "harnesses",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-file.spec.ts",
+          "apps/desktop/e2e/harness-path-disclosure.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-path-disclosure.test.ts",
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "newSpec": "apps/desktop/e2e/harness-file.spec.ts",
+      "notes": ""
+    },
+    {
+      "id": "route:library",
+      "kind": "route",
+      "route": "library",
+      "params": [
+        "kind",
+        "partId"
+      ],
+      "sheets": [
+        "add"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Library.tsx"
+      ],
+      "targetExtension": "library",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-list.spec.ts",
+          "apps/desktop/e2e/harness-path-disclosure.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-library-add-real.spec.ts",
+          "apps/desktop/e2e/harness-real-words.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/library-add.test.ts",
+        "apps/desktop/tests/library-add-map.test.ts",
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:projects",
+      "kind": "route",
+      "route": "projects",
+      "params": [
+        "id"
+      ],
+      "sheets": [
+        "adopt",
+        "install",
+        "project",
+        "save",
+        "import"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Projects.tsx",
+        "apps/desktop/renderer/harness/screens/ProjectsReal.tsx"
+      ],
+      "targetExtension": "projects",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-engine.spec.ts",
+          "apps/desktop/e2e/harness-install.spec.ts",
+          "apps/desktop/e2e/harness-save.spec.ts",
+          "apps/desktop/e2e/harness-window-items.spec.ts",
+          "apps/desktop/e2e/harness-preview-demo.spec.ts",
+          "apps/desktop/e2e/harness-path-disclosure.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-engine-real.spec.ts",
+          "apps/desktop/e2e/harness-real-projects.spec.ts",
+          "apps/desktop/e2e/harness-save-real.spec.ts",
+          "apps/desktop/e2e/harness-window-items-real.spec.ts",
+          "apps/desktop/e2e/harness-real-words.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/real-projects.test.ts",
+        "apps/desktop/tests/harness-install.test.ts",
+        "apps/desktop/tests/saved-scan-screens.test.ts"
+      ],
+      "newSpec": null,
+      "notes": ""
+    },
+    {
+      "id": "route:runs",
+      "kind": "route",
+      "route": "runs",
+      "params": [
+        "id"
+      ],
+      "sheets": [],
+      "modes": [
+        "sample"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Runs.tsx"
+      ],
+      "targetExtension": "projects",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-compare.spec.ts",
+          "apps/desktop/e2e/harness-runs.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-words.spec.ts",
+          "apps/desktop/e2e/harness-start-real.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-runs.test.ts"
+      ],
+      "newSpec": "apps/desktop/e2e/harness-runs.spec.ts",
+      "notes": "Sample mode only, as the scope says. A real launch shows the line \"Runs are not in beta.1.\" and is read by harness-real-words and harness-start-real; those files are listed under real but do not make a real mode of Runs."
+    },
+    {
+      "id": "route:compare",
+      "kind": "route",
+      "route": "compare",
+      "params": [
+        "group"
+      ],
+      "sheets": [],
+      "modes": [
+        "sample"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Compare.tsx"
+      ],
+      "targetExtension": "projects",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-compare.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-runs.test.ts"
+      ],
+      "newSpec": null,
+      "notes": "Sample mode only. An address with no group parses to the runs route."
+    },
+    {
+      "id": "route:interfaces",
+      "kind": "route",
+      "route": "interfaces",
+      "params": [
+        "id"
+      ],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Interfaces.tsx"
+      ],
+      "targetExtension": "interfaces-history-help",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-install.spec.ts",
+          "apps/desktop/e2e/harness-interfaces.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-words.test.ts",
+        "apps/desktop/tests/harness-status.test.ts"
+      ],
+      "newSpec": "apps/desktop/e2e/harness-interfaces.spec.ts",
+      "notes": ""
+    },
+    {
+      "id": "route:history",
+      "kind": "route",
+      "route": "history",
+      "params": [],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/History.tsx",
+        "apps/desktop/renderer/harness/undo-note.ts"
+      ],
+      "targetExtension": "interfaces-history-help",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-install.spec.ts",
+          "apps/desktop/e2e/harness-history.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-projects.spec.ts",
+          "apps/desktop/e2e/harness-real-words.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-store.test.ts",
+        "apps/desktop/tests/draft-undo.test.ts"
+      ],
+      "newSpec": "apps/desktop/e2e/harness-history.spec.ts",
+      "notes": ""
+    },
+    {
+      "id": "route:help",
+      "kind": "route",
+      "route": "help",
+      "params": [],
+      "sheets": [
+        "save"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/screens/Help.tsx"
+      ],
+      "targetExtension": "interfaces-history-help",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-help.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-words.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-words.test.ts"
+      ],
+      "newSpec": "apps/desktop/e2e/harness-help.spec.ts",
+      "notes": ""
+    },
+    {
+      "id": "sheet:start",
+      "kind": "sheet",
+      "name": "start",
+      "title": "Start",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/StartSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/StartRealSheet.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "harnesses"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-compare.spec.ts",
+          "apps/desktop/e2e/harness-list.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-start-real.spec.ts",
+          "apps/desktop/e2e/harness-start-harness-real.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/start-command.test.ts",
+        "apps/desktop/tests/start-real-model.test.ts",
+        "apps/desktop/tests/start-words.test.ts"
+      ],
+      "notes": "The sample sheet starts runs in memory. The real sheet shows an engine command and runs nothing."
+    },
+    {
+      "id": "sheet:adopt",
+      "kind": "sheet",
+      "name": "adopt",
+      "title": "New harness from a folder",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/AdoptSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/adopt-review.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "overview",
+        "harnesses",
+        "builder",
+        "projects",
+        "shell:New harness"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-engine.spec.ts",
+          "apps/desktop/e2e/harness-small.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-engine-real.spec.ts",
+          "apps/desktop/e2e/harness-sheets-component.spec.ts",
+          "apps/desktop/e2e/journey-1-cold-start-and-adopt.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/engine-adopt-empty.test.ts",
+        "apps/desktop/tests/engine-service.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "sheet:project",
+      "kind": "sheet",
+      "name": "project",
+      "title": "Install or remove a folder's harness",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/ProjectSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/project-review.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "builder",
+        "projects"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-engine.spec.ts",
+          "apps/desktop/e2e/harness-small.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-engine-real.spec.ts",
+          "apps/desktop/e2e/harness-sheets-component.spec.ts",
+          "apps/desktop/e2e/harness-real-projects.spec.ts",
+          "apps/desktop/e2e/journey-2-build-and-project.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/engine-preview.test.ts",
+        "apps/desktop/tests/engine-gates.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "sheet:save",
+      "kind": "sheet",
+      "name": "save",
+      "title": "Edit a folder's harness",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/SaveSheet.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "notes",
+        "builder",
+        "projects",
+        "help"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-save.spec.ts",
+          "apps/desktop/e2e/harness-window-items.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-save-real.spec.ts",
+          "apps/desktop/e2e/harness-window-items-real.spec.ts",
+          "apps/desktop/e2e/harness-builder-save-real.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/save-draft.test.ts",
+        "apps/desktop/tests/save-draft-items.test.ts",
+        "apps/desktop/tests/save-sheet-markup.test.ts",
+        "apps/desktop/tests/engine-save.test.ts",
+        "apps/desktop/tests/engine-save-review.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "sheet:install",
+      "kind": "sheet",
+      "name": "install",
+      "title": "Install a harness (sample)",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/InstallSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/install-review.tsx",
+        "apps/desktop/renderer/harness/sheets/install-steps.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "harnesses",
+        "projects"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-install.spec.ts",
+          "apps/desktop/e2e/harness-preview-demo.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-install.test.ts"
+      ],
+      "notes": "The sample install sheet. On the person's own folders the project sheet does this work."
+    },
+    {
+      "id": "sheet:add",
+      "kind": "sheet",
+      "name": "add",
+      "title": "Add to the Library",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/AddSheet.tsx"
+      ],
+      "targetExtension": "library",
+      "openedFrom": [
+        "library"
+      ],
+      "modes": [
+        "real"
+      ],
+      "e2e": {
+        "sample": [],
+        "real": [
+          "apps/desktop/e2e/harness-library-add-real.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/library-add.test.ts",
+        "apps/desktop/tests/library-add-map.test.ts"
+      ],
+      "notes": "Mounted from Library on the person's own folders only. The sample has no Add sheet."
+    },
+    {
+      "id": "sheet:export",
+      "kind": "sheet",
+      "name": "export",
+      "title": "Export a harness",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/ExportSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/share-parts.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "builder"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-share-component.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-share-real.spec.ts",
+          "apps/desktop/e2e/harness-share-hostile.spec.ts",
+          "apps/desktop/e2e/journey-4-export-and-import.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/share-contract.test.ts",
+        "apps/desktop/tests/share-sample.test.ts",
+        "apps/desktop/tests/share-sheets-markup.test.ts",
+        "apps/desktop/tests/share-words.test.ts",
+        "apps/desktop/tests/share-no-stubs.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "sheet:import",
+      "kind": "sheet",
+      "name": "import",
+      "title": "Import a harness",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/ImportSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/share-parts.tsx"
+      ],
+      "targetExtension": "projects",
+      "openedFrom": [
+        "harnesses",
+        "projects"
+      ],
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-share-component.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-share-real.spec.ts",
+          "apps/desktop/e2e/harness-share-hostile.spec.ts",
+          "apps/desktop/e2e/journey-4-export-and-import.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/share-contract.test.ts",
+        "apps/desktop/tests/share-sample.test.ts",
+        "apps/desktop/tests/share-sheets-markup.test.ts",
+        "apps/desktop/tests/share-words.test.ts",
+        "apps/desktop/tests/share-no-stubs.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "param:id",
+      "kind": "param",
+      "name": "id",
+      "routes": [
+        "harnesses",
+        "builder",
+        "projects",
+        "runs",
+        "interfaces"
+      ],
+      "shows": "Which harness, folder, run or engine is picked. An id the world does not know shows the list or a named empty state.",
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-list.spec.ts",
+          "apps/desktop/e2e/harness-builder.spec.ts",
+          "apps/desktop/e2e/harness-runs.spec.ts",
+          "apps/desktop/e2e/harness-interfaces.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-builder-save-real.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "param:kind",
+      "kind": "param",
+      "name": "kind",
+      "routes": [
+        "library"
+      ],
+      "shows": "Which tab of the Library: agent, skill, tool or context. Anything else opens the skill tab.",
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-list.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-library-add-real.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "param:partId",
+      "kind": "param",
+      "name": "partId",
+      "routes": [
+        "file",
+        "library"
+      ],
+      "shows": "Which part the File view shows or the Library picks.",
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-file.spec.ts",
+          "apps/desktop/e2e/harness-path-disclosure.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "param:group",
+      "kind": "param",
+      "name": "group",
+      "routes": [
+        "compare"
+      ],
+      "shows": "Which group of runs Compare shows. An unknown group shows a named empty state.",
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-compare.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "launch:sample",
+      "kind": "launch",
+      "name": "sample launch",
+      "shows": "The --sample launch: the made-up world in memory, no bridge, address base #sample.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/mount.tsx",
+        "apps/desktop/renderer/harness/HarnessApp.tsx"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "sample"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-first-run.spec.ts",
+          "apps/desktop/e2e/harness-small.spec.ts",
+          "apps/desktop/e2e/harness-preview-demo.spec.ts",
+          "apps/desktop/e2e/window-security.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/sample-preview.test.ts",
+        "apps/desktop/tests/world-sample.test.ts",
+        "apps/desktop/tests/made-up-home.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "launch:sample-preview-engines",
+      "kind": "launch",
+      "name": "sample launch with preview engines",
+      "shows": "The --sample-preview-engines switch, which shows preview engines in the sample sheets.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/mount.tsx",
+        "apps/desktop/renderer/harness/HarnessApp.tsx"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "sample"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-preview-demo.spec.ts",
+          "apps/desktop/e2e/harness-sheets-component.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/sample-preview.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "launch:real",
+      "kind": "launch",
+      "name": "real launch",
+      "shows": "The default launch on the person's own folders, address base #app, with the reader and engine bridges.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/mount.tsx",
+        "apps/desktop/renderer/harness/HarnessApp.tsx"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "real"
+      ],
+      "e2e": {
+        "sample": [],
+        "real": [
+          "apps/desktop/e2e/harness-real-first-run.spec.ts",
+          "apps/desktop/e2e/harness-real-empty.spec.ts",
+          "apps/desktop/e2e/window-security.spec.ts",
+          "apps/desktop/e2e/packaged-app.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/real-static.test.ts",
+        "apps/desktop/tests/launch.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "launch:no-bridge",
+      "kind": "launch",
+      "name": "real launch with no bridge",
+      "shows": "An #app address whose window has no bridge shows the no-bridge screen, never the sample.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/mount.tsx",
+        "apps/desktop/renderer/harness/real/mode.ts"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "no-bridge"
+      ],
+      "e2e": {
+        "sample": [],
+        "real": [],
+        "noBridge": [
+          "apps/desktop/e2e/harness-no-bridge.spec.ts"
+        ]
+      },
+      "unit": [
+        "apps/desktop/tests/harness-boundary.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "chrome:navigation",
+      "kind": "chrome",
+      "name": "navigation reaches each registered route",
+      "shows": "The left navigation: Overview, Harnesses, Library tabs, Projects, Runs, Engines, Install history, Help; the first-run routes have none.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/Navigation.tsx",
+        "apps/desktop/renderer/harness/Shell.tsx"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-small.spec.ts",
+          "apps/desktop/e2e/harness-list.spec.ts"
+        ],
+        "real": [
+          "apps/desktop/e2e/harness-real-words.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-route.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "chrome:toast",
+      "kind": "chrome",
+      "name": "toast",
+      "shows": "The note with an optional Undo that sits over the shell.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/parts/Toast.tsx",
+        "apps/desktop/renderer/harness/ui.tsx",
+        "apps/desktop/renderer/harness/undo-note.ts"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-runs.spec.ts",
+          "apps/desktop/e2e/harness-history.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/draft-undo.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "chrome:unsaved-title",
+      "kind": "chrome",
+      "name": "unsaved-count title",
+      "shows": "The window title carries the count of unsaved changes, and the close guard holds the unload while there are any.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/close-guard.ts"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "sample",
+        "real"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-close-guard.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/close-guard.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "state:path-disclosure",
+      "kind": "state",
+      "name": "path disclosure",
+      "shows": "A file path stays out of sight behind \"Show details\" in Library, Projects and the File view.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/parts/PathDisclosure.tsx"
+      ],
+      "targetExtension": null,
+      "modes": [
+        "sample"
+      ],
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-path-disclosure.spec.ts"
+        ],
+        "real": [],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/harness-path-disclosure.test.ts"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "state:empty-real",
+      "kind": "state",
+      "name": "nothing found (real, empty home)",
+      "shows": "Welcome and Choose say \"Nothing found yet\" and offer Add a folder and Use the sample.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/real/Nothing.tsx",
+        "apps/desktop/renderer/harness/screens/ChooseSources.tsx"
+      ],
+      "targetExtension": "first-run",
+      "modes": [
+        "real"
+      ],
+      "e2e": {
+        "sample": [],
+        "real": [
+          "apps/desktop/e2e/harness-real-empty.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [],
+      "notes": ""
+    },
+    {
+      "id": "state:hostile-share",
+      "kind": "state",
+      "name": "hostile export and import files",
+      "shows": "Each hostile file is refused in words on the sheet and writes nothing.",
+      "screenFiles": [
+        "apps/desktop/renderer/harness/sheets/ImportSheet.tsx",
+        "apps/desktop/renderer/harness/sheets/ExportSheet.tsx"
+      ],
+      "targetExtension": "projects",
+      "modes": [
+        "real"
+      ],
+      "e2e": {
+        "sample": [],
+        "real": [
+          "apps/desktop/e2e/harness-share-hostile.spec.ts"
+        ],
+        "noBridge": []
+      },
+      "unit": [
+        "apps/desktop/tests/share-contract.test.ts"
+      ],
+      "notes": ""
+    }
+  ]
+}
