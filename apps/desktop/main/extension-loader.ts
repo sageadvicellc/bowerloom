@@ -1,7 +1,7 @@
 /**
  * Reads the manifests of the extensions that ship inside the app bundle: `<bundleRoot>/extensions/<name>/manifest.json`. It loads nothing from outside bundleRoot.
  * The bundle root must be an absolute path. A name with a path separator or "..", an absolute path, and a link that resolves outside bundleRoot are refused.
- * A manifest that is not valid JSON or fails the manifest check is skipped and reported, and so is a folder that a second link points to. Nothing here throws
+ * A manifest that is not valid JSON or fails the manifest check is skipped and reported, and so is a folder or a manifest file that a second link points to. Nothing here throws
  * for a bad extension. It never returns an empty result for a place it could not look: that is a skip with the code UNREADABLE. A bundle root that exists and
  * has no extensions folder is the one deliberate empty result. It reads only, and it runs no code.
  */
@@ -17,8 +17,6 @@ export const MANIFEST_FILE = 'manifest.json';
 export const MANIFEST_MAX_BYTES = 64 * 1024;
 /** A folder name in a report is cut to this many characters. */
 const NAME_SHOWN = 64;
-/** The parse error in a NOT_JSON message is cut to this many characters. */
-const NOT_JSON_SHOWN = 100;
 
 export type SkipCode = 'BAD_NAME' | 'OUTSIDE_ROOT' | 'UNREADABLE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_JSON' | 'BAD_MANIFEST' | 'DUPLICATE';
 export interface Skipped { readonly name: string; readonly code: SkipCode; readonly message: string }
@@ -33,8 +31,12 @@ function plainName(name: unknown): name is string {
   return typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !name.includes('..') && !/[\\/\0]/.test(name) && !isAbsolute(name);
 }
 
-/** Text made safe to show: control characters, bidi marks, zero-width marks and other invisible characters become "?", and long text is cut. */
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\u{E0000}-\u{E007F}]/gu;
+/**
+ * Text made safe to show: control, format and invisible characters become "?", and long text is cut. That is the Unicode classes Cc, Cf, Zl and Zp, every default-ignorable
+ * code point, the Khmer inherent vowels (U+17B4, U+17B5), the object replacement character (U+FFFC), the musical formatting characters (U+1D173 to U+1D17A), the non-ASCII
+ * spaces (U+00A0, U+2000 to U+200A), and the braille blank (U+2800), which looks empty. An ordinary space stays.
+ */
+const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u17b4\u17b5\ufffc\u{1d173}-\u{1d17a}\u00a0\u2000-\u200a\u2800]/gu;
 function clean(text: string, max: number): string {
   const chars = [...text.replace(UNSAFE, '?')];
   return chars.length > max ? `${chars.slice(0, max).join('')}…` : chars.join('');
@@ -80,8 +82,9 @@ function readManifestText(file: string, label: string): Answer<string> {
 
 const isAbsolutePath = (value: unknown): value is string => typeof value === 'string' && value !== '' && isAbsolute(value);
 
-/** One manifest by folder name, with the real path of its folder (for finding two names for one folder). */
-function loadOne(bundleRoot: string, name: string): { readonly answer: Answer<ExtensionManifest>; readonly folder?: string } {
+/** One manifest by folder name, with the real path of its folder and of its manifest file (for finding two names for one folder or one file). */
+interface One { readonly answer: Answer<ExtensionManifest>; readonly folder?: string; readonly file?: string }
+function loadOne(bundleRoot: string, name: string): One {
   if (!plainName(name)) return { answer: fail('BAD_NAME', 'The extension name must be one plain folder name.') };
   const label = shown(name);
   if (!isAbsolutePath(bundleRoot)) return { answer: fail('UNREADABLE', 'The bundle folder must be an absolute path.') };
@@ -97,14 +100,16 @@ function loadOne(bundleRoot: string, name: string): { readonly answer: Answer<Ex
   if (!file.ok) return { answer: fail('UNREADABLE', `The extension "${label}" has no ${MANIFEST_FILE} (${file.err}).`), folder: folder.path };
   if (!inside(root.path, file.path)) return { answer: fail('OUTSIDE_ROOT', `The ${MANIFEST_FILE} of "${label}" resolves outside the bundle.`), folder: folder.path };
   if (basename(file.path) !== MANIFEST_FILE) return { answer: fail('BAD_NAME', `The ${MANIFEST_FILE} of "${label}" is a link to a file with another name.`), folder: folder.path };
+  const at = { folder: folder.path, file: file.path };
   const read = readManifestText(file.path, label);
-  if (!read.ok) return { answer: read, folder: folder.path };
+  if (!read.ok) return { answer: read, ...at };
   let parsed: unknown;
-  try { parsed = JSON.parse(read.value); } catch (error) {
-    const why = clean(error instanceof SyntaxError ? error.message : '', NOT_JSON_SHOWN);
-    return { answer: fail('NOT_JSON', `The ${MANIFEST_FILE} of "${label}" is not valid JSON${why === '' ? '' : ` (${why})`}.`), folder: folder.path };
+  try { parsed = JSON.parse(read.value.charCodeAt(0) === 0xfeff ? read.value.slice(1) : read.value); } catch (error) {
+    // Only the position of the fault is shown. The parser quotes the manifest text in its message, and that text is not ours to show.
+    const position = error instanceof SyntaxError ? /\bposition (\d+)/.exec(error.message)?.[1] : undefined;
+    return { answer: fail('NOT_JSON', `The ${MANIFEST_FILE} of "${label}" is not valid JSON${position === undefined ? '' : ` (at position ${position})`}.`), ...at };
   }
-  return { answer: checkManifest(parsed), folder: folder.path };
+  return { answer: checkManifest(parsed), ...at };
 }
 
 /** Loads one manifest by folder name. The refusal code is a SkipCode. The bundle root must be an absolute path. */
@@ -137,14 +142,15 @@ export function loadBundledManifests(bundleRoot: string): LoadResult {
     if (!statSync(base.path).isDirectory()) return unreadable('The extensions entry is not a folder (ENOTDIR).');
     names = readdirSync(base.path).sort();
   } catch (error) { return unreadable(`The extensions folder cannot be read (${codeOf(error)}).`); }
-  const seen = new Map<string, string>();
+  const folders = new Map<string, string>(), files = new Map<string, string>();
   for (const name of names) {
-    const { answer, folder } = loadOne(bundleRoot, name);
-    if (folder !== undefined) {
-      const first = seen.get(folder);
-      if (first !== undefined) { skipped.push({ name: shown(name), code: 'DUPLICATE', message: `The folder "${shown(name)}" is the same real folder as "${first}".` }); continue; }
-      seen.set(folder, shown(name));
-    }
+    const { answer, folder, file } = loadOne(bundleRoot, name);
+    const firstFolder = folder === undefined ? undefined : folders.get(folder);
+    const firstFile = file === undefined ? undefined : files.get(file);
+    if (firstFolder !== undefined) { skipped.push({ name: shown(name), code: 'DUPLICATE', message: `The folder "${shown(name)}" is the same real folder as "${firstFolder}".` }); continue; }
+    if (firstFile !== undefined) { skipped.push({ name: shown(name), code: 'DUPLICATE', message: `The ${MANIFEST_FILE} of "${shown(name)}" is the same real file as the one in "${firstFile}".` }); continue; }
+    if (folder !== undefined) folders.set(folder, shown(name));
+    if (file !== undefined) files.set(file, shown(name));
     if (answer.ok) manifests.push(answer.value);
     else skipped.push({ name: shown(name), code: answer.refusal.code as SkipCode, message: answer.refusal.message });
   }

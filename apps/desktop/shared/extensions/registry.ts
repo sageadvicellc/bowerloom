@@ -7,7 +7,7 @@ import { checkManifest, refuse } from './manifest.js';
 import type { Answer, ExtensionManifest, RouteResolution } from './types.js';
 
 export interface Registry<M = unknown> {
-  /** Checks the manifest, then registers it with its mount. Refuses BAD_MANIFEST, EXTENSION_EXISTS or ROUTE_TAKEN. The registry itself is frozen, and then registers nothing. */
+  /** Checks the manifest, then registers it with its mount. Refuses BAD_MANIFEST, EXTENSION_EXISTS or ROUTE_TAKEN, and a refusal registers nothing. */
   register(manifest: unknown, mount: M): Answer<ExtensionManifest>;
   /** Removes an extension and frees its routes. Refuses PROTECTED (the extension stays) or UNKNOWN_EXTENSION. */
   uninstall(id: string): Answer<ExtensionManifest>;

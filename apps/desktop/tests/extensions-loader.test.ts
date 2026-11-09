@@ -229,6 +229,7 @@ test('a loose file in the extensions folder is skipped and reported, not loaded'
   assert.equal(result.skipped[0]?.code, 'UNREADABLE');
 });
 
+// If the loader opens a FIFO before it looks at the file type, this test hangs the runner (the timeout below only ends the test, not a blocked main thread). The tests are bundled, so a child process cannot load the loader to make this safe.
 test('a manifest.json that is a FIFO is refused as NOT_A_FILE without being opened, so the loader does not block', { timeout: 10_000 }, t => {
   if (process.platform === 'win32') return t.skip('no mkfifo on Windows');
   const root = tempDir(t);
@@ -244,34 +245,74 @@ test('a manifest.json that is a FIFO is refused as NOT_A_FILE without being open
   if (!answer.ok) assert.equal(answer.refusal.code, 'NOT_A_FILE');
 });
 
-test('the NOT_JSON message carries a clean, short part of the parse error', t => {
+test('the NOT_JSON message says the manifest is not valid JSON, gives a position when there is one, and never carries manifest text', t => {
   const root = tempDir(t);
   put(root, 'a-short', '{ not json');
   put(root, 'b-long', '{' + 'q'.repeat(2000));
-  put(root, 'c-odd', '{ "id": "x\u202E\u0007" ' + 'z'.repeat(50) + '}x\u202E');
+  put(root, 'c-marker', '{"id": "MANIFESTMARKER", "x": nope}');
+  put(root, 'd-marker-start', 'MANIFESTMARKER{');
+  put(root, 'e-odd', '{ "id": "x‮\u0007" ' + 'z'.repeat(50) + '}x‮');
   const result = loadBundledManifests(root);
-  assert.deepEqual(result.skipped.map(s => s.code), ['NOT_JSON', 'NOT_JSON', 'NOT_JSON']);
-  assert.match(result.skipped[0]!.message, /is not valid JSON \(.*(token|JSON).*\)/i, 'the parse error is in the message');
+  assert.deepEqual(result.skipped.map(s => s.code), ['NOT_JSON', 'NOT_JSON', 'NOT_JSON', 'NOT_JSON', 'NOT_JSON']);
   for (const s of result.skipped) {
-    assert.ok(s.message.length < 300, `${s.name}: ${s.message.length}`);
-    assert.doesNotMatch(s.message, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/, s.name);
+    assert.match(s.message, /^The manifest\.json of "[^"]+" is not valid JSON( \(at position \d+\))?\.$/, s.name);
+    assert.doesNotMatch(s.message, /MANIFESTMARKER|qqqq|zzzz|nope|not json|Unexpected|Expected/, `${s.name}: no manifest text`);
+    assert.ok(s.message.length < 120, `${s.name}: ${s.message.length}`);
   }
+  assert.match(result.skipped[0]!.message, /\(at position \d+\)/, 'the position stays when the parser gives one');
 });
 
-test('folder names with invisible characters (soft hyphen, fillers, variation selectors, tags and more) are cleaned in the skip report', t => {
+test('a leading UTF-8 byte order mark is dropped before the manifest is parsed', t => {
+  const root = tempDir(t);
+  put(root, 'bom', '﻿' + manifest('bom'));
+  put(root, 'bom-only', '﻿');
+  put(root, 'two-marks', '﻿﻿' + manifest('two-marks'));
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests.map(m => m.id), ['bom']);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['bom-only', 'NOT_JSON'], ['two-marks', 'NOT_JSON']], 'only one leading mark is dropped');
+  assert.equal(loadBundledManifest(root, 'bom').ok, true);
+});
+
+const GROUPS: Record<string, string[]> = {
+  'control characters (Cc)': ['\u0001', '\u001f', '\u007f', '\u0085', '\u009f'],
+  'format characters (Cf)': ['­', '؀', '؜', '​', '‏', '‮', '⁦', '⁩', '﻿', '￹', '￻', '\u{110BD}', '\u{1BCA0}'],
+  'line and paragraph separators (Zl, Zp)': [' ', ' '],
+  'default ignorable code points': ['͏', 'ᅟ', 'ᅠ', '᠎', '⁠', '⁥', 'ㅤ', 'ﾠ', '︀', '️', '\u{E0000}', '\u{E0041}', '\u{E007F}', '\u{E0100}', '\u{E01EF}'],
+  'Khmer inherent vowels': ['឴', '឵'],
+  'object replacement character': ['￼'],
+  'musical formatting characters': ['\u{1D173}', '\u{1D175}', '\u{1D17A}'],
+  'non-ASCII spaces': [' ', ' ', ' ', ' ', ' ', ' ', ' '],
+  'braille blank': ['⠀'],
+};
+const REVEALS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}឴឵￼\u{1D173}-\u{1D17A}  - ⠀]/u;
+
+for (const [group, marks] of Object.entries(GROUPS)) {
+  test(`folder names with ${group} are cleaned in the skip report`, t => {
+    const root = tempDir(t);
+    mkdirSync(join(root, 'extensions'));
+    // The name is cleaned in the message of a refusal. No folder is made, because a file system may refuse some of these names.
+    for (const [i, mark] of marks.entries()) {
+      const answer = loadBundledManifest(root, `n${i}${mark}x`);
+      assert.equal(answer.ok, false);
+      if (answer.ok) continue;
+      assert.match(answer.refusal.message, new RegExp(`"n${i}\\?x"`), `U+${mark.codePointAt(0)!.toString(16)}: ${JSON.stringify(answer.refusal.message)}`);
+      assert.doesNotMatch(answer.refusal.message, REVEALS, JSON.stringify(answer.refusal.message));
+    }
+  });
+}
+
+test('a listed folder with a soft hyphen in its name is cleaned in the report', t => {
+  const root = tempDir(t);
+  mkdirSync(join(root, 'extensions', 'soft­hyphen'), { recursive: true });
+  assert.deepEqual(loadBundledManifests(root).skipped.map(s => s.name), ['soft?hyphen']);
+});
+
+test('an ordinary space and ordinary letters in a folder name are kept', t => {
   const root = tempDir(t);
   mkdirSync(join(root, 'extensions'));
-  const marks = ['\u00ad', '\u034f', '\u115f', '\u1160', '\u180e', '\u2800', '\u3164', '\uffa0', '\ufe00', '\ufe0f', '\ufff9', '\ufffb', '\u{E0000}', '\u{E0041}', '\u{E007F}'];
-  // The name is cleaned in the message of a refusal. No folder is made, because a file system may refuse some of these names.
-  for (const [i, mark] of marks.entries()) {
-    const answer = loadBundledManifest(root, `n${i}${mark}x`);
-    assert.equal(answer.ok, false);
-    if (answer.ok) continue;
-    assert.match(answer.refusal.message, new RegExp(`"n${i}\\?x"`), JSON.stringify(answer.refusal.message));
-    assert.doesNotMatch(answer.refusal.message, /[\u00ad\u034f\u115f\u1160\u180e\u2800\u3164\uffa0\ufe00-\ufe0f\ufff9-\ufffb\u{E0000}-\u{E007F}]/u, JSON.stringify(answer.refusal.message));
-  }
-  mkdirSync(join(root, 'extensions', 'soft\u00adhyphen'), { recursive: true });
-  assert.deepEqual(loadBundledManifests(root).skipped.map(s => s.name), ['soft?hyphen'], 'and in the report of a listed folder');
+  const answer = loadBundledManifest(root, 'my exté');
+  assert.equal(answer.ok, false);
+  if (!answer.ok) assert.match(answer.refusal.message, /"my exté"/);
 });
 
 test('the DUPLICATE message does not say the first folder loaded when that folder was skipped', t => {
@@ -282,4 +323,25 @@ test('the DUPLICATE message does not say the first folder loaded when that folde
   assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['alias', 'NOT_JSON'], ['real', 'DUPLICATE']]);
   assert.match(result.skipped[1]!.message, /same real folder as "alias"/);
   assert.doesNotMatch(result.skipped[1]!.message, /loaded/);
+});
+
+test('two folders whose manifest.json is the same real file load it once: the second is a DUPLICATE', t => {
+  const root = tempDir(t);
+  put(root, 'a-real', manifest('shared'));
+  mkdirSync(join(root, 'extensions', 'b-link'));
+  symlinkSync(join(root, 'extensions', 'a-real', 'manifest.json'), join(root, 'extensions', 'b-link', 'manifest.json'));
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.manifests.map(m => m.id), ['shared']);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['b-link', 'DUPLICATE']]);
+  assert.match(result.skipped[0]!.message, /"a-real"/, 'it names the first folder');
+  assert.equal(loadBundledManifest(root, 'b-link').ok, true, 'on its own, the link still loads');
+});
+
+test('a second folder that links to a manifest file that was skipped is a DUPLICATE too, not a second report of the same fault', t => {
+  const root = tempDir(t);
+  put(root, 'a-real', '{ not json');
+  mkdirSync(join(root, 'extensions', 'b-link'));
+  symlinkSync(join(root, 'extensions', 'a-real', 'manifest.json'), join(root, 'extensions', 'b-link', 'manifest.json'));
+  const result = loadBundledManifests(root);
+  assert.deepEqual(result.skipped.map(s => [s.name, s.code]), [['a-real', 'NOT_JSON'], ['b-link', 'DUPLICATE']]);
 });
