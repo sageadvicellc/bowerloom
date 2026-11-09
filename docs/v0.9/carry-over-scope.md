@@ -1,8 +1,8 @@
 # Bowerloom 0.9: which 0.8 work to carry over
 
-Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". A later direction change, relayed through chat and not on GitHub, is proposed to supersede part of the follow-up answers. Answer 1C stands as recorded on GitHub until the maintainer confirms the change there. See "Direction change". Date: 2026-11-08, updated 2026-11-09.
+Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". A later direction change, relayed through chat and not on GitHub, is proposed to amend answer 1C on removability and on how the interface is built, and to put follow-up answers (a) and (d) in question. Answer 1C stands as recorded on GitHub until the maintainer confirms the change there. See "Direction change". Date: 2026-11-08, updated 2026-11-09.
 
-This document sorts the 0.8 work into Keep, Drop, and Unsure. The document itself deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls. Each removal still needs its own step. The one step done so far is decision 4C: see "Branches".
+This document sorts the 0.8 work into Keep, Drop, and Unsure. The document itself deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls, except where "Direction change" puts a call in question. Each removal still needs its own step. The one step done so far is decision 4C: see "Branches".
 
 ## Why this exists
 
@@ -20,7 +20,7 @@ These items come from the maintainer's stated direction. V9-1 to V9-7 date from 
 - V9-6, traces and logging API. It records sessions, reviews, usage, and working-tree locks. The maintainer wants it specified only after two working harnesses exist. Under the relayed direction change, it becomes one more engine API (relayed, not on GitHub, an inference to confirm).
 - V9-7, a possible new name. Research only. Nothing is decided.
 - V9-8, structured agent output in the included chat interface. A request relayed through chat on 2026-11-09, not on GitHub. It is a request, not a build. See "New feature request".
-- V9-9, host-neutral API contract. A request relayed through chat on 2026-11-09, not on GitHub. The engine API must work for hosts beyond the Bowerloom app, so that other platforms can implement the same contract and ship the same concepts as extensions. A request, not a build. See "Direction change".
+- V9-9, host-neutral API contract. Relayed through chat on 2026-11-09, not on GitHub, an inference to confirm. The relayed text says the concepts also ship as extensions on other platforms where possible. The reading: the engine API must work for hosts beyond the Bowerloom app, so that other platforms can implement the same contract where possible. A request, not a build. See "Direction change".
 
 ## State of 0.8 on 2026-11-08
 
@@ -50,7 +50,7 @@ If a 0.9 item depends on a piece, the piece is Keep, and the line names the item
 - `packages/fidelity`. It decides how each engine carries a harness, and it reports every loss. V9-2 needs exactly that per-engine view.
 - `packages/adoption` and the portable projection in `packages/project-sync`. Adoption reads engine files and writes a harness definition by copy. V9-2 needs the harness read from each engine.
 - Discovery and the scan cache (pull requests 150 and 152). V9-2 shows configuration across the whole environment. That needs a scan the user trusts, and the cache stops a rescan on every launch. Both sit in the unreleased beta.2 work, so decision 2 affects them. Decision 2B carries them into the 0.9 branch.
-- The Electron shell: `apps/desktop/main`, `preload`, `shared`, and the security checks. V9-4 names the desktop app as a human surface. The screens are in Drop under decision 1C. The shell stays. Under the direction change, the shell becomes a client of the engine API (relayed, not on GitHub, an inference to confirm).
+- The Electron shell: `apps/desktop/main`, `preload`, `shared`, and the security checks. V9-4 names the desktop app as a human surface. The screens are in Drop under decision 1C. The shell stays. Under the direction change, the shell becomes a client of the engine API (relayed, not on GitHub, an inference to confirm). Question 9 under "Direction change" asks whether the shell framework changes.
 - The linking of a notes folder: `packages/notes-source` and `kits/wiki-keeper`. V9-1 probably starts from a linked knowledge root. That is an inference, because the V9-1 text does not say it. The package treats the source as a pointer and never opens a page, so V9-1 will add a reader.
 - The wiki-linking part of issue 143. V9-1 probably depends on a link flow that is easy to find. That is also an inference. The Context page part of the issue is Unsure. Decision 2B leaves issue 143 unfinished for beta.2. The need moves to the 0.9 rebuild.
 - The release script and workflow tools (pull request 161) and the files in `release/`. This is an exception to the sort rule: no V9 item depends on them. Releasing 0.9 needs them, and they are process, not product. They also sit in the unreleased beta.2 work.
@@ -91,7 +91,7 @@ Two Drops come from the maintainer's decisions, not from proof: the screens (1C)
   - `workbench`: three tests under `tests/` and one startup test read its fixtures.
   A removal needs its own pull request that updates those references.
 - `apps/mcp`. It is a root workspace and a declared bin (`bowerloom-mcp`) of the private root package. The root test script runs its tests. It imports no package. No 0.9 item names it. No decision in this round covers it.
-- Export and import of harness bundles. It shipped in `0.8.0-beta.1`. The code (`packages/harness-bundle`) is a dependency of the Keep shell, so it stays. Whether export and import stays a supported feature is not a 0.9 call that any item makes, unless question 1 under "Direction change" puts it on the exclusive list.
+- Export and import of harness bundles. It shipped in `0.8.0-beta.1`. The code (`packages/harness-bundle`) is a dependency of the Keep shell, so it stays. Whether export and import stays a supported feature is not a 0.9 call that any item makes, unless question 3 under "Direction change" puts it on the exclusive list.
 - The knowledge graph idea in closed pull request 106. V9-1 can reuse it. See "Branches".
 - Issues older than 138. No V9 item names them. This sort leaves them out. Issues 156 to 160 already group part of them as tech debt.
 
@@ -109,7 +109,7 @@ This section records a request that the maintainer made in chat on 2026-11-09. A
 
 The request: in the included chat interface of 0.9, agents can give structured output that renders like a small dashboard snapshot. The output keeps one consistent, internally defined look. It covers notes, a question and answer form with a submit button, and whatever else an assistant needs in order to get the maintainer's attention and knowledge.
 
-Layer, as a proposal. The component schema and the submit contract belong to the core, so every surface and host shares them. The renderer in the included chat interface was proposed as a default extension, in line with decision 1C. The relayed refinement keeps the renderer as a non-removable default extension over engine concepts, with the schema and submit contract in the core. That is an inference to confirm, and this split stays an open question, not a decision. [Decision comment 1](https://github.com/sageadvicellc/bowerloom/pull/162#issuecomment-6731689297) on this pull request asked the layer question before the change. Its option A (core holds the schema and submit contract, renderer is a default extension) is closest to the refinement.
+Layer, as a proposal. The component schema and the submit contract belong to the core, so every surface and host shares them. The renderer in the included chat interface was proposed as a default extension, in line with decision 1C. The direction change, if confirmed, keeps the renderer as a non-removable default extension over engine concepts, with the schema and submit contract in the core. That is an inference to confirm, and this split stays an open question, not a decision. [Decision comment 1](https://github.com/sageadvicellc/bowerloom/pull/162#issuecomment-6731689297) on this pull request asked the layer question before the change. Its option A (core holds the schema and submit contract, renderer is a default extension) is closest to the refinement.
 
 Requirements sketch:
 
@@ -149,7 +149,7 @@ Open questions:
 
 The maintainer answered on 2026-11-09 in [one comment](https://github.com/sageadvicellc/bowerloom/pull/162#issuecomment-6731232158).
 
-1. How much of the current desktop interface survives. Answer 1C: keep the shell only. Rebuild the interface on the new extensions API and ship it as included default extensions. The relayed direction change below is proposed to change the "included default extensions" wording. Answer 1C stands as recorded on GitHub until the maintainer confirms the change there.
+1. How much of the current desktop interface survives. Answer 1C: keep the shell only. Rebuild the interface on the new extensions API and ship it as included default extensions. The relayed direction change below is proposed to amend the "included default extensions" wording of 1C, and its extension-API framing. Answer 1C stands as recorded on GitHub until the maintainer confirms the change there.
 2. What happens to the unreleased beta.2 work and the two unbuilt issues. Answer 2B: do not release beta.2. Carry the 8 merged pull requests into the 0.9 branch.
 3. What happens to the four packages that no Keep piece imports from source. Answer 3B for now and 3C later: freeze them now, and remove them in a separate reviewed pull request later.
 4. What happens to the stale 0.8 branches. Answer 4C: tag each tip, then delete the branches. Done on 2026-11-09, as the Branches section says.
@@ -176,7 +176,7 @@ The reading of the relaying agent, not the maintainer's words:
 - The concepts are engine-native and have APIs. They live in the core.
 - Their interfaces ship as default extensions, and those are not removable.
 - The same concepts also ship as extensions on other host platforms where possible. So the engine API must work for hosts beyond the Bowerloom app.
-- The concepts are the product differentiator. The document names them as the core product surface.
+- The concepts are the product differentiator. The relaying agent reads them as the core product surface.
 
 ### What it changes if confirmed
 
@@ -189,6 +189,8 @@ The reading of the relaying agent, not the maintainer's words:
 - It does not say whether extensions and mods stay as layers for features that are not Bowerloom-exclusive. This is an open question.
 - It does not say which ideas count as exclusive. The list below is an inference.
 - It does not say what "APIs" means: a library, a command line, or a local server.
+- It does not say who can call the API (question 6), or whether the no-lock-in answer of (a) survives (question 7).
+- It does not say whether the shell framework changes (question 9).
 - It does not change decisions 2, 3, and 4 or the base `release/0.8.0-beta.2`, as far as the relayed text goes.
 
 ### What "non-removable" means
@@ -197,14 +199,14 @@ Under the relayed reading, a default UI extension is an extension by mechanism. 
 
 ### Requirement: a host-neutral API contract (V9-9)
 
-The engine API contract must not depend on the Bowerloom desktop app. Another platform must be able to implement the same contract and ship the same concepts as extensions. The requirement is a request and not a specification. These points are open:
+This requirement is relayed, not on GitHub, and an inference to confirm. The engine API contract must not depend on the Bowerloom desktop app. Where possible, another platform can implement the same contract and ship the same concepts as extensions. Being a host confers no trust to call the API. Question 6 covers who can call it. The requirement is a request and not a specification. These points are open:
 - Who owns and versions the contract.
 - How an implementer proves it conforms.
 - Which parts of the contract another platform can leave out.
 
 ### Entries this changes if confirmed
 
-Each line says what the entry was, and what it becomes if the maintainer confirms the change. Each result is an inference to confirm. The inline pointers in "What 0.9 needs" and the sort mark the same entries.
+Each line says what the entry was, and what it becomes if the maintainer confirms the change. Each result is an inference to confirm. The inline pointers in "What 0.9 needs" and the sort mark most of these entries. The Keep lines for the exclusive-idea packages carry no pointer, and the last bullet below covers them.
 
 - V9-1, memory explorer. Was: a stock extension. Becomes: an engine concept with an API, and a default UI extension that is not removable.
 - V9-2, engine views and explorers. Was: stock extensions. Becomes: engine concepts with APIs, and default UI extensions that are not removable.
@@ -218,7 +220,7 @@ Each line says what the entry was, and what it becomes if the maintainer confirm
 - The Drop line for the beta.2 screens. Was: rebuild as default extensions. Becomes: concepts in the core behind APIs, and interfaces as non-removable default extensions.
 - The Unsure line for issue 145, Compare and Runs. Was: extensions if 0.9 wants them. Becomes: engine concepts if 0.9 wants them. Runs data can overlap the V9-6 traces API.
 - The Unsure line for the unreleased beta.2 work. Half of those pull requests are screens. The concepts behind them move to the core.
-- The Keep lines for `harness-definition`, `fidelity`, `adoption`, discovery, and `notes-source`, and the Unsure line for harness bundle export and import. These stay as they are until question 1 is answered. Several are probably exclusive ideas.
+- The Keep lines for `harness-definition`, `fidelity`, `adoption`, discovery, and `notes-source`, and the Unsure line for harness bundle export and import. These stay as they are until question 3 is answered. Several are probably exclusive ideas.
 
 ### Ideas that probably count as Bowerloom-exclusive
 
