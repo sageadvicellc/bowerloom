@@ -1,6 +1,6 @@
 # Bowerloom 0.9: which 0.8 work to carry over
 
-Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". A later direction change, relayed through chat and not on GitHub, amends answer 1C on how the interface is built, and it overrides the removable reading of follow-up answer (a). It also puts follow-up answer (d) in question. The maintainer confirmed three readings of the direction change in chat. Answer 1C stands as recorded on GitHub until the maintainer records the change there. See "Direction change". Date: 2026-11-08, updated 2026-11-09.
+Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". A later direction change, relayed through chat and not on GitHub, amends answer 1C on how the interface is built, and it overrides the removable reading of follow-up answer (a). It also puts follow-up answer (d) in question. The maintainer confirmed three readings of the direction change in chat. Answer 1C stands as recorded on GitHub until the maintainer records the change there. See "Direction change". The acceptance list for "v0.9 working" is in "Acceptance: v0.9 working". Date: 2026-11-08, updated 2026-11-09.
 
 This document sorts the 0.8 work into Keep, Drop, and Unsure. The document itself deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls, except where "Direction change" puts a call in question. Each removal still needs its own step. The one step done so far is decision 4C: see "Branches".
 
@@ -138,6 +138,44 @@ Open questions:
 - Can extensions add new component types, and who reviews them?
 - Where are answers stored, and does that overlap the traces API (V9-6)?
 - How do the components meet accessibility needs?
+
+## Acceptance: v0.9 working
+
+The maintainer chose the scope in the Claude interface on 2026-11-09 (relayed by an assistant agent, not on GitHub): "A The 0.8 app on new layers (Recommended)". This section turns that choice into a list that a test or a reviewer can check. The routes come from `apps/desktop/renderer/harness/HarnessApp.tsx` at `release/0.8.0-beta.2` (commit `d4c8a478`). The counts and names are read from that file.
+
+### Chosen scope and related answers
+
+All lines are relayed, not on GitHub. Each is the maintainer's selection, in her words.
+- Answered in chat, 2026-11-09: v0.9 scope "A The 0.8 app on new layers (Recommended)".
+- Answered in chat, 2026-11-09: mods "A Extensions only, no mods (Recommended)". This answers question 2.
+- Answered in chat, 2026-11-09: exclusive set "A Accept the nine in the doc (Recommended)". This answers question 1.
+- Answered in chat, 2026-11-09: API form "A In-process library API first (Recommended)". This answers the first part of question 3. A local server and the question of who can call the API stay open.
+- Answered in chat, 2026-11-09: Tauri order "A Electron first, Tauri after (Recommended)".
+
+### What "working" means
+
+Version 0.9 is working when every item below holds on a branch built from `release/0.8.0-beta.2`.
+
+1. The 0.8 app behaves as it does at the base. The routes are `welcome`, `choose`, `read`, `notes`, `overview`, `harnesses`, `builder`, `file`, `library`, `projects`, `runs`, `compare`, `interfaces`, `history`, and `help`. Runs and Compare behave as they do at the base. They are not rebuilt in 0.9.
+2. The screens are default UI extensions. Each work area registers through the extension mechanism, with the protected flag set. The areas are Overview, Harnesses (the list, the builder, and the file view), Library, Projects (with the start, adopt, project, and save sheets), Interfaces and History, and the first-run flow (welcome, choose, read, and the notes link flow). An uninstall of a protected extension is refused.
+3. Every call a screen makes goes through the engine API. The API is a library that runs in the same process. It wraps the 42 calls of the base: 3 reader calls and 39 engine calls, with the same argument counts and refusal codes. No screen imports `electron` or a Node module.
+4. A contract for the engine API exists, with conformance tests. It does not depend on the desktop app. It opens no port.
+5. The shell keeps its protections. The Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` stay off. The content security policy, the permission refusal, the page scheme, and the close guard work as at the base.
+6. The tests pass. The unit tests (142 files at the base) pass. The end-to-end specs (48 at the base) pass, and a spec that tests a removed screen is replaced and not deleted. End-to-end runs use hidden windows.
+7. The command line works. The tests of `apps/cli` pass.
+8. The four gates exit 0: `typecheck`, `lint`, `test`, and `build`.
+
+### Not needed for "working"
+
+- The memory explorer (V9-1), the engine views (V9-2), structured chat output (V9-8), the terminal app (V9-4), the traces API (V9-6), and the name research (V9-7).
+- Mods, and a local server for the API.
+- A move of the desktop shell to a different framework.
+- A release. Publishing, tagging, and npm are separate steps that only the maintainer takes.
+
+### Open points
+
+- The assistant agent that relayed the scope spoke of five default UI extensions. The base has the six work areas in item 2 (counting the first-run flow). The count is a grouping choice, and the list above does not depend on it. The maintainer can regroup them.
+- The rebuilt screens must keep the 0.8 behavior. The doc has no screen-by-screen behavior list beyond the existing specs. The 48 end-to-end specs are the reference.
 
 ## Branches
 
