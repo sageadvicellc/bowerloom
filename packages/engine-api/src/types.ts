@@ -8,6 +8,10 @@ export interface Refusal {
   readonly code: string;
   readonly message: string;
   readonly paths: readonly string[];
+  /** For a refusal because files Bowerloom wrote changed since: each one, with why. The line shape is the app's own and is not restated here. */
+  readonly drift?: readonly unknown[];
+  /** For a step that stopped part way, or a helper that stopped: the cause (see `ENGINE_REFUSAL_STEPS`) or the code of the refusal that stopped it. */
+  readonly step?: string;
 }
 
 /** Every call that can refuse answers this way, so a refusal reaches the window with its words and is never lost in an error. */

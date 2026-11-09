@@ -37,6 +37,7 @@
     "test:team": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/team/test/*.test.mjs",
     "check:not-built": "node tools/check-not-built.mjs",
     "test:engine-api": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/engine-api/test/*.test.mjs",
+    "check:golden": "node packages/engine-api/scripts/make-golden.mjs --check --commit d4c8a47833e7ef7bba4161b481dba1f1f115df6c",
     "test:harness-bundle": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/harness-bundle/test/*.test.mjs",
     "test:notes-source": "npm run build && node tools/run-node-tests.mjs --test-timeout=120000 packages/notes-source/test/*.test.mjs",
     "trellis": "node dist/apps/cli/src/main.js",

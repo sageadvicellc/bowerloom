@@ -5,14 +5,21 @@ import assert from 'node:assert/strict';
 import {
   CANCELLED, ENGINE_ARITY, ENGINE_CALLS, ENGINE_CALL_REFUSALS, ENGINE_CHANNELS, KIT_MAIN_WORDS, NOTES_MAIN_WORDS, NOT_THE_PLAN_SHOWN, REPORT_MAIN_WORDS, SAVE_MAIN_WORDS, SHARE_MAIN_WORDS,
 } from '../shared/engine/types.js';
+import type { Refusal as AppRefusal } from '../shared/engine/types.js';
+import { START_MAIN_WORDS } from '../shared/engine/start-command.js';
+import { WORKER_CAUSES } from '../main/engine-bundle-host.js';
+import { EXPORT_TARGET_IN_HARNESS, QUIT_BEGUN } from '../main/engine-bundle.js';
+import { UNKNOWN_BUNDLE_MARK } from '../main/engine-bundle-mark.js';
 import { REAL_CALLS, REAL_CHANNELS } from '../shared/real/types.js';
 import { APP_INDEX } from '../main/security.js';
 import { registerRealIpc } from '../main/real-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { REAL_BASE } from '../shared/harness/route.js';
 import {
-  CANCELLED as API_CANCELLED, ENGINE_API_CALLS, ENGINE_CALL_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, NAMED_OUTCOMES, NOT_THE_PLAN_SHOWN as API_NOT_THE_PLAN_SHOWN, READER_API_CALLS,
+  CANCELLED as API_CANCELLED, ENGINE_API_CALLS, ENGINE_CALL_REFUSAL_CODES, ENGINE_MAIN_ANSWER_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, ENGINE_REFUSAL_STEPS, NAMED_OUTCOMES,
+  NOT_THE_PLAN_SHOWN as API_NOT_THE_PLAN_SHOWN, READER_API_CALLS,
 } from '../../../packages/engine-api/src/index.js';
+import type { Refusal as ApiRefusal } from '../../../packages/engine-api/src/index.js';
 import { buildFixture } from './fixtures-real/build.js';
 
 /** What a list has that the other has not, as words. Empty when the two hold the same names. */
@@ -75,4 +82,23 @@ test('the contract holds the call refusals, the two named outcomes and the refus
   const mainWords = [SAVE_MAIN_WORDS, SHARE_MAIN_WORDS, KIT_MAIN_WORDS, NOTES_MAIN_WORDS, REPORT_MAIN_WORDS].flatMap(table => Object.keys(table));
   assert.ok(mainWords.length > 0);
   assert.deepEqual(differences('refusals of main', ENGINE_MAIN_REFUSAL_CODES, mainWords), []);
+});
+
+test('the main answer refusals of the contract are the ones the app source names: the START words, the chooser, the quit and the export place', () => {
+  const start = ENGINE_MAIN_ANSWER_REFUSAL_CODES.filter(c => c.startsWith('START_'));
+  assert.deepEqual(differences('start refusals', start, [...Object.keys(START_MAIN_WORDS), 'START_INSTRUCTION_SUBCOMMAND']), []);
+  const rest = ENGINE_MAIN_ANSWER_REFUSAL_CODES.filter(c => !c.startsWith('START_'));
+  assert.deepEqual(differences('other main answer refusals', rest, ['NOT_THE_FOLDER_SHOWN', 'NOT_A_FOLDER', QUIT_BEGUN, EXPORT_TARGET_IN_HARNESS]), []);
+  assert.ok(!(ENGINE_MAIN_ANSWER_REFUSAL_CODES as readonly string[]).includes(UNKNOWN_BUNDLE_MARK), 'the worker mark is mapped to UNKNOWN_BUNDLE and never answered');
+});
+
+test('the steps of the contract are the causes of a stopped worker and the read timeout of the app', () => {
+  assert.deepEqual(differences('worker causes', ENGINE_REFUSAL_STEPS.filter(c => c.startsWith('WORKER_')), WORKER_CAUSES), []);
+  assert.ok(ENGINE_REFUSAL_STEPS.includes('READ_TIMED_OUT'));
+});
+
+test('a refusal of the app is a refusal of the contract, with its optional drift and step', () => {
+  const fromApp: AppRefusal = { code: 'FAILED', message: 'words', paths: [], step: 'WORKER_CRASHED', drift: [] };
+  const asContract: ApiRefusal = fromApp;
+  assert.equal(asContract.step, 'WORKER_CRASHED');
 });

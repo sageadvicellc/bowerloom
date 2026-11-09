@@ -12,25 +12,41 @@
 //
 //   node packages/engine-api/scripts/make-golden.mjs --commit "$(git rev-parse HEAD)"
 //
-// The commit is a flag because this script starts no program, so it cannot ask git. Pass the full 40-character commit of the checked-out source. Use --check to compare
-// the file on disk with what the source gives now and print the differences without writing. Exit code 0 means written (or equal with --check), 1 means a difference,
-// 2 means a bad flag.
+// The commit is a flag because this script starts no program, so it cannot ask git. Pass the full 40-character commit of the checked-out source. The commit is a label:
+// the script does not check it. What binds the golden file to the source are the SHA-256 hashes of the files, which a test compares with the files on disk.
+//
+// --check needs the same --commit flag, because the file name comes from it. It writes nothing. It makes the golden file in memory and compares it, byte for byte, with the
+// file on disk. `npm run check:golden` runs it for the base commit. --root <folder> reads the source from another repository root (the tests use it).
+//
+// Exit codes. 0: the file was written, or with --check it equals what the source gives. 1: with --check the file differs or is missing, or the scan could not read the
+// source, or the scan found no entry for a list (a golden file is never written from an empty list). 2: a bad flag.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scanBase } from './scan.mjs';
+import { emptyTables, scanBase } from './scan.mjs';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const args = process.argv.slice(2);
 const flag = name => { const i = args.indexOf(name); return i < 0 ? null : args[i + 1] ?? ''; };
+const root = flag('--root') === null ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..') : path.resolve(flag('--root'));
 const check = args.includes('--check');
 const commit = flag('--commit');
 if (commit === null || !/^[0-9a-f]{40}$/.test(commit)) {
-  console.error('usage: node packages/engine-api/scripts/make-golden.mjs --commit <40-character commit of the checked-out source> [--check]');
+  console.error('usage: node packages/engine-api/scripts/make-golden.mjs --commit <40-character commit of the checked-out source> [--check] [--root <folder>]');
   process.exit(2);
 }
 
-const found = scanBase(root);
+let found;
+try {
+  found = scanBase(root);
+} catch (error) {
+  console.error(`make-golden: ${error.message}`);
+  process.exit(1);
+}
+const empty = emptyTables(found);
+if (empty.length > 0) {
+  console.error(`make-golden: the scan found nothing for ${empty.join(', ')}, so it will not make a golden file`);
+  process.exit(1);
+}
 const golden = {
   format: 'bowerloom/engine-api-golden/v1',
   commit,

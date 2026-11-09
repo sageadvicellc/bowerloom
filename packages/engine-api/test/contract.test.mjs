@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CANCELLED, ENGINE_API_CALLS, ENGINE_CALL_REFUSAL_CODES, ENGINE_CODE_FORMAT, ENGINE_MAIN_REFUSAL_CODES, NAMED_OUTCOMES, NOT_THE_PLAN_SHOWN, READER_API_CALLS,
+  CANCELLED, ENGINE_API_CALLS, ENGINE_CALL_REFUSAL_CODES, ENGINE_CODE_FORMAT, ENGINE_MAIN_ANSWER_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, ENGINE_REFUSAL_STEPS, NAMED_OUTCOMES, NOT_THE_PLAN_SHOWN, READER_API_CALLS,
   READER_GATE_REFUSAL_CODES, READER_REFUSAL_CODES, callSpec, engineRefusalCodes, readerRefusalCodes,
 } from '../../../dist/packages/engine-api/src/index.js';
 
@@ -31,7 +31,7 @@ test('the engine side and the reader side share no call name and no channel', ()
 });
 
 test('the lists are frozen, so no caller can change the contract', () => {
-  for (const list of [ENGINE_API_CALLS, READER_API_CALLS, ENGINE_CALL_REFUSAL_CODES, READER_GATE_REFUSAL_CODES, READER_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, NAMED_OUTCOMES]) {
+  for (const list of [ENGINE_API_CALLS, READER_API_CALLS, ENGINE_CALL_REFUSAL_CODES, READER_GATE_REFUSAL_CODES, READER_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, NAMED_OUTCOMES, ENGINE_MAIN_ANSWER_REFUSAL_CODES, ENGINE_REFUSAL_STEPS]) {
     assert.ok(Object.isFrozen(list));
     assert.throws(() => { list.push('x'); }, TypeError);
   }
@@ -55,7 +55,7 @@ test('the reader side returns its gate codes and its own codes, and never an out
 });
 
 test('every code has the format of a code', () => {
-  for (const code of [...engineRefusalCodes(), ...readerRefusalCodes()]) assert.match(code, ENGINE_CODE_FORMAT);
+  for (const code of [...engineRefusalCodes(), ...readerRefusalCodes(), ...ENGINE_REFUSAL_STEPS]) assert.match(code, ENGINE_CODE_FORMAT);
 });
 
 test('callSpec finds a call on either side and says nothing for an unknown name', () => {
@@ -65,4 +65,14 @@ test('callSpec finds a call on either side and says nothing for an unknown name'
   assert.equal(callSpec('constructor'), undefined);
   assert.equal(callSpec('__proto__'), undefined);
   assert.equal(callSpec(''), undefined);
+});
+
+test('the main answer refusals are in the engine codes, the steps are not, and the tables hold the codes the base source names', () => {
+  const engine = engineRefusalCodes();
+  for (const code of ENGINE_MAIN_ANSWER_REFUSAL_CODES) assert.ok(engine.has(code), code);
+  for (const code of ENGINE_REFUSAL_STEPS) assert.ok(!engine.has(code), code);
+  for (const code of ['NOT_THE_FOLDER_SHOWN', 'NOT_A_FOLDER', 'QUIT_BEGUN', 'EXPORT_TARGET_IN_HARNESS', 'START_COPY_FAILED', 'START_INSTRUCTION_SUBCOMMAND']) assert.ok(ENGINE_MAIN_ANSWER_REFUSAL_CODES.includes(code), code);
+  assert.deepEqual([...ENGINE_REFUSAL_STEPS].sort(), ['READ_TIMED_OUT', 'WORKER_CRASHED', 'WORKER_NOT_STARTED', 'WORKER_OUT_OF_MEMORY', 'WORKER_TIMED_OUT']);
+  assert.ok(!ENGINE_MAIN_ANSWER_REFUSAL_CODES.includes('UNKNOWN_BUNDLE_HELD'), 'an internal mark is not a refusal');
+  for (const table of [ENGINE_MAIN_ANSWER_REFUSAL_CODES, ENGINE_REFUSAL_STEPS]) assert.equal(new Set(table).size, table.length);
 });

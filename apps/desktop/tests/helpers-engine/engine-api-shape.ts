@@ -1,9 +1,12 @@
 // The shape suite of the engine API. It takes a factory that makes one implementation of the bridge, so the sample engine runs it today and the real library can run
 // the same suite later by passing its own factory. Nothing here names the sample.
 //
-// For every call of the contract the suite asserts that the call exists, takes the contract's argument count, and answers with a value of the contract's return kind or
-// with a refusal code of the contract. A runtime spy fails the suite if any call opens a port. The other named outcome, CANCELLED, needs a dialog that a person closes,
-// so a subject with dialogs tests it in its own file. The sample has no dialogs and answers as main does after a yes.
+// For every call of the contract the suite asserts that the call exists (found by its name, so a class works as well as an object), declares the contract's parameter count,
+// and answers with a value of the contract's return kind or with a refusal code of the contract. It also asserts that at least one call of each family (plan, read, save,
+// export) succeeds with `ok: true`, so an engine whose every call refuses cannot pass. A runtime spy fails the suite if any call opens a port. The other named outcome,
+// CANCELLED, needs a dialog that a person closes, so a subject with dialogs tests it in its own file. The sample has no dialogs and answers as main does after a yes.
+//
+// The count of arguments on the wire is not held here. main/engine-ipc.ts holds it, and tests/engine-api-shape.test.ts drives registerEngineIpc to prove it.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ENGINE_API_CALLS, ENGINE_CALL_REFUSAL_CODES, ENGINE_CODE_FORMAT, NOT_THE_PLAN_SHOWN } from '../../../../packages/engine-api/src/index.js';
@@ -18,9 +21,9 @@ export interface ShapeSubject {
   make(): EngineBridge;
   readonly ids: { readonly folder: string; readonly notes: string };
   /**
-   * True when the implementation declares every parameter its call takes, so the declared count must be the contract's count (an optional extra argument counts too). The
-   * sample ignores the arguments it does not use and declares fewer, for example `recordCheck: () => ...`. For it the declared count may be lower, never higher. The wire
-   * (main/engine-ipc.ts) is where the exact count is enforced, and engine-api-contract.test.ts holds that count.
+   * Default true: the implementation declares every parameter its call takes, so the declared count must be the contract's count (an optional extra argument counts
+   * too). Set it to false only for an implementation that ignores the arguments it does not use and declares fewer, as the sample does (`recordCheck: () => ...`). The
+   * declared count may then be lower, never higher, and the test says "takes at most N arguments".
    */
   readonly declaresEveryParameter?: boolean;
 }
@@ -95,6 +98,77 @@ export function declaredCountProblems(spec: CallSpec, declared: number, strict: 
   return declared >= least && declared <= most ? [] : [`${spec.name} declares ${declared} parameters, the contract allows ${least} to ${most}`];
 }
 
+/** True unless the subject says it declares fewer parameters than its calls take. */
+export function isStrict(subject: Pick<ShapeSubject, 'declaresEveryParameter'>): boolean {
+  return subject.declaresEveryParameter !== false;
+}
+
+/** The name of the parameter test: what it checks, said honestly. A loose test only bounds the count from above. */
+export function parameterTestName(spec: CallSpec, strict: boolean): string {
+  const most = spec.arity + spec.optionalArgs, plural = (n: number): string => (n === 1 ? '' : 's');
+  if (!strict) return `${spec.name} takes at most ${most} argument${plural(most)}`;
+  return `${spec.name} declares ${spec.optionalArgs === 0 ? String(spec.arity) : `${spec.arity} to ${most}`} parameter${spec.optionalArgs === 0 ? plural(most) : 's'}`;
+}
+
+/** What is wrong with the bridge as a whole: a call of the contract that is not a function, a function that is not a call of the contract, or a mode that is not a mode. */
+export function bridgeProblems(bridge: EngineBridge): string[] {
+  const problems: string[] = [];
+  const holder = bridge as unknown as Record<string, unknown>;
+  for (const spec of ENGINE_API_CALLS) if (typeof holder[spec.name] !== 'function') problems.push(`the bridge has no call ${spec.name}`);
+  // Own functions and the methods of the classes the bridge comes from, so a class-based implementation is read the same way as an object.
+  const names = new Set<string>();
+  for (let o: object | null = bridge; o !== null && o !== Object.prototype; o = Object.getPrototypeOf(o) as object | null) {
+    for (const name of Object.getOwnPropertyNames(o)) {
+      if (name === 'constructor') continue;
+      const d = Object.getOwnPropertyDescriptor(o, name);
+      if (d !== undefined && typeof d.value === 'function') names.add(name);
+    }
+  }
+  const known = new Set(ENGINE_API_CALLS.map(c => c.name));
+  for (const name of names) if (!known.has(name)) problems.push(`the bridge has a function ${name} that is not a call of the contract`);
+  if (bridge.mode !== 'sample' && bridge.mode !== 'real') problems.push(`the bridge mode is ${String(bridge.mode)}`);
+  return problems;
+}
+
+type Probe = (bridge: EngineBridge, ids: ShapeSubject['ids']) => Promise<{ value: unknown } | { code: string }>;
+
+/** The first call of a family that answers a plan, then the call that writes it with the revision the plan gave. */
+const planThenRun = (plan: string, run: string, rest: (id: string, revision: string, acknowledge: unknown) => readonly unknown[]): Probe => async (bridge, ids) => {
+  const arg = goodArguments(ids);
+  const planned = await settle(bridge, plan, arg[plan]!);
+  const view = 'value' in planned ? (planned.value as { ok?: boolean; value?: { revision?: string; acknowledge?: unknown } }) : null;
+  if (view?.ok !== true || typeof view.value?.revision !== 'string') return planned;
+  return settle(bridge, run, rest(ids.folder, view.value.revision, view.value.acknowledge ?? null));
+};
+const plain = (name: string, pick: 'folder' | 'notes'): Probe => (bridge, ids) => settle(bridge, name, [ids[pick]]);
+
+/**
+ * The families of calls, each with the calls that may prove it. A family passes when at least one of its probes answers `{ ok: true }`. The probes use only the ids the
+ * subject gives and the revision a plan gives, so another implementation runs the same ones.
+ */
+export const SUCCESS_FAMILIES: readonly { readonly family: string; readonly probes: Readonly<Record<string, Probe>> }[] = Object.freeze([
+  { family: 'plan', probes: { planSave: (b, ids) => settle(b, 'planSave', goodArguments(ids)['planSave']!), planExport: (b, ids) => settle(b, 'planExport', goodArguments(ids)['planExport']!) } },
+  { family: 'read', probes: { listVersions: plain('listVersions', 'folder'), notesSummary: plain('notesSummary', 'notes') } },
+  { family: 'save', probes: { runSave: planThenRun('planSave', 'runSave', (id, rev) => [id, rev, []]) } },
+  { family: 'export', probes: { runExport: planThenRun('planExport', 'runExport', (id, rev, ack) => [id, rev, ack]) } },
+]);
+
+/** What is wrong with the success path of a bridge: one line for each family in which no call answered `{ ok: true }`. A bridge whose every call throws or refuses fails all four. */
+export async function successProblems(bridge: EngineBridge, ids: ShapeSubject['ids']): Promise<string[]> {
+  const problems: string[] = [];
+  for (const { family, probes } of SUCCESS_FAMILIES) {
+    const seen: string[] = [];
+    let good = false;
+    for (const [name, probe] of Object.entries(probes)) {
+      const outcome = await probe(bridge, ids);
+      if ('value' in outcome && isRecord(outcome.value) && outcome.value['ok'] === true && answerProblems(outcome.value).length === 0) { good = true; break; }
+      seen.push(`${name} ${'code' in outcome ? `threw ${outcome.code}` : 'did not answer ok'}`);
+    }
+    if (!good) problems.push(`none of the ${family} calls answered ok: true (${seen.join(', ')})`);
+  }
+  return problems;
+}
+
 export function defineShapeSuite(subject: ShapeSubject): void {
   describe(`engine API shape: ${subject.label}`, () => {
     let spy: PortSpy;
@@ -105,11 +179,13 @@ export function defineShapeSuite(subject: ShapeSubject): void {
     });
     const args = goodArguments(subject.ids);
 
-    test('the bridge holds exactly the calls of the contract, and a mode', () => {
-      const bridge = subject.make();
-      const functions = Object.entries(bridge).filter(([, v]) => typeof v === 'function').map(([k]) => k).sort();
-      assert.deepEqual(functions, ENGINE_API_CALLS.map(c => c.name).sort());
-      assert.ok(bridge.mode === 'sample' || bridge.mode === 'real');
+    test('the bridge holds exactly the calls of the contract, found by name, and a mode', () => {
+      assert.deepEqual(bridgeProblems(subject.make()), []);
+    });
+
+    test('at least one call of each family (plan, read, save, export) succeeds with ok: true', async () => {
+      assert.deepEqual(await successProblems(subject.make(), subject.ids), []);
+      assert.deepEqual(spy.hits, []);
     });
 
     test('the argument lists of the suite have the count of the contract', () => {
@@ -118,11 +194,11 @@ export function defineShapeSuite(subject: ShapeSubject): void {
     });
 
     for (const spec of ENGINE_API_CALLS) {
-      test(`${spec.name} takes ${spec.arity} argument${spec.arity === 1 ? '' : 's'}`, () => {
+      test(parameterTestName(spec, isStrict(subject)), () => {
         const fn = (subject.make() as unknown as Record<string, unknown>)[spec.name];
         assert.equal(typeof fn, 'function');
         const length = (fn as (...a: unknown[]) => unknown).length;
-        assert.deepEqual(declaredCountProblems(spec, length, subject.declaresEveryParameter === true), []);
+        assert.deepEqual(declaredCountProblems(spec, length, isStrict(subject)), []);
       });
 
       test(`${spec.name} answers a ${spec.returns} or a call refusal of the contract`, async () => {
