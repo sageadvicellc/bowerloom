@@ -46,6 +46,7 @@ const FS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'main/engine-bundle.ts': ['realpathSync', 'statSync'],
   'main/engine-save.ts': ['lstatSync', 'readdirSync'],
   'main/engine-service.ts': ['lstatSync', 'readFileSync', 'realpathSync'],
+  'main/extension-loader.ts': ['readFileSync', 'readdirSync', 'realpathSync', 'statSync'],
   'main/kit.ts': ['lstatSync', 'readFileSync', 'readdirSync'],
   'main/main.ts': ['readFile'],
   'main/notes-report.ts': ['closeSync', 'constants', 'fchmodSync', 'fstatSync', 'lstatSync', 'mkdtempSync', 'openSync', 'readSync', 'realpathSync', 'rmSync', 'writeSync'],
