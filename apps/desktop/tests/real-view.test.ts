@@ -6,7 +6,7 @@ import type { RealDiscovery, RealPlace } from '../shared/real/types.js';
 import { agentsTicked, realReduce, selectedIds, startState } from '../renderer/home/real/flow.js';
 import type { RealAction, RealState } from '../renderer/home/real/flow.js';
 import { KIND_WORDS, REAL_WORDS, countsLine, couldNotReadLine, foundPlaces, readSummary, reasonWords } from '../renderer/home/real/words.js';
-import { codeOf } from '../renderer/home/real/bridge.js';
+import { readerCodeOf as codeOf } from '../renderer/api/client.js';
 
 const place = (id: string, over: Partial<RealPlace> = {}): RealPlace => ({
   id, label: `Place ${id}`, kind: 'home', apps: ['Claude Code'], appLabel: 'Claude Code', counts: { agents: 2, skills: 3, tools: 1, hooks: 0, notes: 0 }, empty: false,

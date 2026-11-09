@@ -63,7 +63,7 @@ const SHELL_POLICY: Policy = {
   extraStrings: /^(?:innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML|localStorage|sessionStorage|indexedDB|bowerloomReal)$/,
   extraPaths: ['window.bowerloom', 'window.open', 'self.open', 'top.open', 'globalThis.open', 'document.write', 'document.writeln'],
   tolerate: {
-    'renderer/home/real/bridge.ts': { names: /^bowerloomReal$/, strings: /^bowerloomReal$/, why: 'the one file that names the real bridge, read from the window by name' },
+    'renderer/api/transport.ts': { names: /^bowerloomReal$/, strings: /^bowerloomReal$/, why: 'the one file that names the real bridge, read from the window by name' },
     'renderer/harness/tour/seen.ts': { names: /^sessionStorage$/, strings: /^$/, why: 'keeps one key, whether the guided tour was seen, in the window\'s memory-only session store; tests/harness-boundary.test.ts allows it in this file alone' },
   },
 };
@@ -90,13 +90,13 @@ test('the tokenizer finds the same imports that esbuild finds, in every file of 
   }
 });
 
-test('the whole page that the window runs (renderer/app.ts and every file it imports) builds no markup from text, opens no channel out of the page, runs no text as code, uses no storage or new window, and names the real bridge in bridge.ts only', () => {
+test('the whole page that the window runs (renderer/app.ts and every file it imports) builds no markup from text, opens no channel out of the page, runs no text as code, uses no storage or new window, and names the real bridge in the transport adapter only', () => {
   assert.deepEqual(checkEntries(SHELL_ENTRIES, DESKTOP, SHELL_POLICY, 'esm', 'browser'), []);
 });
 
-test('the page check covers the files that ship: the entry, the harness mount, the real screens and the bridge are in its graph, and the home app is not', () => {
+test('the page check covers the files that ship: the entry, the harness mount, the real screens and the call client are in its graph, and the home app is not', () => {
   const seen = new Set(bundleOf(SHELL_ENTRIES, DESKTOP, 'esm', 'browser').files.map(f => f.abs.slice(DESKTOP.length + 1)));
-  for (const file of ['renderer/app.ts', 'renderer/harness/mount.tsx', 'renderer/harness/HarnessApp.tsx', 'renderer/harness/real/RealChoose.tsx', 'renderer/home/real/bridge.ts']) assert.ok(seen.has(file), `${file} is in the graph`);
+  for (const file of ['renderer/app.ts', 'renderer/harness/mount.tsx', 'renderer/harness/HarnessApp.tsx', 'renderer/harness/real/RealChoose.tsx', 'renderer/api/client.ts', 'renderer/api/transport.ts']) assert.ok(seen.has(file), `${file} is in the graph`);
   for (const file of ['renderer/home/mount.tsx', 'renderer/home/HomeApp.tsx', 'renderer/home/real/mountReal.tsx']) assert.equal(seen.has(file), false, `${file} is gone`);
   // The files that the window loads are the ones the page entry imports: if the page entry stops importing the harness mount, this list is stale.
   assert.match(read('renderer/app.ts'), /from '\.\/harness\/mount\.js'/);
@@ -124,7 +124,7 @@ test('the built bridge (preload-real.cjs) holds no banned name, and calls requir
 const KNOWN_LIBRARY_USES: Readonly<Record<string, BundleAllowance>> = {
   innerHTML: { ids: 3, strings: 2, why: 'react-dom sets and clears it for its own nodes and for the dangerouslySetInnerHTML prop that no file of ours uses' },
   dangerouslySetInnerHTML: { ids: 4, strings: 9, why: 'react-dom handles the prop by name; the source check above refuses the name in every file of ours' },
-  bowerloomReal: { ids: 1, strings: 0, why: 'renderer/home/real/bridge.ts, the one file that reads the real bridge from the window; the source check above refuses the name anywhere else' },
+  bowerloomReal: { ids: 1, strings: 0, why: 'renderer/api/transport.ts, the one file that reads the real bridge from the window; the source check above refuses the name anywhere else' },
   sessionStorage: { ids: 2, strings: 0, why: 'renderer/harness/tour/seen.ts keeps one key, whether the guided tour was seen, in the window\'s memory-only session store, so the tour starts once at first use; tests/harness-boundary.test.ts allows it in that file alone and refuses storage on disk everywhere' },
 };
 
@@ -190,7 +190,7 @@ test('the checker rejects bad files: a multi-line aliased writer import, a relat
   }
 });
 
-test('the shell policy rejects bad page files: markup from text, a channel out of the page, text run as code, storage, a new window, and the real bridge named outside bridge.ts; the ordinary words of a page pass', t => {
+test('the shell policy rejects bad page files: markup from text, a channel out of the page, text run as code, storage, a new window, and the real bridge named outside the transport adapter; the ordinary words of a page pass', t => {
   const dir = tempDir(t), put = (name: string, text: string): string => { const file = join(dir, name); writeFileSync(file, text); return file; };
   const good = put('good.tsx', "import { useState } from 'react';\nexport const copyText = (s: string): string => { const f = (): number => requestAnimationFrame(() => undefined); void f; return useState(s)[0] + String(link(s)) + write(s) + exec(s); };\nconst link = (s: string): number => s.length, write = (s: string): string => s, exec = (s: string): string => s;\n");
   const bad: Record<string, [string, RegExp]> = {
@@ -417,7 +417,7 @@ const sourcesUnder = (dir: string): string[] => readdirSync(join(DESKTOP, dir), 
 
 test('the real bridge is read in one file of the page, and the screens never call anything but its three calls', () => {
   const naming = sourcesUnder('renderer').filter(file => /bowerloomReal/.test(strip(read(file))));
-  assert.deepEqual(naming, ['renderer/home/real/bridge.ts'], 'only bridge.ts reads window.bowerloomReal');
+  assert.deepEqual(naming, ['renderer/api/transport.ts'], 'only the transport adapter reads window.bowerloomReal');
   for (const file of sourcesUnder('renderer/harness/real')) {
     const calls = [...strip(read(file)).matchAll(/\b(?:calls|bridge)\.(\w+)\(/g)].map(m => m[1]!);
     assert.ok(calls.every(name => (REAL_CALLS as readonly string[]).includes(name)), `${file}: ${calls.join(',')}`);
