@@ -19,6 +19,7 @@ These items come from the maintainer's stated direction of 2026-11-07 and 2026-1
 - V9-5, bring-your-own-interface engine. One engine for desktop and terminal. Its open-source status and prior art are not researched yet.
 - V9-6, traces and logging API. It records sessions, reviews, usage, and working-tree locks. The maintainer wants it specified only after two working harnesses exist.
 - V9-7, a possible new name. Research only. Nothing is decided.
+- V9-8, structured agent output in the included chat interface. A request relayed through chat on 2026-11-09, not on GitHub. It is a request, not a build. See "New feature request".
 
 ## State of 0.8 on 2026-11-08
 
@@ -99,7 +100,42 @@ Two Drops come from the maintainer's decisions, not from proof: the screens (1C)
 - The claims about the external multi-engine environments are the maintainer's description. They are not checked against those products' documents.
 - Trademark and name checks for V9-7 are not done.
 - The state of issues and pull requests comes from GitHub, read on 2026-11-08. Git cannot confirm it.
-- The import scan reads static and dynamic imports in source files of `main` at commit `d66fc965`. It skips tests. It does not read scripts, configuration files, or string references.
+- The import scan reads static and dynamic imports in source files, and it skips tests. It first ran on `main` at commit `d66fc965`. It was rerun on the base, `release/0.8.0-beta.2` at commit `d4c8a478`, with the same result: 22 packages reached from the core, 9 reached only through the CLI, and the same four unreached. It does not read scripts, configuration files, or string references.
+
+## New feature request
+
+This section records a request that the maintainer made in chat on 2026-11-09. The factory assistant relayed it. It is not on GitHub. It is a request and not a build. Nothing here is decided.
+
+The request: in the included chat interface of 0.9, agents can give structured output that renders like a small dashboard snapshot. The output keeps one consistent, internally defined look. It covers notes, a question and answer form with a submit button, and whatever else an assistant needs in order to get the maintainer's attention and knowledge.
+
+Layer, as a proposal. The component schema and the submit contract belong to the core, so every surface and host shares them. The renderer in the included chat interface is a default extension under decision 1C. This split is an open question, not a decision.
+
+Requirements sketch:
+
+1. A defined component schema. Agents emit components from this schema. The chat interface renders them with one consistent look. Agents do not send free-form HTML. This keeps rendering safe.
+2. Components an assistant needs to get the maintainer's attention and knowledge:
+   - A decision card: the question, lettered options, the recommended option, a default with a deadline, and a submit button.
+   - A status snapshot: lanes, pull requests, and counts.
+   - An approval card: the item, the exact head, the risk class, and a confirm or decline choice.
+   - A notes block.
+   - A list of evidence or links.
+   - A checklist.
+   - A progress strip.
+   - A diff or change summary.
+   - A free-text answer box.
+3. A submit action returns a typed answer to the asking agent. The answer says who answered.
+4. The same components work in the desktop app, in a CLI fallback, and on other host platforms.
+
+Open questions:
+
+- What format does the schema use, and how is it versioned?
+- What limits keep rendering safe: no scripts, a size cap, and a rule for links?
+- How does the answer say who answered, and which identity counts as the maintainer's own?
+- How does a typed answer reach an agent that is no longer running?
+- How does the CLI fallback show a dashboard snapshot?
+- Can extensions add new component types, and who reviews them?
+- Where are answers stored, and does that overlap the traces API (V9-6)?
+- How do the components meet accessibility needs?
 
 ## Branches
 
