@@ -5,7 +5,7 @@
  * A refusal, or an error the call throws, arrives as plain words.
  */
 import type { Answer, Refusal } from '../../../shared/engine/types.js';
-import { engineCodeOf } from '../real/engine-bridge.js';
+import { engineCodeOf } from '../../api/client.js';
 
 const CALL_WORDS: Readonly<Record<string, string>> = Object.freeze({
   NOT_ALLOWED: 'This window may not ask for that.',

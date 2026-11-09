@@ -6,7 +6,7 @@
 import type { HarnessState } from '../../../shared/harness/types.js';
 import { realToHarnessState } from '../../../shared/harness/real-map.js';
 import type { RealPlace, RealResult } from '../../../shared/real/types.js';
-import { codeOf } from '../../home/real/bridge.js';
+import { readerCodeOf } from '../../api/client.js';
 import type { ChooseAction } from './state.js';
 
 export interface ReadDeps {
@@ -31,6 +31,6 @@ export function runRead(read: Promise<RealResult>, chosen: readonly RealPlace[],
     deps.leave();
   }).catch((error: unknown) => {
     (deps.log ?? ((e: unknown) => console.error('The read could not be finished.', e)))(error);
-    if (deps.isLive()) deps.send({ type: 'fail', code: codeOf(error) });
+    if (deps.isLive()) deps.send({ type: 'fail', code: readerCodeOf(error) });
   });
 }
