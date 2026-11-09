@@ -1,6 +1,6 @@
 # Bowerloom 0.9: which 0.8 work to carry over
 
-Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". A later direction change, relayed through chat and not on GitHub, amends answer 1C on how the interface is built, and it overrides the removable reading of follow-up answer (a). It also puts follow-up answer (d) in question. The maintainer confirmed three readings of it in chat. Answer 1C stands as recorded on GitHub until the maintainer records the change there. See "Direction change". Date: 2026-11-08, updated 2026-11-09.
+Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". A later direction change, relayed through chat and not on GitHub, amends answer 1C on how the interface is built, and it overrides the removable reading of follow-up answer (a). It also puts follow-up answer (d) in question. The maintainer confirmed three readings of the direction change in chat. Answer 1C stands as recorded on GitHub until the maintainer records the change there. See "Direction change". Date: 2026-11-08, updated 2026-11-09.
 
 This document sorts the 0.8 work into Keep, Drop, and Unsure. The document itself deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls, except where "Direction change" puts a call in question. Each removal still needs its own step. The one step done so far is decision 4C: see "Branches".
 
@@ -12,9 +12,9 @@ The maintainer wants 0.9 to be a much larger upgrade of the app and the product 
 
 These items come from the maintainer's stated direction. V9-1 to V9-7 date from 2026-11-07 and 2026-11-08. V9-8 and V9-9 date from 2026-11-09. They are direction, not specifications. Each has an id, so the sort below can cite it.
 
-- V9-1, memory explorer. It explores markdown memory in the style of a note-taking app, with analytics. It shows a user their memory against their harness context. Under the relayed direction change, this becomes an engine concept with an API (relayed, not on GitHub, an inference to confirm).
-- V9-2, engine views. For each engine, it shows harness configuration and usage across the whole environment. It adds visual explorers that show harnesses at work. The first move is modules for existing multi-engine environments. A Bowerloom-owned runtime interface over `relay` (the layer that launches one engine from another) is not first. The claims about the external environments are not verified yet. Under the relayed direction change, this becomes an engine concept with an API (relayed, not on GitHub, an inference to confirm).
-- V9-3, extensions. An extensions harness lets people build their own modules. The memory explorer, the engine views, and the explorers were to ship as stock extensions. Decided 2026-11-09 (answer 1C): Bowerloom positions itself as an engine. The interface is rebuilt on a new extensions API and ships as included default extensions. The default flavor is what the Bowerloom app was, with libraries, harnesses, and visual management of them. A later chat answer (a), relayed and not on GitHub, said the defaults must not lock a user in. The relaying session read that as: a user can remove them. The maintainer also wants Bowerloom to run on other host platforms, and always as a CLI. Extensions and mods are two layers, as that answer described: extensions add features, including interfaces and code that calls APIs. Mods change interface parts, such as navigation, that Bowerloom otherwise does not change, to allow full theming and not only color changes. A relayed direction change is proposed to override the removable reading. See "Direction change". Whether extensions and mods stay as layers for other features is an open question.
+- V9-1, memory explorer. It explores markdown memory in the style of a note-taking app, with analytics. It shows a user their memory against their harness context. Under the relayed direction change, this becomes an engine concept with an API (relayed, confirmed in chat, not on GitHub; which concepts count as exclusive is an inference to confirm).
+- V9-2, engine views. For each engine, it shows harness configuration and usage across the whole environment. It adds visual explorers that show harnesses at work. The first move is modules for existing multi-engine environments. A Bowerloom-owned runtime interface over `relay` (the layer that launches one engine from another) is not first. The claims about the external environments are not verified yet. Under the relayed direction change, this becomes an engine concept with an API (relayed, confirmed in chat, not on GitHub; which concepts count as exclusive is an inference to confirm).
+- V9-3, extensions. An extensions harness lets people build their own modules. The memory explorer, the engine views, and the explorers were to ship as stock extensions. Decided 2026-11-09 (answer 1C): Bowerloom positions itself as an engine. The interface is rebuilt on a new extensions API and ships as included default extensions. The default flavor is what the Bowerloom app was, with libraries, harnesses, and visual management of them. A later chat answer (a), relayed and not on GitHub, said the defaults must not lock a user in. The relaying session read that as: a user can remove them. The maintainer also wants Bowerloom to run on other host platforms, and always as a CLI. Extensions and mods are two layers, as that answer described: extensions add features, including interfaces and code that calls APIs. Mods change interface parts, such as navigation, that Bowerloom otherwise does not change, to allow full theming and not only color changes. A relayed direction change overrides the removable reading (relayed, not on GitHub). See "Direction change". Whether extensions and mods stay as layers for other features is an open question.
 - V9-4, three surfaces. The CLI is the agent surface. The desktop app is a human surface. A new terminal app is a human surface. Under the direction change, each surface becomes a client of the engine API (relayed, not on GitHub, an inference to confirm).
 - V9-5, bring-your-own-interface engine. One engine for desktop and terminal. Its open-source status and prior art are not researched yet. The direction change fits this item, and it adds no new content to it (relayed, not on GitHub, an inference to confirm).
 - V9-6, traces and logging API. It records sessions, reviews, usage, and working-tree locks. The maintainer wants it specified only after two working harnesses exist. Under the relayed direction change, it becomes one more engine API (relayed, not on GitHub, an inference to confirm).
@@ -100,7 +100,7 @@ Two Drops come from the maintainer's decisions, not from proof: the screens (1C)
 - A search of the `main` tree found no extension interface document or code, no terminal app, and no `relay` package. The extension interface, the terminal app, and `relay` start from nothing in this repository.
 - The claims about the external multi-engine environments are the maintainer's description. They are not checked against those products' documents.
 - Trademark and name checks for V9-7 are not done.
-- The relayed chat items are not on GitHub, and git cannot check them. They are the follow-up answers, the direction change, and its confirmation.
+- The relayed chat items are not on GitHub, and git cannot check them. They are the follow-up answers, the V9-8 request, the direction change and its confirmation, and the confirmation of the `release/0.8.0-beta.2` base.
 - The state of issues and pull requests comes from GitHub, read on 2026-11-08. Git cannot confirm it.
 - The import scan reads static and dynamic imports in source files, and it skips tests. It first ran on `main` at commit `d66fc965`. It was rerun on the base, `release/0.8.0-beta.2` at commit `d4c8a478`, with the same result: 22 packages reached from the core, 9 reached only through the CLI, and the same four unreached. It does not read scripts, configuration files, or string references.
 
@@ -110,7 +110,7 @@ This section records a request that the maintainer made in chat on 2026-11-09. A
 
 The request: in the included chat interface of 0.9, agents can give structured output that renders like a small dashboard snapshot. The output keeps one consistent, internally defined look. It covers notes, a question and answer form with a submit button, and whatever else an assistant needs in order to get the maintainer's attention and knowledge.
 
-Layer, as a proposal. The component schema and the submit contract belong to the core, so every surface and host shares them. The renderer in the included chat interface was proposed as a default extension, in line with decision 1C. The direction change, if confirmed, keeps the renderer as a non-removable default extension over engine concepts, with the schema and submit contract in the core. That is an inference to confirm, and this split stays an open question, not a decision. [Decision comment 1](https://github.com/sageadvicellc/bowerloom/pull/162#issuecomment-6731689297) on this pull request asked the layer question before the change. Its option A (core holds the schema and submit contract, renderer is a default extension) is closest to the refinement.
+Layer, as a proposal. The component schema and the submit contract belong to the core, so every surface and host shares them. The renderer in the included chat interface was proposed as a default extension, in line with decision 1C. The relayed direction change keeps the renderer as a non-removable default extension over engine concepts, with the schema and submit contract in the core. That is an inference to confirm, and this split stays an open question, not a decision. [Decision comment 1](https://github.com/sageadvicellc/bowerloom/pull/162#issuecomment-6731689297) on this pull request asked the layer question before the change. Its option A (core holds the schema and submit contract, renderer is a default extension) is closest to the refinement.
 
 Requirements sketch:
 
@@ -159,7 +159,7 @@ The maintainer answered on 2026-11-09 in [one comment](https://github.com/sagead
 
 The maintainer answered four questions about the first reply in a chat on 2026-11-09 (UTC). An assistant agent relayed the answers. They are not posted on GitHub.
 
-- (a) Can a user remove the default extensions? Answer: yes, with no lock-in to a bundled style. Bowerloom can also be installed on other host platforms, and always as a CLI. Reading: the defaults are removable. The relayed direction change below is proposed to override this reading.
+- (a) Can a user remove the default extensions? Answer: yes, with no lock-in to a bundled style. Bowerloom can also be installed on other host platforms, and always as a CLI. Reading: the defaults are removable. The relayed direction change below overrides this reading (relayed, not on GitHub).
 - (b) What is the base of the rebuild? Answer: "base off latest, and build from there". An assistant agent first read this as the latest `main`. The maintainer then confirmed `release/0.8.0-beta.2` in chat on 2026-11-09 with the word "beta.2" (relayed, not on GitHub). Check result: `main` (`d66fc965`) is contained in that branch (`d4c8a478`), 0 commits on `main` are missing from it, and 8 commits on the branch are missing from `main`. Reason: decision 2B keeps those 8 pull requests. `main` holds no commit that the base lacks.
 - (c) When is the removal in 3C? Answer: no date known.
 - (d) Where is the line between screens and shell? Answer: layer it. The relayed direction change puts this layering in question for the exclusive ideas. See "Direction change". Extensions are new features, including interfaces and code that calls APIs. Mods change interface parts such as navigation, which Bowerloom otherwise does not change, to allow full theming and not only color changes.
@@ -186,7 +186,7 @@ The reading of the relaying agent, not the maintainer's words: the concepts are 
 
 - A non-removable default UI extension is an extension by mechanism. Bowerloom protects it from uninstall.
 - The concepts are engine-native, with APIs. They live in the core.
-- The interfaces of the concepts ship as default extensions that are not removable.
+- The interfaces of the concepts ship as default extensions that are not removable. This comes from the second relayed message, in the maintainer's own words.
 - The host-neutral API contract (V9-9) is a requirement.
 
 ### What it changes
@@ -204,9 +204,9 @@ The reading of the relaying agent, not the maintainer's words: the concepts are 
 - It does not say whether the shell framework changes (question 7).
 - It does not change decisions 2, 3, and 4 or the base `release/0.8.0-beta.2`, as far as the relayed text goes.
 
-### Request: a host-neutral API contract (V9-9)
+### Requirement: a host-neutral API contract (V9-9)
 
-The maintainer confirmed in chat that this is a requirement (relayed, not on GitHub). The engine API contract must not depend on the Bowerloom desktop app. The relayed text says the concepts also ship as extensions on other platforms "where possible". Being a host confers no trust to call the API. Question 4 covers who can call it.
+The maintainer confirmed in chat that this is a requirement (relayed, not on GitHub). The engine API contract must not depend on the Bowerloom desktop app. The relayed text says the concepts also ship as extensions on other platforms "where possible". Under this requirement, being a host confers no trust to call the API. That is a design stance of this document, not relayed text. Question 4 covers who can call it.
 
 The shape of the contract is open. Two readings exist: other platforms implement Bowerloom's contract, or Bowerloom publishes extensions into each host's own extension system, or both. Question 6 asks. These points are open:
 - Who owns and versions the contract.
@@ -250,7 +250,7 @@ This list is an inference. The maintainer has not confirmed any line. The relaye
 The maintainer decides where these go. This pull request posts nothing. Two questions from the earlier draft are answered by the third relayed message and are dropped.
 
 1. Which ideas count as Bowerloom-exclusive? The list above is an inference. What is the right list?
-2. Do extensions and mods stay as layers for features that are not exclusive? If yes, which features are those?
+2. Do extensions and mods stay as layers for features that are not exclusive? If yes, which features are those? Does navigation stay a mod for the default UI? Can a user turn off, hide, or retheme a non-removable extension? Does the extensions harness for people who build their own modules survive?
 3. What does "expose with APIs" mean: a library import, a command line with structured output, a local server, or all of these? Which one comes first? This is a security question, because a local server adds listener, authentication, and browser-origin risks.
 4. Who can call the API: only Bowerloom surfaces, or also other programs on the same machine? This is a security question. It links to the V9-8 question about who counts as the answerer.
 5. Does the earlier request for no lock-in to a bundled style still hold? If yes, how: through theming, or through the API, so that a user can build another interface? Does the host-neutral contract (V9-9) replace it?
