@@ -1,0 +1,853 @@
+{
+  "format": "bowerloom/engine-api-golden/v1",
+  "commit": "d4c8a47833e7ef7bba4161b481dba1f1f115df6c",
+  "generatedBy": "packages/engine-api/scripts/make-golden.mjs",
+  "note": "Made by the script above from the library source of apps/desktop at the commit. Do not edit by hand. codeLiterals lists what the scan found; some entries are not codes.",
+  "sourceFiles": [
+    {
+      "path": "apps/desktop/main/engine-bundle-host.ts",
+      "sha256": "89a1afdbec137f74e39f059b5fb2cb5e15d0f99e6ac6334a07b0815c0edd2f77"
+    },
+    {
+      "path": "apps/desktop/main/engine-bundle-mark.ts",
+      "sha256": "6148d098f2224edfe315bbe3ff3ab08f932720bd36e1b659387c2af95c7d0b60"
+    },
+    {
+      "path": "apps/desktop/main/engine-bundle-work.ts",
+      "sha256": "2b21e7a86df8cad05ae5170c71dce077c0d180ba7022c9bbe55fc8e26c76c438"
+    },
+    {
+      "path": "apps/desktop/main/engine-bundle-worker.ts",
+      "sha256": "e14e351ceb2bf73c8a84bb585343405b1ff9905bc02e1481ac788b5013138d33"
+    },
+    {
+      "path": "apps/desktop/main/engine-bundle.ts",
+      "sha256": "d03621cc9621aae49f700920f7b838eb76968e4856a94034893ab674a97f8bec"
+    },
+    {
+      "path": "apps/desktop/main/engine-consent.ts",
+      "sha256": "cf0b75c83c7a41bbc1814191d7b8a1ca99b3ea32d15336180bcb417fa9e4a1da"
+    },
+    {
+      "path": "apps/desktop/main/engine-events.ts",
+      "sha256": "7a1c8a7a162fb637a34bfd4a0a458ef0dd125b95746f1ed7313433cfd20c710d"
+    },
+    {
+      "path": "apps/desktop/main/engine-ipc.ts",
+      "sha256": "9e241fe5bb6fd7caa0806f95bf5c564ef53e2c3867a166ef9e8d53100ff65fbb"
+    },
+    {
+      "path": "apps/desktop/main/engine-save.ts",
+      "sha256": "eb3e2deff96975861029d29a2587dcc37262a78a6336a00e0ad703799a239164"
+    },
+    {
+      "path": "apps/desktop/main/engine-service.ts",
+      "sha256": "0586965b68c01d53028f98bd3dd9395745372c77f688461f31767ccaaf06890e"
+    },
+    {
+      "path": "apps/desktop/main/engine-state.ts",
+      "sha256": "3158f4ca126cc1b6a17ef2a9e176734fc06f0657fc9246b5e284c3a9cf06cd3b"
+    },
+    {
+      "path": "apps/desktop/main/real-fs.ts",
+      "sha256": "545e5d693737813d5a2a4bfb0ecfccf42818e2e2f88a5c9f0740e4a44a8273a8"
+    },
+    {
+      "path": "apps/desktop/main/real-ipc.ts",
+      "sha256": "934f6d480afb16c89e6707519c9148d170089d883d0da9b402553f787d50f8a3"
+    },
+    {
+      "path": "apps/desktop/main/real-scan.ts",
+      "sha256": "e3d7592f6d1e06b4c64799bdb9db38554cff88a63a1cd7fe2fd49bb6e6cf145e"
+    },
+    {
+      "path": "apps/desktop/shared/engine/engines.ts",
+      "sha256": "cb9eafb7a6e2f474063f43d025fff9e3d347b1d50b1815b168ab646a14d0afca"
+    },
+    {
+      "path": "apps/desktop/shared/engine/gates.ts",
+      "sha256": "b8e12095cf5b12b5b837cefc3e9c1480240dd4bef83ffd071ce7083533eb7443"
+    },
+    {
+      "path": "apps/desktop/shared/engine/sample-switch.ts",
+      "sha256": "f73b2bcb2ee25139207c0a904400dbaff5c07d47fd409da0c09b368456faa46c"
+    },
+    {
+      "path": "apps/desktop/shared/engine/sample.ts",
+      "sha256": "87d52d1a5921acf92ef93e5a2bc68466a094efe6efa5aaebeb48b78ec1e06bdd"
+    },
+    {
+      "path": "apps/desktop/shared/engine/scrub.ts",
+      "sha256": "23392018d206532ac1279c9f1a7812c11dec5c6eeceb31b2b18ba8d823c50bc9"
+    },
+    {
+      "path": "apps/desktop/shared/engine/share-risk.ts",
+      "sha256": "0c41d25411925508949280e67e027d8621d9f10192cc2420833a3c79abcc69a6"
+    },
+    {
+      "path": "apps/desktop/shared/engine/start-answer.ts",
+      "sha256": "377ac3891e770ba3de1a40fe3c08b25a79f360eae453a48ebe430d5832bc615e"
+    },
+    {
+      "path": "apps/desktop/shared/engine/start-command.ts",
+      "sha256": "b24866a119257b5e897233685011eba02719bb209c3b1ffd54fa71845ee0d930"
+    },
+    {
+      "path": "apps/desktop/shared/engine/types.ts",
+      "sha256": "43f3eada923b991839988c328d1b03ead5db32802488b9f814f87d5b584a23cd"
+    },
+    {
+      "path": "apps/desktop/shared/engine/view.ts",
+      "sha256": "9cc1063639af9a415427c00219506a1e4aca45f1a92fd6cf6877fef83a1b9d19"
+    },
+    {
+      "path": "apps/desktop/shared/real/adapters.ts",
+      "sha256": "46f12789acbb7bd8f43a5b9532ac5642d15442338530a4731a807264a7e4838a"
+    },
+    {
+      "path": "apps/desktop/shared/real/frontmatter.ts",
+      "sha256": "ea117a1b4e5cd80e32531660a6bffe4277a07aaf2e567e90e3758ae39265293c"
+    },
+    {
+      "path": "apps/desktop/shared/real/map-world.ts",
+      "sha256": "388783f1fac7c6b348d7f82de34fc0e81366ac83f074f7f4cfdb81436bda76da"
+    },
+    {
+      "path": "apps/desktop/shared/real/place.ts",
+      "sha256": "7d2c5ef6b74c8284dcddd6feebe3d5ee28116d2deaab731ec2a1bdd7a6e8f364"
+    },
+    {
+      "path": "apps/desktop/shared/real/redact.ts",
+      "sha256": "6894cb22bc46c7095395b148b9eb0afe9ec919f7b058c7f650608279b2d0a474"
+    },
+    {
+      "path": "apps/desktop/shared/real/saved-scan.ts",
+      "sha256": "5de34e6d1f4dbdfa46dba6b237efaa3b093529a092a4914af8de5a6b137cc7cc"
+    },
+    {
+      "path": "apps/desktop/shared/real/toml.ts",
+      "sha256": "a98b510a09b70145fb092521de7bf8ef4d05b139a089fec9639e6a3b29d8028f"
+    },
+    {
+      "path": "apps/desktop/shared/real/types.ts",
+      "sha256": "694251df23e2fce8fb8b3ae46a5a0717d64db7228a2c725f50f5f933dd0315da"
+    },
+    {
+      "path": "apps/desktop/shared/real/yaml.ts",
+      "sha256": "e54b9c6d5e32eae9ed647a584335cb51408cc5f2a666e5c0383b612c476051d0"
+    }
+  ],
+  "engineCalls": [
+    {
+      "name": "folders",
+      "arity": 0,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:folders"
+    },
+    {
+      "name": "chooseFolder",
+      "arity": 0,
+      "optionalArgs": 1,
+      "channel": "bowerloom-engine:chooseFolder"
+    },
+    {
+      "name": "planAdoption",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planAdoption"
+    },
+    {
+      "name": "runAdoption",
+      "arity": 4,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runAdoption"
+    },
+    {
+      "name": "planAdoptionRecovery",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planAdoptionRecovery"
+    },
+    {
+      "name": "runAdoptionRecovery",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runAdoptionRecovery"
+    },
+    {
+      "name": "planProjection",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planProjection"
+    },
+    {
+      "name": "runProjection",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runProjection"
+    },
+    {
+      "name": "planRemoval",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planRemoval"
+    },
+    {
+      "name": "runRemoval",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runRemoval"
+    },
+    {
+      "name": "planRecovery",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planRecovery"
+    },
+    {
+      "name": "runRecovery",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runRecovery"
+    },
+    {
+      "name": "planMerge",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planMerge"
+    },
+    {
+      "name": "runMerge",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runMerge"
+    },
+    {
+      "name": "recordCheck",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:recordCheck"
+    },
+    {
+      "name": "planSave",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planSave"
+    },
+    {
+      "name": "runSave",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runSave"
+    },
+    {
+      "name": "listVersions",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:listVersions"
+    },
+    {
+      "name": "planRestore",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planRestore"
+    },
+    {
+      "name": "runRestore",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runRestore"
+    },
+    {
+      "name": "planSetAside",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planSetAside"
+    },
+    {
+      "name": "runSetAside",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runSetAside"
+    },
+    {
+      "name": "chooseNotesFolder",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:chooseNotesFolder"
+    },
+    {
+      "name": "notesSummary",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:notesSummary"
+    },
+    {
+      "name": "planCreateNotes",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planCreateNotes"
+    },
+    {
+      "name": "runCreateNotes",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runCreateNotes"
+    },
+    {
+      "name": "planNotesHistory",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planNotesHistory"
+    },
+    {
+      "name": "runNotesHistory",
+      "arity": 2,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runNotesHistory"
+    },
+    {
+      "name": "openNotesReport",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:openNotesReport"
+    },
+    {
+      "name": "planExport",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planExport"
+    },
+    {
+      "name": "runExport",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runExport"
+    },
+    {
+      "name": "chooseBundle",
+      "arity": 0,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:chooseBundle"
+    },
+    {
+      "name": "planImport",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:planImport"
+    },
+    {
+      "name": "runImport",
+      "arity": 5,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:runImport"
+    },
+    {
+      "name": "discardBundle",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:discardBundle"
+    },
+    {
+      "name": "savedScan",
+      "arity": 0,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:savedScan"
+    },
+    {
+      "name": "checkSavedScan",
+      "arity": 0,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:checkSavedScan"
+    },
+    {
+      "name": "showStartCommand",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:showStartCommand"
+    },
+    {
+      "name": "startCommandToClipboard",
+      "arity": 3,
+      "optionalArgs": 0,
+      "channel": "bowerloom-engine:startCommandToClipboard"
+    }
+  ],
+  "readerCalls": [
+    {
+      "name": "discoverPlaces",
+      "arity": 0,
+      "optionalArgs": 0,
+      "channel": "bowerloom-real:discover-places"
+    },
+    {
+      "name": "pickFolder",
+      "arity": 0,
+      "optionalArgs": 0,
+      "channel": "bowerloom-real:pick-folder"
+    },
+    {
+      "name": "readSelected",
+      "arity": 1,
+      "optionalArgs": 0,
+      "channel": "bowerloom-real:read-selected"
+    }
+  ],
+  "callRefusals": [
+    "BAD_ARGUMENT",
+    "FAILED",
+    "NOT_ALLOWED",
+    "UNKNOWN_BUNDLE",
+    "UNKNOWN_FOLDER"
+  ],
+  "namedOutcomes": [
+    "CANCELLED",
+    "NOT_THE_PLAN_SHOWN"
+  ],
+  "mainRefusals": [
+    "BUNDLE_FILE_FAILED",
+    "EXPORT_NEEDS_ACKNOWLEDGEMENT",
+    "EXPORT_NO_DEFINITION",
+    "IMPORT_FOLDER_HAS_HARNESS",
+    "IMPORT_NEEDS_ACKNOWLEDGEMENT",
+    "KIT_ALREADY_ADDED",
+    "KIT_INVALID",
+    "NOTES_NOT_CHOSEN",
+    "REPORT_NONE",
+    "REPORT_NOT_SHOWN",
+    "REPORT_OPEN_FAILED",
+    "REPORT_UNSAFE",
+    "SAVE_EXECUTABLE_UNACKNOWLEDGED",
+    "SAVE_NO_DEFINITION",
+    "SAVE_POINT_TOO_LARGE",
+    "SAVE_SOURCE_MISSING",
+    "SOURCE_NAME_TAKEN"
+  ],
+  "readerGateRefusals": [
+    "BAD_ARGUMENT",
+    "FAILED",
+    "NOT_ALLOWED"
+  ],
+  "readerRefusals": [
+    "BAD_ARGUMENT",
+    "BUSY",
+    "NO_HOME",
+    "TOO_MANY",
+    "UNKNOWN_PLACE"
+  ],
+  "codeLiterals": [
+    "ADOPTION_ACKNOWLEDGEMENT_REQUIRED",
+    "ADOPTION_APPROVAL_REQUIRED",
+    "ADOPTION_CHOICE_REQUIRED",
+    "ADOPTION_DEFINED",
+    "ADOPTION_MERGE_NOTHING",
+    "ADOPTION_RECOVER_NOTHING",
+    "ADOPTION_STALE_APPROVAL",
+    "BAD_ARGUMENT",
+    "BUNDLE_FILE_FAILED",
+    "BUNDLE_USAGE",
+    "BUSY",
+    "CANCELLED",
+    "EDIT_DUPLICATE_ID",
+    "EDIT_TOO_LARGE",
+    "EDIT_UNKNOWN_ID",
+    "EDIT_UNSAFE_PATH",
+    "ERR_MODULE_NOT_FOUND",
+    "ERR_WORKER_INIT_FAILED",
+    "ERR_WORKER_OUT_OF_MEMORY",
+    "ERR_WORKER_PATH",
+    "EXPORT_NEEDS_ACKNOWLEDGEMENT",
+    "EXPORT_NO_DEFINITION",
+    "EXPORT_TARGET_IN_HARNESS",
+    "FAILED",
+    "FILES_SERVER_CACHE_DIRECTORY_FOR_THE_WEEKLY_REPORT_PROJECT_AND_ITS_DRAFTS",
+    "IMPORT_FOLDER_HAS_HARNESS",
+    "IMPORT_NEEDS_ACKNOWLEDGEMENT",
+    "KIT_ALREADY_ADDED",
+    "KIT_INVALID",
+    "LOG_LEVEL",
+    "MODULE_NOT_FOUND",
+    "NODE_OPTIONS",
+    "NOTES_ALREADY_REPOSITORY",
+    "NOTES_NOTHING_TO_COMMIT",
+    "NOTES_NOT_CHOSEN",
+    "NOTES_NOT_EMPTY",
+    "NOTES_PATH_UNSAFE",
+    "NOTES_STALE",
+    "NOT_ALLOWED",
+    "NOT_A_FOLDER",
+    "NOT_THE_FOLDER_SHOWN",
+    "NOT_THE_PLAN_SHOWN",
+    "NO_HOME",
+    "ORDERS_KEY",
+    "PORTABLE_DEFINITION_INVALID",
+    "PORTABLE_DRIFT",
+    "PORTABLE_FIDELITY",
+    "PORTABLE_MERGE_NOT_BUILT",
+    "PORTABLE_NOTHING_PROJECTED",
+    "PORTABLE_PATH_UNSAFE",
+    "PORTABLE_RECOVERY_REQUIRED",
+    "PORTABLE_RECOVER_NOTHING",
+    "QUIT_BEGUN",
+    "READ_TIMED_OUT",
+    "REPORT_NONE",
+    "REPORT_NOT_SHOWN",
+    "REPORT_OPEN_FAILED",
+    "REPORT_UNSAFE",
+    "SAVE_DEFINITION_INVALID",
+    "SAVE_EXECUTABLE_UNACKNOWLEDGED",
+    "SAVE_NO_DEFINITION",
+    "SAVE_PARTIAL",
+    "SAVE_PATH_UNSAFE",
+    "SAVE_POINT_TOO_LARGE",
+    "SAVE_RECOVERY_REQUIRED",
+    "SAVE_SECRET_FOUND",
+    "SAVE_SOURCE_MISSING",
+    "SAVE_STALE",
+    "SECRET_VALUE",
+    "SOURCE_NAME_TAKEN",
+    "START_COPY_FAILED",
+    "START_FOLDER_HIDDEN",
+    "START_FOLDER_NAME",
+    "START_INSTRUCTION_BROKEN",
+    "START_INSTRUCTION_CHARACTERS",
+    "START_INSTRUCTION_DASH",
+    "START_INSTRUCTION_EMPTY",
+    "START_INSTRUCTION_HIDDEN",
+    "START_INSTRUCTION_SUBCOMMAND",
+    "START_INSTRUCTION_TOO_LONG",
+    "TOO_MANY",
+    "UNKNOWN_BUNDLE",
+    "UNKNOWN_BUNDLE_HELD",
+    "UNKNOWN_FOLDER",
+    "UNKNOWN_PLACE",
+    "VERSION_NOTHING",
+    "VERSION_STALE",
+    "VERSION_TOO_LARGE",
+    "VERSION_UNKNOWN",
+    "WORKER_CRASHED",
+    "WORKER_NOT_STARTED",
+    "WORKER_OUT_OF_MEMORY",
+    "WORKER_TIMED_OUT",
+    "YARD_REGION"
+  ],
+  "codeSources": {
+    "ADOPTION_ACKNOWLEDGEMENT_REQUIRED": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "ADOPTION_APPROVAL_REQUIRED": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "ADOPTION_CHOICE_REQUIRED": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "ADOPTION_DEFINED": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "ADOPTION_MERGE_NOTHING": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "ADOPTION_RECOVER_NOTHING": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "ADOPTION_STALE_APPROVAL": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "BAD_ARGUMENT": [
+      "apps/desktop/main/engine-ipc.ts",
+      "apps/desktop/main/engine-service.ts",
+      "apps/desktop/main/real-ipc.ts",
+      "apps/desktop/main/real-scan.ts",
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "BUNDLE_FILE_FAILED": [
+      "apps/desktop/main/engine-bundle.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "BUNDLE_USAGE": [
+      "apps/desktop/main/engine-bundle-work.ts",
+      "apps/desktop/main/engine-bundle.ts"
+    ],
+    "BUSY": [
+      "apps/desktop/main/real-scan.ts"
+    ],
+    "CANCELLED": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "EDIT_DUPLICATE_ID": [
+      "apps/desktop/main/engine-save.ts",
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "EDIT_TOO_LARGE": [
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "EDIT_UNKNOWN_ID": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "EDIT_UNSAFE_PATH": [
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "ERR_MODULE_NOT_FOUND": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "ERR_WORKER_INIT_FAILED": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "ERR_WORKER_OUT_OF_MEMORY": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "ERR_WORKER_PATH": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "EXPORT_NEEDS_ACKNOWLEDGEMENT": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "EXPORT_NO_DEFINITION": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "EXPORT_TARGET_IN_HARNESS": [
+      "apps/desktop/main/engine-bundle.ts"
+    ],
+    "FAILED": [
+      "apps/desktop/main/engine-bundle-host.ts",
+      "apps/desktop/main/engine-bundle.ts",
+      "apps/desktop/main/engine-ipc.ts",
+      "apps/desktop/main/engine-save.ts",
+      "apps/desktop/main/engine-service.ts",
+      "apps/desktop/main/real-ipc.ts"
+    ],
+    "FILES_SERVER_CACHE_DIRECTORY_FOR_THE_WEEKLY_REPORT_PROJECT_AND_ITS_DRAFTS": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "IMPORT_FOLDER_HAS_HARNESS": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "IMPORT_NEEDS_ACKNOWLEDGEMENT": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "KIT_ALREADY_ADDED": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "KIT_INVALID": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "LOG_LEVEL": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "MODULE_NOT_FOUND": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "NODE_OPTIONS": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "NOTES_ALREADY_REPOSITORY": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "NOTES_NOTHING_TO_COMMIT": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "NOTES_NOT_CHOSEN": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "NOTES_NOT_EMPTY": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "NOTES_PATH_UNSAFE": [
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "NOTES_STALE": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "NOT_ALLOWED": [
+      "apps/desktop/main/engine-ipc.ts",
+      "apps/desktop/main/real-ipc.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "NOT_A_FOLDER": [
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "NOT_THE_FOLDER_SHOWN": [
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "NOT_THE_PLAN_SHOWN": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "NO_HOME": [
+      "apps/desktop/main/real-scan.ts"
+    ],
+    "ORDERS_KEY": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "PORTABLE_DEFINITION_INVALID": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "PORTABLE_DRIFT": [
+      "apps/desktop/main/engine-bundle-work.ts",
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "PORTABLE_FIDELITY": [
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "PORTABLE_MERGE_NOT_BUILT": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "PORTABLE_NOTHING_PROJECTED": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "PORTABLE_PATH_UNSAFE": [
+      "apps/desktop/main/engine-bundle-work.ts"
+    ],
+    "PORTABLE_RECOVERY_REQUIRED": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "PORTABLE_RECOVER_NOTHING": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "QUIT_BEGUN": [
+      "apps/desktop/main/engine-bundle.ts"
+    ],
+    "READ_TIMED_OUT": [
+      "apps/desktop/main/engine-bundle.ts"
+    ],
+    "REPORT_NONE": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "REPORT_NOT_SHOWN": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "REPORT_OPEN_FAILED": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "REPORT_UNSAFE": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "SAVE_DEFINITION_INVALID": [
+      "apps/desktop/main/engine-bundle-work.ts",
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "SAVE_EXECUTABLE_UNACKNOWLEDGED": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "SAVE_NO_DEFINITION": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "SAVE_PARTIAL": [
+      "apps/desktop/main/engine-bundle-work.ts"
+    ],
+    "SAVE_PATH_UNSAFE": [
+      "apps/desktop/main/engine-bundle-work.ts",
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "SAVE_POINT_TOO_LARGE": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "SAVE_RECOVERY_REQUIRED": [
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "SAVE_SECRET_FOUND": [
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "SAVE_SOURCE_MISSING": [
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "SAVE_STALE": [
+      "apps/desktop/main/engine-bundle-work.ts",
+      "apps/desktop/main/engine-service.ts",
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "SECRET_VALUE": [
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "SOURCE_NAME_TAKEN": [
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "START_COPY_FAILED": [
+      "apps/desktop/main/engine-service.ts"
+    ],
+    "START_FOLDER_HIDDEN": [
+      "apps/desktop/shared/engine/start-answer.ts"
+    ],
+    "START_FOLDER_NAME": [
+      "apps/desktop/shared/engine/start-answer.ts"
+    ],
+    "START_INSTRUCTION_BROKEN": [
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "START_INSTRUCTION_CHARACTERS": [
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "START_INSTRUCTION_DASH": [
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "START_INSTRUCTION_EMPTY": [
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "START_INSTRUCTION_HIDDEN": [
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "START_INSTRUCTION_SUBCOMMAND": [
+      "apps/desktop/shared/engine/start-answer.ts",
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "START_INSTRUCTION_TOO_LONG": [
+      "apps/desktop/shared/engine/start-command.ts"
+    ],
+    "TOO_MANY": [
+      "apps/desktop/main/real-scan.ts"
+    ],
+    "UNKNOWN_BUNDLE": [
+      "apps/desktop/main/engine-service.ts",
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "UNKNOWN_BUNDLE_HELD": [
+      "apps/desktop/main/engine-bundle-mark.ts"
+    ],
+    "UNKNOWN_FOLDER": [
+      "apps/desktop/main/engine-service.ts",
+      "apps/desktop/shared/engine/sample.ts",
+      "apps/desktop/shared/engine/types.ts"
+    ],
+    "UNKNOWN_PLACE": [
+      "apps/desktop/main/real-scan.ts"
+    ],
+    "VERSION_NOTHING": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "VERSION_STALE": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "VERSION_TOO_LARGE": [
+      "apps/desktop/main/engine-save.ts"
+    ],
+    "VERSION_UNKNOWN": [
+      "apps/desktop/shared/engine/sample.ts"
+    ],
+    "WORKER_CRASHED": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "WORKER_NOT_STARTED": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "WORKER_OUT_OF_MEMORY": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "WORKER_TIMED_OUT": [
+      "apps/desktop/main/engine-bundle-host.ts"
+    ],
+    "YARD_REGION": [
+      "apps/desktop/shared/engine/sample.ts"
+    ]
+  }
+}
