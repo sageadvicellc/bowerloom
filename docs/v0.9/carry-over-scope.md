@@ -2,7 +2,7 @@
 
 Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". Date: 2026-11-08, updated 2026-11-09.
 
-This document sorts the 0.8 work into Keep, Drop, and Unsure. It deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls. Each removal still needs its own step.
+This document sorts the 0.8 work into Keep, Drop, and Unsure. The document itself deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls. Each removal still needs its own step. The one step done so far is decision 4C: see "Branches".
 
 ## Why this exists
 
@@ -71,7 +71,7 @@ Most of the 0.7-era packages are in this list. Removing one breaks a Keep piece.
 ### Drop
 
 - The beta.2 screens as built: Overview grid, Projects, Start, Library, and the unbuilt Compare and Runs. Decision 1C removes them at the start of 0.9 and rebuilds what 0.9 needs as default extensions. The Electron shell and the data layer stay. Decision 1C does not draw the line between the screens and the shell. A later chat answer, relayed and not on GitHub (see "Follow-up answers"), proposes a layering: navigation is a mod, and the screens are extensions. The renderer also holds navigation and the notes link flow, and shared code that Keep lines name. The removal needs its own plan. This pull request removes nothing.
-- The 52 `task/0.8-*` branches, as branches. No 0.9 item depends on a branch name. Their work reached `main` inside pull request 110, which squash-merged the `release/0.8.0-beta.1` branch. Pull requests 111 to 123 merged into that release branch first. Only 110 and 120 appear in the history of `main`. No pull request has one of these branches as its head. History cannot prove that each branch is fully in `main`, so decision 4C drops them by tagging each tip and then deleting. On 2026-11-09 all 52 tips were tagged `archive/0.8-*` on the remote. The branches are not deleted yet.
+- The 52 `task/0.8-*` branches, as branches. No 0.9 item depends on a branch name. Their work reached `main` inside pull request 110, which squash-merged the `release/0.8.0-beta.1` branch. Pull requests 111 to 123 merged into that release branch first. Only 110 and 120 appear in the history of `main`. No pull request has one of these branches as its head. History cannot prove that each branch is fully in `main`, so decision 4C drops them by tagging each tip and then deleting. On 2026-11-09 all 52 tips were tagged `archive/0.8-*` on the remote, and then the branches were deleted.
 
 Two Drops come from the maintainer's decisions, not from proof: the screens (1C) and the branches (4C). Any other Drop needs proof that no 0.9 item depends on a piece, and no other piece has it. The stated direction names no 0.9 item for any piece under Unsure, and none that rules it out.
 
@@ -103,7 +103,7 @@ Two Drops come from the maintainer's decisions, not from proof: the screens (1C)
 
 ## Branches
 
-- 52 `task/0.8-*` branches, dated 2026-10-28 to 2026-11-05. None has a pull request of its own. Their work reached `main` through pull request 110, which squash-merged the beta.1 release branch. Pull requests 111 to 123 merged into that release branch first. A squash leaves no shared history. A file-by-file compare against `main` is also not conclusive, because `main` has moved since. Every branch differs from `main` in 26 to 216 files for that reason. The audit therefore cannot prove that a branch is fully in `main`. Decision 4C: tag each branch tip, then delete the branches. The tags exist on the remote since 2026-11-09, so every commit stays reachable. The branches are not deleted yet. This pull request deletes nothing.
+- 52 `task/0.8-*` branches, dated 2026-10-28 to 2026-11-05. None has a pull request of its own. Their work reached `main` through pull request 110, which squash-merged the beta.1 release branch. Pull requests 111 to 123 merged into that release branch first. A squash leaves no shared history. A file-by-file compare against `main` is also not conclusive, because `main` has moved since. Every branch differs from `main` in 26 to 216 files for that reason. The audit therefore cannot prove that a branch is fully in `main`. Decision 4C: tag each branch tip, then delete the branches. On 2026-11-09 the 52 tips were tagged `archive/0.8-*` on the remote, and then the 52 branches were deleted. Every commit stays reachable from the tags. This pull request itself deletes nothing.
 - 7 `task/0.8b2-*` branches. Each has a merged pull request (149 to 155) into the beta.2 release branch. They are not on `main` until beta.2 merges, so they are not stale.
 - `task/open-beta-release-01`. It is 0.7 work, last changed 2026-10-06, and has no pull request.
 - Closed unmerged pull requests 104 to 109. They hold the folder grant summary kind, a read-only desktop viewer, a node map with a knowledge graph, and three clickable 0.8 prototypes. Their branches no longer exist on the remote. GitHub keeps their commits behind the pull request references. V9-1 can reuse the knowledge graph idea from pull request 106. That is Unsure until the maintainer says so.
@@ -115,7 +115,7 @@ The maintainer answered on 2026-11-09 in [one comment](https://github.com/sagead
 1. How much of the current desktop interface survives. Answer 1C: keep the shell only. Rebuild the interface on the new extensions API and ship it as included default extensions.
 2. What happens to the unreleased beta.2 work and the two unbuilt issues. Answer 2B: do not release beta.2. Carry the 8 merged pull requests into the 0.9 branch.
 3. What happens to the four packages that no Keep piece imports from source. Answer 3B for now and 3C later: freeze them now, and remove them in a separate reviewed pull request later.
-4. What happens to the stale 0.8 branches. Answer 4C: tag each tip, then delete the branches. This pull request does not delete anything.
+4. What happens to the stale 0.8 branches. Answer 4C: tag each tip, then delete the branches. Done on 2026-11-09, as the Branches section says.
 
 ## Follow-up answers
 
