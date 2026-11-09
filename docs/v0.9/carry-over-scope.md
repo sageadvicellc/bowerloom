@@ -1,6 +1,6 @@
 # Bowerloom 0.9: which 0.8 work to carry over
 
-Status: the maintainer answered decisions 1 to 4 on 2026-11-09. See "Decisions". Date: 2026-11-08, updated 2026-11-09.
+Status: the maintainer answered decisions 1 to 4 on 2026-11-09 (UTC). See "Decisions". Date: 2026-11-08, updated 2026-11-09.
 
 This document sorts the 0.8 work into Keep, Drop, and Unsure. It deletes, closes, reverts, and merges nothing. The maintainer has decided the product calls. Each removal still needs its own step.
 
@@ -48,7 +48,7 @@ If a 0.9 item depends on a piece, the piece is Keep, and the line names the item
 - `packages/fidelity`. It decides how each engine carries a harness, and it reports every loss. V9-2 needs exactly that per-engine view.
 - `packages/adoption` and the portable projection in `packages/project-sync`. Adoption reads engine files and writes a harness definition by copy. V9-2 needs the harness read from each engine.
 - Discovery and the scan cache (pull requests 150 and 152). V9-2 shows configuration across the whole environment. That needs a scan the user trusts, and the cache stops a rescan on every launch. Both sit in the unreleased beta.2 work, so decision 2 affects them. Decision 2B carries them into the 0.9 branch.
-- The Electron shell: `apps/desktop/main`, `preload`, `shared`, and the security checks. V9-4 names the desktop app as a human surface. This sort keeps the shell and leaves the screens to Unsure.
+- The Electron shell: `apps/desktop/main`, `preload`, `shared`, and the security checks. V9-4 names the desktop app as a human surface. The screens are in Drop under decision 1C. The shell stays.
 - The linking of a notes folder: `packages/notes-source` and `kits/wiki-keeper`. V9-1 probably starts from a linked knowledge root. That is an inference, because the V9-1 text does not say it. The package treats the source as a pointer and never opens a page, so V9-1 will add a reader.
 - The wiki-linking part of issue 143. V9-1 probably depends on a link flow that is easy to find. That is also an inference. The Context page part of the issue is Unsure. Decision 2B leaves issue 143 unfinished for beta.2. The need moves to the 0.9 rebuild.
 - The release script and workflow tools (pull request 161) and the files in `release/`. This is an exception to the sort rule: no V9 item depends on them. Releasing 0.9 needs them, and they are process, not product. They also sit in the unreleased beta.2 work.
@@ -70,15 +70,15 @@ Most of the 0.7-era packages are in this list. Removing one breaks a Keep piece.
 
 ### Drop
 
-- The beta.2 screens as built: Overview grid, Projects, Start, Library, and the unbuilt Compare and Runs. Decision 1C removes them at the start of 0.9 and rebuilds what 0.9 needs as default extensions. The Electron shell and the data layer stay. This pull request removes nothing.
-- The 52 `task/0.8-*` branches, as branches. No 0.9 item depends on a branch name. Their work reached `main` inside pull request 110, which squash-merged the `release/0.8.0-beta.1` branch. Pull requests 111 to 123 merged into that release branch first. Only 110 and 120 appear in the history of `main`. No pull request has one of these branches as its head. History cannot prove that each branch is fully in `main`, so the drop waits for decision 4.
+- The beta.2 screens as built: Overview grid, Projects, Start, Library, and the unbuilt Compare and Runs. Decision 1C removes them at the start of 0.9 and rebuilds what 0.9 needs as default extensions. The Electron shell and the data layer stay. The decision does not draw the line between the screens and the shell. The renderer also holds navigation and the notes link flow, and shared code that Keep lines name. The removal needs its own plan. This pull request removes nothing.
+- The 52 `task/0.8-*` branches, as branches. No 0.9 item depends on a branch name. Their work reached `main` inside pull request 110, which squash-merged the `release/0.8.0-beta.1` branch. Pull requests 111 to 123 merged into that release branch first. Only 110 and 120 appear in the history of `main`. No pull request has one of these branches as its head. History cannot prove that each branch is fully in `main`, so decision 4C drops them by tagging each tip and then deleting. Nothing is tagged or deleted yet.
 
-No product code is a Drop. A Drop needs proof that no 0.9 item depends on a piece. The stated direction names no 0.9 item for any piece under Unsure, and none that rules it out.
+Two Drops come from the maintainer's decisions, not from proof: the screens (1C) and the branches (4C). Any other Drop needs proof that no 0.9 item depends on a piece, and no other piece has it. The stated direction names no 0.9 item for any piece under Unsure, and none that rules it out.
 
 ### Unsure
 
 - Issue 145, Compare and Runs. Decision 2B leaves it unbuilt for beta.2. Decision 1C rebuilds the screens as extensions if 0.9 wants them. Runs data can overlap the V9-6 traces API, which is not specified yet.
-- The unreleased beta.2 work. Decision 2B: do not release beta.2, and carry the 8 merged pull requests into the 0.9 branch. Most of those pull requests are screens, and decision 1C rebuilds the screens. The decisions do not say which merged code stays as the base of the rebuild.
+- The unreleased beta.2 work. Decision 2B: do not release beta.2, and carry the 8 merged pull requests into the 0.9 branch. Half of those pull requests are screens (149, 151, 153, and 155), and decision 1C rebuilds the screens. The decisions do not say which merged code stays as the base of the rebuild.
 - The documentation site and the landing site. They describe the 0.8 app. The new product concept will change them. No 0.9 item names them, and no decision in this round covers them. Keep pieces read from them, so they cannot be dropped first: the desktop shell build copies fonts from `apps/landing`. About a dozen test files read `apps/docs` pages, among them CLI tests and the `harness-bundle` contract test. A desktop test reads `apps/landing`. A CI workflow filters on `apps/landing` paths, and a preview check reads both sites. The root package lists `apps/landing` as a workspace. Tests of several needed packages also read `examples/`.
 - The desktop end-to-end suite and the journey tests. No V9 item names them. They follow the screens decision. They test the screens that decision 1C removes, so the rebuilt screens need new tests.
 - Four packages that no Keep piece imports from source: `claude-adapter`, `roots`, `team`, and `workbench`. No 0.9 item names them. Decision 3 is B for now and C later. For now, freeze them: mark each unsupported in its README and the docs, do no new work, and remove nothing. That marking is not done yet. Later, remove them in a separate reviewed pull request that updates every reference. The reply gives no date or trigger for the removal. They are not proven safe to remove, because other files refer to them:
@@ -103,7 +103,7 @@ No product code is a Drop. A Drop needs proof that no 0.9 item depends on a piec
 
 ## Branches
 
-- 52 `task/0.8-*` branches, dated 2026-10-28 to 2026-11-05. None has a pull request of its own. Their work reached `main` through pull request 110, which squash-merged the beta.1 release branch. Pull requests 111 to 123 merged into that release branch first. A squash leaves no shared history. A file-by-file compare against `main` is also not conclusive, because `main` has moved since. Every branch differs from `main` in 26 to 216 files for that reason. The audit therefore cannot prove that a branch is fully in `main`. Decision 4C: tag each branch tip, then delete the branches. Nothing is tagged or deleted yet. It waits for the maintainer's go.
+- 52 `task/0.8-*` branches, dated 2026-10-28 to 2026-11-05. None has a pull request of its own. Their work reached `main` through pull request 110, which squash-merged the beta.1 release branch. Pull requests 111 to 123 merged into that release branch first. A squash leaves no shared history. A file-by-file compare against `main` is also not conclusive, because `main` has moved since. Every branch differs from `main` in 26 to 216 files for that reason. The audit therefore cannot prove that a branch is fully in `main`. Decision 4C: tag each branch tip, then delete the branches. This pull request does not tag or delete. The deletion is a separate step.
 - 7 `task/0.8b2-*` branches. Each has a merged pull request (149 to 155) into the beta.2 release branch. They are not on `main` until beta.2 merges, so they are not stale.
 - `task/open-beta-release-01`. It is 0.7 work, last changed 2026-10-06, and has no pull request.
 - Closed unmerged pull requests 104 to 109. They hold the folder grant summary kind, a read-only desktop viewer, a node map with a knowledge graph, and three clickable 0.8 prototypes. Their branches no longer exist on the remote. GitHub keeps their commits behind the pull request references. V9-1 can reuse the knowledge graph idea from pull request 106. That is Unsure until the maintainer says so.
@@ -115,4 +115,4 @@ The maintainer answered on 2026-11-09 in [one comment](https://github.com/sagead
 1. How much of the current desktop interface survives. Answer 1C: keep the shell only. Rebuild the interface on the new extensions API and ship it as included default extensions.
 2. What happens to the unreleased beta.2 work and the two unbuilt issues. Answer 2B: do not release beta.2. Carry the 8 merged pull requests into the 0.9 branch.
 3. What happens to the four packages that no Keep piece imports from source. Answer 3B for now and 3C later: freeze them now, and remove them in a separate reviewed pull request later.
-4. What happens to the stale 0.8 branches. Answer 4C: tag each tip, then delete the branches. Nothing is deleted until the maintainer gives the go.
+4. What happens to the stale 0.8 branches. Answer 4C: tag each tip, then delete the branches. This pull request does not delete anything.
