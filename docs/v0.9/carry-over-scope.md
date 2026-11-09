@@ -14,7 +14,7 @@ These items come from the maintainer's stated direction of 2026-11-07 and 2026-1
 
 - V9-1, memory explorer. It explores markdown memory in the style of a note-taking app, with analytics. It shows a user their memory against their harness context.
 - V9-2, engine views. For each engine, it shows harness configuration and usage across the whole environment. It adds visual explorers that show harnesses at work. The first move is modules for existing multi-engine environments. A Bowerloom-owned runtime interface over `relay` (the layer that launches one engine from another) is not first. The claims about the external environments are not verified yet.
-- V9-3, extensions. An extensions harness lets people build their own modules. The memory explorer, the engine views, and the explorers ship as stock extensions. Decided 2026-11-09: Bowerloom positions itself as an engine. The interface is rebuilt on a new extensions API and ships as included default extensions. The default flavor is what the Bowerloom app was, with libraries, harnesses, and visual management of them. A later chat answer (see "Decisions") says the defaults must not lock a user in, so a user can remove them. The maintainer also wants Bowerloom to run on other host platforms, and always as a CLI. Extensions and mods are two layers: extensions add features, including interfaces and code that calls APIs. Mods change interface parts, such as navigation, that Bowerloom otherwise does not change, to allow full theming and not only color changes.
+- V9-3, extensions. An extensions harness lets people build their own modules. The memory explorer, the engine views, and the explorers ship as stock extensions. Decided 2026-11-09: Bowerloom positions itself as an engine. The interface is rebuilt on a new extensions API and ships as included default extensions. The default flavor is what the Bowerloom app was, with libraries, harnesses, and visual management of them. A later chat answer, relayed and not on GitHub (see "Follow-up answers"), says the defaults must not lock a user in, so a user can remove them. The maintainer also wants Bowerloom to run on other host platforms, and always as a CLI. Extensions and mods are two layers: extensions add features, including interfaces and code that calls APIs. Mods change interface parts, such as navigation, that Bowerloom otherwise does not change, to allow full theming and not only color changes.
 - V9-4, three surfaces. The CLI is the agent surface. The desktop app is a human surface. A new terminal app is a human surface.
 - V9-5, bring-your-own-interface engine. One engine for desktop and terminal. Its open-source status and prior art are not researched yet.
 - V9-6, traces and logging API. It records sessions, reviews, usage, and working-tree locks. The maintainer wants it specified only after two working harnesses exist.
@@ -108,11 +108,20 @@ Two Drops come from the maintainer's decisions, not from proof: the screens (1C)
 - `task/open-beta-release-01`. It is 0.7 work, last changed 2026-10-06, and has no pull request.
 - Closed unmerged pull requests 104 to 109. They hold the folder grant summary kind, a read-only desktop viewer, a node map with a knowledge graph, and three clickable 0.8 prototypes. Their branches no longer exist on the remote. GitHub keeps their commits behind the pull request references. V9-1 can reuse the knowledge graph idea from pull request 106. That is Unsure until the maintainer says so.
 
-### Follow-up answers
+## Decisions
+
+The maintainer answered on 2026-11-09 in [one comment](https://github.com/sageadvicellc/bowerloom/pull/162#issuecomment-6731232158).
+
+1. How much of the current desktop interface survives. Answer 1C: keep the shell only. Rebuild the interface on the new extensions API and ship it as included default extensions.
+2. What happens to the unreleased beta.2 work and the two unbuilt issues. Answer 2B: do not release beta.2. Carry the 8 merged pull requests into the 0.9 branch.
+3. What happens to the four packages that no Keep piece imports from source. Answer 3B for now and 3C later: freeze them now, and remove them in a separate reviewed pull request later.
+4. What happens to the stale 0.8 branches. Answer 4C: tag each tip, then delete the branches. This pull request does not delete anything.
+
+## Follow-up answers
 
 The maintainer answered four questions about the first reply in a chat on 2026-11-09 (UTC). The factory assistant relayed the answers. They are not posted on GitHub.
 
-1. Can a user remove the default extensions? Answer: yes, with no lock-in to a bundled style. Bowerloom can also be installed on other host platforms, and always as a CLI. Reading: the defaults are removable.
-2. What is the base of the rebuild? Answer: "base off latest, and build from there". Reading by the factory assistant: the latest `main`, not the beta.2 screens. The answer can also mean the latest release branch, so this stays open.
-3. When is the removal in 3C? Answer: no date known.
-4. Where is the line between screens and shell? Answer: layer it. Extensions are new features, including interfaces and code that calls APIs. Mods change interface parts such as navigation, which Bowerloom otherwise does not change, to allow full theming and not only color changes.
+- (a) Can a user remove the default extensions? Answer: yes, with no lock-in to a bundled style. Bowerloom can also be installed on other host platforms, and always as a CLI. Reading: the defaults are removable.
+- (b) What is the base of the rebuild? Answer: "base off latest, and build from there". Reading by the factory assistant: the latest `main`, not the beta.2 screens. The answer can also mean the latest release branch, so this stays open.
+- (c) When is the removal in 3C? Answer: no date known.
+- (d) Where is the line between screens and shell? Answer: layer it. Extensions are new features, including interfaces and code that calls APIs. Mods change interface parts such as navigation, which Bowerloom otherwise does not change, to allow full theming and not only color changes.
