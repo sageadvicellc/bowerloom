@@ -26,18 +26,20 @@ How the process split works now:
 - The main process imports the Node core in the same process. It imports `project-sync`, `adoption`, `harness-definition`, `harness-bundle`, `contracts`, `diagnostics`, `notes-source`, `project-context`, and `skill-manifest`.
 - One worker thread exists. `engine-bundle-host.ts` starts a `Worker` for bundle work.
 - The preload file (`preload/real-preload.ts`, 34 lines) exposes two frozen objects with `contextBridge`. They are `bowerloomReal` and `bowerloomEngine`.
-- The page makes 3 reader calls and 37 engine calls. The names are in `shared/real/types.ts` and `shared/engine/types.ts`. Each call has a fixed argument count (`ENGINE_ARITY`) and a short list of refusal codes. The refusal codes are `NOT_ALLOWED`, `BAD_ARGUMENT`, `UNKNOWN_FOLDER`, `UNKNOWN_BUNDLE`, and `FAILED`.
+- The page makes 42 calls: 3 reader calls and 39 engine calls. The names are in `shared/real/types.ts` and `shared/engine/types.ts`. Each engine call has a fixed argument count (`ENGINE_ARITY`). Calls refuse with short codes. The engine calls use `NOT_ALLOWED`, `BAD_ARGUMENT`, `UNKNOWN_FOLDER`, `UNKNOWN_BUNDLE`, and `FAILED`. The reader calls use `NOT_ALLOWED`, `BAD_ARGUMENT`, `UNKNOWN_PLACE`, `TOO_MANY`, `BUSY`, `NO_HOME`, and `FAILED`.
 - The main process keeps state across calls. It refuses a write that is not the plan it showed last (`NOT_THE_PLAN_SHOWN`).
 - The renderer imports nothing from `electron` or Node. A search found 0 such files.
 
 Electron features in use:
-- Dialogs, in 7 files of `main`: message boxes, error boxes, open and save dialogs.
+- Dialogs: message boxes, error boxes, and open and save dialogs.
 - A close guard that handles `will-prevent-unload`.
 - A custom page scheme, registered with `protocol.registerSchemesAsPrivileged` and served with `protocol.handle`.
 - A request filter (`webRequest.onBeforeRequest`) and a permission handler that refuses every request.
 - A content security policy in `renderer/index.html` that allows only the app's own scripts, styles, fonts, and data images.
-- The clipboard (3 files), `shell.openExternal` (1 file), and the dock icon.
+- The clipboard, `shell.openExternal`, and the dock icon.
 - Hidden windows for tests, through a `--e2e-hidden` switch.
+
+The Electron surface to port is small to find. `main/main.ts` is the only file in `main` and `shared` that imports `electron`, and `preload/real-preload.ts` is the only other. The dialog, clipboard, and link calls are made in `main.ts`. Other files get them as injected parts, so about 13 files in `main` touch dialogs by name. The port starts at `main.ts` and its injection points.
 
 Not in use: an auto-updater, `safeStorage`, the power monitor, and notifications.
 
@@ -50,7 +52,7 @@ Packaging today (`apps/desktop/package.json`):
 
 Tests and CI:
 - 142 unit test files and 48 end-to-end specs under `apps/desktop`.
-- The end-to-end tests use Playwright with one worker. Three spec files use the Electron launch API (`_electron`).
+- The end-to-end tests use Playwright with one worker. Two specs call the Electron launch API (`_electron`) directly. The helper `e2e/hidden.ts` wraps the launch and answers the close question in the main process. All 48 specs reach the Electron launch, directly or through the 9 helper files in `e2e`.
 - The only workflow in `.github/workflows` is `pr-preview.yml`. No workflow builds or tests the desktop app.
 
 Web features the renderer uses (counted in files under `apps/desktop/renderer`):
@@ -106,13 +108,13 @@ Gaps in the documents:
 
 - A Tauri shell, written in Rust, hosts the webview. The React renderer moves over with as few changes as possible.
 - The Node core runs as a sidecar. The sidecar owns everything that is in the main process today and is not a window or a dialog.
-- The renderer talks to the shell, and the shell talks to the sidecar. The call set stays the same: the 3 reader calls and the 37 engine calls, with the same argument counts and refusal codes.
+- The renderer talks to the shell, and the shell talks to the sidecar. The call set stays the same: the 3 reader calls and the 39 engine calls, with the same argument counts and refusal codes.
 - The shell owns windows, dialogs, the clipboard, opening links, the page scheme and security policy, the close guard, the dock icon, and the updater.
 - The CLI, the desktop shell, and other hosts all talk to the same Node core through one defined protocol. The core must run with no shell at all.
 
 ## The three early gates
 
-Each gate has pass and fail criteria. A gate that fails keeps the desktop app on Electron. Numbers marked "proposal" are not measured. The maintainer approves them in a decision comment.
+Each gate has pass and fail criteria. A gate that fails keeps the desktop app on Electron. Numbers marked "proposal" are not measured. The maintainer approves them in a decision comment. If a criterion needs a fix, the maintainer approves the fix before the gate counts as passed.
 
 ### Gate 1: a long-lived Node sidecar
 
@@ -120,39 +122,45 @@ Risk: the Tauri documents give no advice on lifecycle, and the Node example is s
 
 If all of these hold on macOS, Windows, and Linux, the gate passes:
 - The Node core builds as one binary for each target triple, or as a runtime plus resource, and the shell starts it.
-- A ping call returns, and a large payload returns whole. The largest payload is the biggest scan result that the app handles today. Measure it on Electron first.
-- Events stream from the sidecar to the page without loss.
-- The shell restarts a killed sidecar. The app recovers in 5 seconds or less (proposal), and no call hangs. This holds across 100 kill-and-restart cycles in a row (proposal).
-- No orphan sidecar remains after a normal quit, a forced quit, or a shell crash.
+- A ping call returns. A large payload returns whole. The largest payload is the biggest scan result that the app handles today. Measure it on Electron first.
+- Events reach the page in order and once each. The test sends 10,000 numbered events (proposal) and checks the count and the order.
+- Every call returns or fails within 30 seconds (proposal). No call waits forever.
+- The shell restarts a killed sidecar. The app recovers in 5 seconds or less (proposal). This holds across 100 kill-and-restart cycles in a row (proposal).
+- A kill during an in-flight write leaves the folder in a state that the existing recovery calls can repair. After a restart, the state "the plan shown last" is gone, and a write returns the refusal `NOT_THE_PLAN_SHOWN`. It never runs a write that the page did not see planned.
+- No orphan sidecar remains after a normal quit, a forced quit, or a shell crash. The forced quit uses `kill -9` on macOS and Linux, and `taskkill /F` on Windows. The crash test ends the shell process and checks that the sidecar ends too.
+- The core and the CLI tests run with no shell at all.
 - The sidecar works from an install path with spaces and non-ASCII characters.
-- Packaging works inside a signed macOS app, a Windows installer, and a Linux AppImage.
+- Packaging works inside a notarized macOS app, a Windows installer, and a Linux AppImage. The Electron build today has no hardened runtime. The pages read do not say whether a Node sidecar needs extra entitlements under the hardened runtime. This criterion tests a notarized build to find out.
 
-If any criterion fails and has no fix inside the plan, the gate fails.
+If any criterion fails and the maintainer does not approve a fix, the gate fails.
 
 ### Gate 2: the Linux web view
 
 Risk: Linux uses `webkit2gtk`, and Electron bundles its own Chromium.
 
-If all of these hold on at least two named Linux distributions with different `webkit2gtk` versions, the gate passes:
-- Every web feature in "Web features the renderer uses" works. The test names each one.
+If all of these hold on at least two named Linux distributions with different `webkit2gtk` versions, the gate passes. The maintainer names the distributions and the reference machine in a decision.
+- Each web feature in "Web features the renderer uses" has a test. "Works" means its test passes.
 - The custom page scheme, the content security policy, and the permission refusal work.
 - Screenshots of the key screens match the Electron screenshots within a tolerance (proposal: a pixel difference limit set with the maintainer).
-- Scrolling, animation, and text input work on a reference machine. No frame drops that the test counts as a failure (proposal).
+- Scrolling, animation, and text input work on the reference machine. The test counts a frame drop as a failure above a limit (proposal: set with the maintainer).
 - The gate records the lowest `webkit2gtk` version that passes. The Tauri documents give no minimum, so this gate sets one.
+- The same feature tests also run on macOS (WKWebView) and Windows (WebView2). The gate records the lowest macOS version that passes. The maintainer sets the supported macOS version in a decision.
 
-If a blocking feature gap has no workaround, the gate fails. If the lowest passing version is newer than the main Linux distributions ship, the gate fails.
+If a blocking feature gap has no workaround, the gate fails. If the lowest passing version is newer than the named distributions ship, the gate fails.
 
 ### Gate 3: the end-to-end test path
 
-Risk: the 48 Playwright specs depend on Electron. The Tauri route is WebDriver, and the documents do not mention Playwright.
+Risk: all 48 Playwright specs reach the Electron launch, and the Tauri route is WebDriver. The documents do not mention Playwright.
 
 If all of these hold, the gate passes:
-- A slice of at least 8 specs (proposal) runs green through WebdriverIO on macOS, Windows, and Linux. The slice covers launch, folder pick with a stubbed dialog, an adoption plan and run, the close guard, and the scan cache.
-- Each slice run passes 10 times in a row (proposal).
+- A slice of at least 8 specs (proposal) runs green through WebdriverIO on macOS, Windows, and Linux. The slice covers launch, folder pick, an adoption plan and run, the close guard, and the scan cache.
+- The dialog answer uses a test-only switch in the shell. The switch answers a dialog request from a test fixture. Stage 1 designs it. It replaces what `answerCloseQuestion` does in `e2e/hidden.ts`, which runs code in the Electron main process.
+- The slice passes 10 runs in a row, and at most 2 of 100 runs fail (proposal).
+- On macOS the test uses an embedded WebDriver server inside the app. So the slice also runs a smoke check (launch and one call) on the shipped build without that server. The result records any difference.
 - A hidden or headless way to run exists for CI.
-- The plan lists which specs use the Electron API (`_electron`) and what replaces each use.
+- The plan lists the two specs that call `_electron` and the helper `hidden.ts`, with what replaces each.
 
-If macOS needs a paid vendor key that the maintainer does not approve, the gate fails. If the flake rate stays above the limit, the gate fails.
+If macOS needs a paid vendor key that the maintainer does not approve, the gate fails. If the slice misses the flake limit, the gate fails.
 
 ## Stages
 
@@ -160,36 +168,48 @@ Each stage has an exit rule and a rollback point. Until a gate passes, nothing s
 
 1. **Stage 0: answers.** The maintainer answers the decisions. Rollback: none needed.
 2. **Stage 1: the gates.** Run the three gates in a spike branch. Product code does not change. Exit: a written result for each gate. Rollback: delete the spike branch. Electron is untouched.
-3. **Stage 2: a call layer that does not depend on Electron.** Put the 40 calls behind one interface in the renderer. Electron still implements it. Exit: all current tests pass. Rollback: revert the change.
-4. **Stage 3: the core in its own process, under Electron.** Run the Node core as a child process of the Electron app, behind a switch. Exit: all current tests pass with the switch on. Rollback: turn the switch off. The in-process path stays.
-5. **Stage 4: a Tauri shell alpha.** Build the shell in parallel with a subset of calls. Electron stays the default build. Rollback: stop building the shell.
-6. **Stage 5: parity.** All 40 calls, dialogs, and the close guard work in Tauri. The end-to-end slice grows to every spec that still applies. Rollback: Electron stays the default.
+3. **Stage 2: a call layer that does not depend on Electron.** Put the 42 calls behind one interface in the renderer. Electron still implements it. This is a refactor behind the current tests, and it helps the 0.9 interface rebuild even if a gate fails. Exit: all current tests pass. Rollback: revert the change.
+4. **Stage 3: the core in its own process, under Electron.** This stage starts only after Gate 1 has a written pass for the protocol, events, and restart criteria. Run the Node core as a child process of the Electron app, behind a switch. The repository sets the Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` to off, and `tools/check-fuses.mjs` checks them. Stage 3 leaves them off. It starts the child another way, such as `utilityProcess` or a bundled Node runtime, and Stage 1 confirms which one works. Exit: all current tests pass with the switch on, and the fuse check is unchanged. Rollback: turn the switch off. The in-process path stays. A security review of the new process boundary comes before the exit.
+5. **Stage 4: a Tauri shell alpha.** Build the shell in parallel with a subset of calls. Electron stays the default build. Deliver the security mapping in "Security" below. Exit: the security review is signed off. Rollback: stop building the shell.
+6. **Stage 5: parity.** All 42 calls, dialogs, and the close guard work in Tauri. The end-to-end slice grows to every spec that still applies. Exit: a second security review is signed off. Rollback: Electron stays the default.
 7. **Stage 6: builds, signing, and the updater.** Produce signed builds on the three systems. Decide on the updater. Rollback: Electron builds stay available.
-8. **Stage 7: the default switch, one platform at a time.** Keep an Electron build for one release after each switch. Rollback: restore the Electron build as the default.
+8. **Stage 7: the default switch, one platform at a time.** Hard exit rules, all required: the platform's gate passed, signed builds exist (notarized on macOS), the security review is signed off, and user data is handled (see below). Keep an Electron build for one release after each switch. Rollback: restore the Electron build as the default.
 9. **Stage 8: retire Electron.** Only the maintainer starts this stage. Nothing is deleted before it.
 
-What stays on Electron: everything, until its gate passes. After a gate passes, only the platforms that passed it move, and only at Stage 7.
+What stays on Electron: everything, until its gate passes. After a gate passes, only the platforms that passed it move, and only at Stage 7. Stage 2 is the one change that starts before the gates are done, because it is a refactor behind the current tests.
+
+User data. Electron keeps settings and the scan cache in its own app data folder. Tauri uses a different location. Before Stage 7, one of two things must hold: both shells find the same data, or a migration and a reverse migration exist and are tested. The Tauri updater page describes no downgrade, so a rollback to Electron after an update is a manual step that this plan must write down.
+
+## Security
+
+The move changes the security model. These items are deliverables of Stage 4. Each has a mapping from the Electron rule to the Tauri rule:
+- The call guard, the argument-count table, and the refusal codes.
+- The state "the plan shown last" and the refusal `NOT_THE_PLAN_SHOWN`.
+- The custom page scheme, the content security policy, and the permission refusal.
+- The Electron fuses and the `contextBridge` objects, mapped to Tauri capabilities and the sidecar argument rules.
+- The channel between the shell and the sidecar. It needs a way to stop other local programs from calling the sidecar. Open question 2 covers the choice.
+
+Reviews are signed off at Stage 3, at Stage 4, before the exit of Stage 5, and before Stage 7. No Tauri build becomes the default without them.
 
 ## Builds, signing, and the updater
 
 - Today: macOS builds are ad-hoc signed, Windows and Linux builds are unsigned, and the app has no updater.
-- Tauri on macOS: the documents require a Developer ID certificate and notarization for distribution. That means the paid Apple program. This is a spend, so it needs the maintainer.
-- Tauri on Windows: a code-signing certificate is not required to run, but without one users see SmartScreen warnings. This is also a spend.
+- Tauri on macOS: the documents require a Developer ID certificate and notarization for distribution. That means the paid Apple program. The macOS signing page also says signing needs an Apple device. This is a spend, so it needs the maintainer.
+- Tauri on Windows: a code-signing certificate is not required to run, but without one users see SmartScreen warnings. Signing a Windows build from another system needs a custom signing command. This is also a spend.
 - Tauri on Linux: AppImage is today's target. The documents describe signing only for AppImage.
 - The Tauri updater is a new feature, not a port. It needs a signing key pair and an endpoint. Whether the first Tauri release ships it is a decision.
-- Building for macOS needs an Apple device. Signing a Windows build from another system needs a custom signing command.
+- Key rules for this plan: the updater private key and the certificates live in the secret storage of the build system and never in the repository. The updater page says the key is read from the environment at build time. Protect the updater key with a passphrase, back it up, plan how to rotate it, and let only the release jobs read it.
 
 ## How this fits the 0.9 plan
 
 - The 0.9 plan (pull request 162) rebuilds the interface on a new extensions API and ships the screens as removable default extensions.
 - The rebuilt interface needs a transport-neutral call layer. Stage 2 builds that layer, so the rebuild works on both shells.
 - Order is a decision: move the shell first, rebuild the interface first, or do both on the same layer.
-- The CLI and other hosts stay first-class. The Node core with its defined protocol serves all of them. A criterion in Gate 1 keeps the core runnable with no shell, and the CLI tests keep running on the core alone.
+- The CLI and other hosts stay first-class. The Node core with its defined protocol serves all of them. A criterion in Gate 1 keeps the core and the CLI tests running with no shell.
 
 ## Risks that are not gated
 
 - Two toolchains (Rust and Node) raise the cost for contributors.
-- Security rules move. Electron fuses and the `contextBridge` become Tauri capabilities and sidecar argument rules. A security review is needed at Stage 4.
 - WebView2 and WKWebView update on their own schedules, so a user can run a webview version that was never tested.
 - Accessibility behavior on `webkit2gtk` is not measured.
 - The sidecar adds a binary to each build. Its size is not measured.
@@ -199,11 +219,12 @@ What stays on Electron: everything, until its gate passes. After a gate passes, 
 Each question becomes its own decision comment on the pull request.
 
 1. Goal weighting: performance, size, and cross-platform reach. Not answered. Not decided here.
-2. The protocol between the shell and the sidecar: standard input and output lines, a local socket, or another way.
-3. Where the "plan shown last" state lives: in the shell or in the sidecar.
-4. How to package Node: one compiled binary, or a runtime plus the JavaScript as a resource.
+2. The protocol between the shell and the sidecar, and how the sidecar knows its caller: standard input and output lines, a local socket, or another way.
+3. Where the state "the plan shown last" lives: in the shell or in the sidecar.
+4. How to package and start Node: one compiled binary, or a runtime plus the JavaScript as a resource. This also decides how Stage 3 starts the child under Electron.
 5. The order against the interface rebuild.
 6. Which platform moves first, and whether any platform stays on Electron.
 7. The proposed gate thresholds.
 8. The updater in the first Tauri release, and the signing spend for Apple and Windows.
 9. The end-to-end tool: WebdriverIO with the Tauri service, or another tool.
+10. The supported platforms: the lowest macOS version, the named Linux distributions, and the reference machine.
