@@ -100,7 +100,7 @@ Two Drops come from the maintainer's decisions, not from proof: the screens (1C)
 - A search of the `main` tree found no extension interface document or code, no terminal app, and no `relay` package. The extension interface, the terminal app, and `relay` start from nothing in this repository.
 - The claims about the external multi-engine environments are the maintainer's description. They are not checked against those products' documents.
 - Trademark and name checks for V9-7 are not done.
-- The relayed chat items are not on GitHub, and git cannot check them. They are the follow-up answers, the V9-8 request, the direction change and its confirmation, and the confirmation of the `release/0.8.0-beta.2` base.
+- The relayed chat items are not on GitHub, and git cannot check them. They are the follow-up answers, the V9-8 request, the direction change and its confirmation, the confirmation of the `release/0.8.0-beta.2` base, and the scope selections in the acceptance section.
 - The state of issues and pull requests comes from GitHub, read on 2026-11-08. Git cannot confirm it.
 - The import scan reads static and dynamic imports in source files, and it skips tests. It first ran on `main` at commit `d66fc965`. It was rerun on the base, `release/0.8.0-beta.2` at commit `d4c8a478`, with the same result: 22 packages reached from the core, 9 reached only through the CLI, and the same four unreached. It does not read scripts, configuration files, or string references.
 
@@ -141,32 +141,46 @@ Open questions:
 
 ## Acceptance: v0.9 working
 
-The maintainer chose the scope in the Claude interface on 2026-11-09 (relayed by an assistant agent, not on GitHub): "A The 0.8 app on new layers (Recommended)". This section turns that choice into a list that a test or a reviewer can check. The routes come from `apps/desktop/renderer/harness/HarnessApp.tsx` at `release/0.8.0-beta.2` (commit `d4c8a478`). The counts and names are read from that file.
+The maintainer chose the scope in the Claude interface on 2026-11-09. An assistant agent relayed the choice. It is not on GitHub. The choice is a selection from options that the assistant agent listed: "A The 0.8 app on new layers (Recommended)". A selection of a recommended option is weaker evidence than a typed reply, and the maintainer can regroup or change anything below. This section turns the choice into a list that a test or a reviewer can check. The routes come from `apps/desktop/renderer/harness/HarnessApp.tsx` at `release/0.8.0-beta.2` (commit `d4c8a478`).
+
+Items 2, 3, and 4 describe tests that cannot run yet. The base has no extension code, no engine API client, and no contract. The lanes that build them write the tests first.
 
 ### Chosen scope and related answers
 
-All lines are relayed, not on GitHub. Each is the maintainer's selection, in her words.
+All lines are relayed, not on GitHub. Each is a selection from options that the assistant agent listed. The relay gives no time and no author beyond the assistant agent.
 - Answered in chat, 2026-11-09: v0.9 scope "A The 0.8 app on new layers (Recommended)".
-- Answered in chat, 2026-11-09: mods "A Extensions only, no mods (Recommended)". This answers question 2.
+- Answered in chat, 2026-11-09: mods "A Extensions only, no mods (Recommended)". This answers the mods part of question 2. Whether a user can hide or retheme a protected extension, and whether the extensions harness for people who build their own modules survives, stay open.
 - Answered in chat, 2026-11-09: exclusive set "A Accept the nine in the doc (Recommended)". This answers question 1.
-- Answered in chat, 2026-11-09: API form "A In-process library API first (Recommended)". This answers the first part of question 3. A local server and the question of who can call the API stay open.
-- Answered in chat, 2026-11-09: Tauri order "A Electron first, Tauri after (Recommended)".
+- Answered in chat, 2026-11-09: API form "A In-process library API first (Recommended)". This answers the first part of question 3. A local server and the question of who can call the API (question 4) stay open.
+- Answered in chat, 2026-11-09: Tauri order "A Electron first, Tauri after (Recommended)". It relates to question 7, and it does not answer it.
 
 ### What "working" means
 
-Version 0.9 is working when every item below holds on a branch built from `release/0.8.0-beta.2`.
+Version 0.9 is working when every item below holds on a branch built from `release/0.8.0-beta.2`. Decision 1C removes the beta.2 screens at the start of 0.9. Under this scope, the removal is a rebuild with parity: each removed screen comes back as a default extension with the behavior it had at the base.
 
-1. The 0.8 app behaves as it does at the base. The routes are `welcome`, `choose`, `read`, `notes`, `overview`, `harnesses`, `builder`, `file`, `library`, `projects`, `runs`, `compare`, `interfaces`, `history`, and `help`. Runs and Compare behave as they do at the base. They are not rebuilt in 0.9.
-2. The screens are default UI extensions. Each work area registers through the extension mechanism, with the protected flag set. The areas are Overview, Harnesses (the list, the builder, and the file view), Library, Projects (with the start, adopt, project, and save sheets), Interfaces and History, and the first-run flow (welcome, choose, read, and the notes link flow). An uninstall of a protected extension is refused.
-3. Every call a screen makes goes through the engine API. The API is a library that runs in the same process. It wraps the 42 calls of the base: 3 reader calls and 39 engine calls, with the same argument counts and refusal codes. No screen imports `electron` or a Node module.
-4. A contract for the engine API exists, with conformance tests. It does not depend on the desktop app. It opens no port.
-5. The shell keeps its protections. The Electron fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` stay off. The content security policy, the permission refusal, the page scheme, and the close guard work as at the base.
-6. The tests pass. The unit tests (142 files at the base) pass. The end-to-end specs (48 at the base) pass, and a spec that tests a removed screen is replaced and not deleted. End-to-end runs use hidden windows.
-7. The command line works. The tests of `apps/cli` pass.
-8. The four gates exit 0: `typecheck`, `lint`, `test`, and `build`.
+1. Parity. The 0.8 app behaves as it does at the base. The routes are `welcome`, `choose`, `read`, `notes`, `overview`, `harnesses`, `builder`, `file`, `library`, `projects`, `runs`, `compare`, `interfaces`, `history`, and `help`. Before the rebuild starts, a route-to-spec matrix lists, for each route, the end-to-end specs that cover it, by name. A route with no spec gets one before it is rebuilt. A spec that tests a rebuilt screen is replaced and not deleted. The replacement keeps every assertion of the original. Sample and preview launches keep working.
+2. Default UI extensions. Each work area below is a default UI extension. The registry is the only route table, so a screen renders only through its registration. A test shows that a screen is absent when its registration is removed in a test setup. A test shows that an uninstall of a protected extension returns a named refusal code. The refusal of an uninstall is the only protection behavior that this item fixes. The work areas are:
+   - Overview.
+   - Harnesses: the list, the builder, and the file view.
+   - Library.
+   - Projects: with the start, adopt, project, save, install, add, export, and import sheets, and with Runs and Compare mounted unchanged. Any call that Runs or Compare make is bound by item 3.
+   - Interfaces, History, and Help.
+   - The first-run flow: welcome, choose, read, and the notes link flow.
+3. One client of the engine API. The layers are, in order: the screen, a named engine API client, a transport, and the library of the engine API. The transport is the Electron preload bridge today. The library runs in the main process, so "in the same process" holds between the main process and the library, not between the renderer and the library. Tests show:
+   - Every entry of `ENGINE_CALLS` (39) and every reader call (3) is served by the library.
+   - The preload exposes no call that the library lacks.
+   - The calls keep their argument counts and refusal codes. The reader codes are `NOT_ALLOWED`, `BAD_ARGUMENT`, `UNKNOWN_PLACE`, `TOO_MANY`, `BUSY`, `NO_HOME`, and `FAILED`. The engine codes are `NOT_ALLOWED`, `BAD_ARGUMENT`, `UNKNOWN_FOLDER`, `UNKNOWN_BUNDLE`, and `FAILED`.
+   - No renderer file reads `window.bowerloomReal` or `window.bowerloomEngine` except the transport adapter of the client.
+   - No renderer file imports `electron` or a Node module.
+4. A contract for the engine API exists, with conformance tests. It does not depend on the desktop app. It opens no port and no listener. It satisfies V9-9 for 0.9 in its in-process form. Parts of V9-9 beyond that form, such as the shape for other platforms (question 6), come later.
+5. The shell keeps its protections. The fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` stay off. The content security policy, the permission refusal, the page scheme, and the close guard work as at the base. The test files that hold these checks at the base are `tests/packaging.test.ts`, `tests/security.test.ts`, `tests/real-static.test.ts`, and `tests/close-guard.test.ts`, all under `apps/desktop`. The lane that rebuilds the shell records which file covers which protection, and adds a test where none exists.
+6. The tests pass. Every test that runs at the base passes, except the specs that item 1 replaces. This covers the unit tests under `apps/desktop` (142 files at the base) and the rest of the root test script. It covers the end-to-end specs (48 at the base), run with hidden windows. The counts are a base reading and not a pass criterion.
+7. The command line works. The tests of `apps/cli` pass, and so do the root tests that read `apps/docs`, `apps/landing`, `apps/mcp`, and the four frozen packages.
+8. The gates exit 0. The base has no `lint` script. The gates are, at the root, `typecheck`, `build`, and `test`, and in `apps/desktop`, `typecheck`, `test`, `e2e`, and `verify:fuses`. Adding a `lint` step is not part of v0.9 unless the maintainer asks.
 
 ### Not needed for "working"
 
+This list is a delivery cut. It does not remove anything from "What 0.9 needs", and the reasons in the Keep list still stand.
 - The memory explorer (V9-1), the engine views (V9-2), structured chat output (V9-8), the terminal app (V9-4), the traces API (V9-6), and the name research (V9-7).
 - Mods, and a local server for the API.
 - A move of the desktop shell to a different framework.
@@ -174,8 +188,8 @@ Version 0.9 is working when every item below holds on a branch built from `relea
 
 ### Open points
 
-- The assistant agent that relayed the scope spoke of five default UI extensions. The base has the six work areas in item 2 (counting the first-run flow). The count is a grouping choice, and the list above does not depend on it. The maintainer can regroup them.
-- The rebuilt screens must keep the 0.8 behavior. The doc has no screen-by-screen behavior list beyond the existing specs. The 48 end-to-end specs are the reference.
+- The assistant agent that relayed the scope spoke of five default UI extensions. Item 2 lists the work areas of the base, which come to six groups when the first-run flow counts as one. The count is a grouping choice, and the list above does not depend on it.
+- The doc has no screen-by-screen behavior list. The route-to-spec matrix in item 1 is the first lane's output, and it becomes the reference.
 
 ## Branches
 
@@ -273,7 +287,7 @@ Each line says what the entry was, and what it becomes. The change itself is rel
 
 ### Ideas that probably count as Bowerloom-exclusive
 
-This list is an inference. The maintainer has not confirmed any line. The relayed message calls the concepts the differentiator and the entire product.
+The maintainer accepted the nine by a relayed selection on 2026-11-09 (see "Acceptance: v0.9 working"). The list is still the relaying agent's inference in origin. The relayed message calls the concepts the differentiator and the entire product.
 
 - Libraries and harnesses: the harness definition, its portable projection, and the per-engine fidelity report that lists every loss.
 - Visual management of libraries and harnesses: the ideas behind the Overview, Library, Projects, and Start screens.
@@ -289,9 +303,9 @@ This list is an inference. The maintainer has not confirmed any line. The relaye
 
 The maintainer decides where these go. This pull request posts nothing. Two questions from the earlier draft are answered by the third relayed message and are dropped.
 
-1. Which ideas count as Bowerloom-exclusive? The list above is an inference. What is the right list?
-2. Do extensions and mods stay as layers for features that are not exclusive? If yes, which features are those? Does navigation stay a mod for the default UI? Can a user turn off, hide, or retheme a non-removable extension? Does the extensions harness for people who build their own modules survive?
-3. What does "expose with APIs" mean: a library import, a command line with structured output, a local server, or all of these? Which one comes first? This is a security question, because a local server adds listener, authentication, and browser-origin risks.
+1. Which ideas count as Bowerloom-exclusive? Answered by a relayed selection: accept the nine. See "Acceptance: v0.9 working".
+2. Do extensions and mods stay as layers for features that are not exclusive? If yes, which features are those? Mods are answered by a relayed selection: extensions only, no mods in 0.9. The rest of this question stays open. Does navigation stay a mod for the default UI? Can a user turn off, hide, or retheme a non-removable extension? Does the extensions harness for people who build their own modules survive?
+3. What does "expose with APIs" mean? The first form is answered by a relayed selection: an in-process library API. A local server stays open. The question as asked: a library import, a command line with structured output, a local server, or all of these? Which one comes first? This is a security question, because a local server adds listener, authentication, and browser-origin risks.
 4. Who can call the API: only Bowerloom surfaces, or also other programs on the same machine? This is a security question. It links to the V9-8 question about who counts as the answerer.
 5. Does the earlier request for no lock-in to a bundled style still hold? If yes, how: through theming, or through the API, so that a user can build another interface? Does the host-neutral contract (V9-9) replace it?
 6. What shape does the host-neutral contract have: other platforms implement Bowerloom's contract, Bowerloom publishes extensions into each host's own system, or both? Who owns and versions it, and how does an implementer prove it conforms?
