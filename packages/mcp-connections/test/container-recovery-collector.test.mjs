@@ -12,6 +12,7 @@ import {createHash} from 'node:crypto';
 import {canonicalJson} from '../../../dist/packages/contracts/src/index.js';
 import {createDiscoveryProposal,createDiscoveryAuthorityState,mcpBindingRevision,planMcpContainerDiscoveryLaunch,McpConnectionError} from '../../../dist/packages/mcp-connections/src/index.js';
 import {collectMcpContainerRecovery,collectAndPersistMcpContainerRecovery} from '../../../dist/packages/mcp-connections/src/container-recovery-collector.js';
+import {needsMacOS} from './support/macos-only.mjs';
 const hash=v=>'sha256:'+createHash('sha256').update(v).digest('hex');
 const refused=e=>e instanceof McpConnectionError&&e.code==='MCP_RECOVERY_COLLECTOR_UNCERTAIN'&&e.message===e.code;
 function fixture(){
@@ -56,21 +57,21 @@ async function setup(t,mode='absent'){
  });syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
  return{root,directory,path,j,state,hooks,calls,store,get transactions(){return transactions;},get kills(){return kills;},collect:()=>collectMcpContainerRecovery({store,stateRoot:root,trustedDockerDesktop:true},state.scope)};
 }
-test('collector reads actual private bytes and exact process/container queries while holding provenance unknown',async t=>{
+test('collector reads actual private bytes and exact process/container queries while holding provenance unknown',{skip:needsMacOS},async t=>{
  const f=await setup(t),before=canonicalJson(f.state),r=await f.collect();assert.equal(r.journal.status,'stable-private-file');assert.equal(r.journal.sha256,hash(readFileSync(f.path)));assert.equal(r.observations.guardian.state,'absent');assert.equal(r.observations.attach.state,'absent');assert.equal(r.observations.container.state,'absent');
  assert.equal(r.planner.finding,'HOLD_HOST_SESSION');assert.equal(r.journalOrigin,'unverified-local-user-file');assert.equal(r.authorityUnchangedAtFinalCheck,true);assert.equal(r.journalUnchangedAtFinalCheck,true);assert.equal(r.cleanupAuthorized,false);assert.equal(r.retryAuthorized,false);assert.equal(r.executionAuthorized,false);assert.equal(r.hostRestartSafetyVerified,false);assert.equal(canonicalJson(f.state),before);assert.equal(f.transactions,2);assert.equal(f.kills,0);
 });
-test('actual ps observes this live test process without signaling it',async t=>{
+test('actual ps observes this live test process without signaling it',{skip:needsMacOS},async t=>{
  const f=await setup(t,'real-ps'),r=await f.collect();assert.equal(r.observations.guardian.pid,process.pid);assert.equal(r.observations.guardian.state,'present');assert.equal(r.planner.finding,'HOLD_HOST_SESSION');assert.equal(f.kills,0);
 });
-test('present or failed process observations remain distinct and non-authorizing',async t=>{
+test('present or failed process observations remain distinct and non-authorizing',{skip:needsMacOS},async t=>{
  for(const [mode,state]of[['active','present'],['ps-failure','unknown'],['ps-stderr','unknown'],['ps-zero-stderr','unknown']])await t.test(mode,async t=>{const f=await setup(t,mode),r=await f.collect();assert.equal(r.observations.guardian.state,state);assert.equal(r.planner.finding,'HOLD_HOST_SESSION');});
 });
-test('Docker errors, wrong IDs, invalid text, flood and timeout never mean absence',async t=>{
+test('Docker errors, wrong IDs, invalid text, flood and timeout never mean absence',{skip:needsMacOS},async t=>{
  for(const mode of ['failure','wrong-cid','invalid-utf8','flood','timeout'])await t.test(mode,async t=>{const f=await setup(t,mode),r=await f.collect();assert.equal(r.observations.container.state,'unknown');assert.equal(JSON.stringify(r).includes('PRIVATE'),false);if(mode==='timeout'||mode==='flood')assert.equal(f.kills,1);else assert.equal(f.kills,0);});
  const f=await setup(t,'present');assert.equal((await f.collect()).observations.container.state,'present');
 });
-test('missing operation directory and missing journal yield held reports and no read commands',async t=>{
+test('missing operation directory and missing journal yield held reports and no read commands',{skip:needsMacOS},async t=>{
  for(const level of ['directory','file'])await t.test(level,async t=>{const f=await setup(t);await rm(level==='directory'?f.directory:f.path,{recursive:true});const r=await f.collect();assert.equal(r.journal.status,'missing');assert.equal(r.observations.container.state,'not-queried');assert.equal(f.calls.length,0);assert.equal(f.transactions,2);});
 });
 test('symlink files, hardlinks, symlink operation ancestors and unsafe modes refuse before subprocesses',async t=>{
@@ -86,7 +87,7 @@ async function renameForLink(f){renameSync(f.path,f.path+'-saved');}
 test('journal tampering and exact authority/launch mismatch refuse before Docker contact',async t=>{
  for(const mutate of [j=>j.operationKey='sha256:'+'e'.repeat(64),j=>j.launchRevision='sha256:'+'e'.repeat(64),j=>j.cid='short',j=>j.deadlineMs++,j=>j.extra='PRIVATE'])await t.test(String(mutate),async t=>{const f=await setup(t);mutate(f.j);await writeFile(f.path,canonicalJson(f.j));await assert.rejects(f.collect(),refused);assert.equal(f.calls.length,0);});
 });
-test('file content, file identity, and ancestor replacement during observations invalidate the report',async t=>{
+test('file content, file identity, and ancestor replacement during observations invalidate the report',{skip:needsMacOS},async t=>{
  for(const mode of ['content','file','ancestor','metadata'])await t.test(mode,async t=>{
   const f=await setup(t);f.hooks.duringDocker=()=>{if(mode==='content')writeFileSync(f.path,canonicalJson({...f.j,reason:'CHANGED'}));else if(mode==='metadata'){chmodSync(f.path,0o600);}else if(mode==='file'){renameSync(f.path,f.path+'-old');writeFileSync(f.path,canonicalJson(f.j),{mode:0o600});}else{renameSync(f.directory,f.directory+'-old');mkdirSync(f.directory,{mode:0o700});writeFileSync(f.path,canonicalJson(f.j),{mode:0o600});}};
   await assert.rejects(f.collect(),refused);assert.equal(f.transactions,1);
@@ -109,13 +110,13 @@ test('active durable authority and external observation overrides are rejected',
  let reads=0;const deps={store:f.store,stateRoot:f.root,trustedDockerDesktop:true};Object.defineProperty(deps,'stateRoot',{get(){reads++;return f.root;},enumerable:true});await assert.rejects(collectMcpContainerRecovery(deps,f.state.scope),refused);assert.equal(reads,0);
 });
 
-test('unresponsive trusted store has a bounded collection deadline and cannot resume host reads later',{timeout:18000},async t=>{
+test('unresponsive trusted store has a bounded collection deadline and cannot resume host reads later',{timeout:18000,skip:needsMacOS},async t=>{
  const f=await setup(t);let release;f.hooks.beforeTransaction=()=>new Promise(resolve=>{release=resolve;});
  await assert.rejects(f.collect(),refused);assert.equal(f.calls.length,0);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.calls.length,0);
 });
 
 import {createMcpContainerRecoveryReceipt} from '../../../dist/packages/mcp-connections/src/container-recovery-receipt.js';
-test('collector-owned persistence takes only fresh observations and retains uncertainty',async t=>{
+test('collector-owned persistence takes only fresh observations and retains uncertainty',{skip:needsMacOS},async t=>{
  const f=await setup(t);let writes=0;f.store.recordRecoveryReceipt=async(expected,collection,check)=>{check();writes++;assert.equal(canonicalJson(expected),canonicalJson(f.state));return createMcpContainerRecoveryReceipt(expected,collection);};
  const r=await collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope);assert.equal(writes,1);assert.equal(r.persistence,'commit-acknowledged');assert.equal(r.receipt.collection.revision,r.collection.revision);assert.equal(r.receipt.hostSession,'unknown');assert.equal(r.receipt.executionAuthorized,false);
  await assert.rejects(collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true,report:r.collection},f.state.scope),refused);assert.equal(writes,1);
@@ -123,11 +124,11 @@ test('collector-owned persistence takes only fresh observations and retains unce
 test('collector persistence error, corrupt acknowledgement or post-commit journal change returns uncertainty',async t=>{
  for(const mode of ['error','corrupt','journal-change'])await t.test(mode,async t=>{const f=await setup(t);f.store.recordRecoveryReceipt=async(expected,collection,check)=>{check();if(mode==='error')throw Error('PRIVATE_ACK');const r=createMcpContainerRecoveryReceipt(expected,collection);if(mode==='corrupt')r.hostSession='trusted';if(mode==='journal-change')writeFileSync(f.path,canonicalJson({...f.j,reason:'CHANGED'}));return r;};await assert.rejects(collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope),refused);assert.equal(f.state.status,'NEEDS_RECONCILIATION');});
 });
-test('collector timeout cannot turn a late persistence completion into success', {timeout:18000},async t=>{
+test('collector timeout cannot turn a late persistence completion into success',{timeout:18000,skip:needsMacOS},async t=>{
  const f=await setup(t);let release,entered;const started=new Promise(resolve=>entered=resolve);f.store.recordRecoveryReceipt=async(expected,collection,check)=>{entered();await new Promise(resolve=>release=resolve);check();return createMcpContainerRecoveryReceipt(expected,collection);};
  const pending=collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope);await started;await assert.rejects(pending,refused);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.status,'NEEDS_RECONCILIATION');
 });
-test('v2 envelope normalization does not promote signature-shaped bytes into origin or host trust',async t=>{
+test('v2 envelope normalization does not promote signature-shaped bytes into origin or host trust',{skip:needsMacOS},async t=>{
  const f=await setup(t);const envelope={format:'bowerloom/mcp-container-journal/v1beta2',bindingRevision:'sha256:'+'a'.repeat(64),sequence:1,body:f.j,signature:Buffer.alloc(64).toString('base64')};await writeFile(f.path,canonicalJson(envelope));
  const r=await f.collect();assert.equal(r.journalOrigin,'unverified-local-user-file');assert.equal(r.planner.finding,'HOLD_HOST_SESSION');assert.equal(r.cleanupAuthorized,false);assert.equal(r.retryAuthorized,false);assert.equal(r.executionAuthorized,false);assert.equal(r.journal.bytes,Buffer.byteLength(canonicalJson(envelope)));
 });

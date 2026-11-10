@@ -35,6 +35,7 @@ function fixture(){
 import {readDarwinBootSession} from '../../../dist/packages/mcp-connections/src/darwin-boot-session.js';
 import {createGuardianBinding,validateGuardianBinding,guardianSignaturePayload,verifyGuardianJournal,inspectMcpGuardianProvenance} from '../../../dist/packages/mcp-connections/src/container-guardian-provenance.js';
 import {PostgresDiscoveryAuthorityStore} from '../../../dist/packages/mcp-connections/src/authority-postgres.js';
+import {needsMacOS} from './support/macos-only.mjs';
 const clone=v=>JSON.parse(JSON.stringify(v));
 async function signedFixture(t){
  const f=fixture(),keys=generateKeyPairSync('ed25519'),bootSessionId=await readDarwinBootSession();
@@ -45,24 +46,24 @@ async function signedFixture(t){
  await writeFile(path,signed(),{mode:0o600});let reads=0;const hooks={read:null};const store={async readGuardianEvidence(scope){assert.equal(canonicalJson(scope),canonicalJson(f.authority.scope));reads++;await hooks.read?.(reads);return clone({authority:f.authority,binding});}};
  return{...f,keys,descriptor,root,path,signed,store,hooks,get binding(){return binding;},set binding(v){binding=v;},inspect:()=>inspectMcpGuardianProvenance({store,stateRoot:root,trustedDarwinHost:true},f.authority.scope)};
 }
-test('actual file and kernel boot inspection verifies historical signatures without freshness or PID authority',async t=>{
+test('actual file and kernel boot inspection verifies historical signatures without freshness or PID authority',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),r=await f.inspect();assert.equal(r.signature,'verified-historical');assert.equal(r.bootSession,'matches');assert.equal(r.snapshotFreshness,'unproved');assert.equal(r.processIdentity,'unproved');assert.equal(r.finding,'HOLD_RECOVERY');assert.equal(r.cleanupAuthorized,false);assert.equal(r.retryAuthorized,false);assert.equal(r.executionAuthorized,false);assert.equal(r.hostRestartSafetyVerified,false);
  await writeFile(f.path,f.signed(undefined,8));assert.equal((await f.inspect()).snapshotSequence,8);await writeFile(f.path,f.signed(undefined,1));const replay=await f.inspect();assert.equal(replay.signature,'verified-historical');assert.equal(replay.snapshotFreshness,'unproved');assert.equal(replay.finding,'HOLD_RECOVERY');
 });
-test('body, signature, operation and substituted key corruption refuse',async t=>{
+test('body, signature, operation and substituted key corruption refuse',{skip:needsMacOS},async t=>{
  for(const mode of ['body','signature','operation','public-key','extra'])await t.test(mode,async t=>{
   const f=await signedFixture(t),v=JSON.parse(f.signed());if(mode==='body')v.body.cid='d'.repeat(64);if(mode==='signature')v.signature=Buffer.alloc(64).toString('base64');if(mode==='operation')v.body.operationKey='sha256:'+'a'.repeat(64);if(mode==='extra')v.extra=true;
   if(mode==='public-key'){const keys=generateKeyPairSync('ed25519');f.binding=createGuardianBinding(f.authority,{...f.descriptor,publicKey:keys.publicKey.export({format:'der',type:'spki'}).toString('base64')});}
   await writeFile(f.path,canonicalJson(v));await assert.rejects(f.inspect(),{code:'MCP_GUARDIAN_PROVENANCE_UNCERTAIN'});
  });
 });
-test('different boot and unknown attach process remain held despite valid signature',async t=>{
+test('different boot and unknown attach process remain held despite valid signature',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);f.binding=createGuardianBinding(f.authority,{...f.descriptor,bootSessionId:'00000000-0000-0000-0000-000000000001'});const body=JSON.parse(f.journal.text);body.attachPid=null;await writeFile(f.path,f.signed(body,1,f.binding));const r=await f.inspect();assert.equal(r.signature,'verified-historical');assert.equal(r.bootSession,'differs');assert.equal(r.processIdentity,'unproved');assert.equal(r.finding,'HOLD_RECOVERY');
 });
-test('legacy and missing journal/binding never receive retroactive provenance',async t=>{
+test('legacy and missing journal/binding never receive retroactive provenance',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);await writeFile(f.path,f.journal.text);assert.equal((await f.inspect()).signature,'legacy-or-unavailable');await rm(f.path);assert.equal((await f.inspect()).signature,'legacy-or-unavailable');f.binding=null;const r=await f.inspect();assert.equal(r.signature,'legacy-or-unavailable');assert.equal(r.bootSession,'unknown');
 });
-test('authority/binding drift, file change, cross scope and database failure refuse',async t=>{
+test('authority/binding drift, file change, cross scope and database failure refuse',{skip:needsMacOS},async t=>{
  for(const mode of ['authority','binding','file','db'])await t.test(mode,async t=>{const f=await signedFixture(t);f.hooks.read=n=>{if(n!==2)return;if(mode==='authority')f.authority.grant.revoked=true;if(mode==='binding')f.binding=null;if(mode==='file')writeFileSync(f.path,f.signed(undefined,2));if(mode==='db')throw Error('PRIVATE_DB');};await assert.rejects(f.inspect(),{code:'MCP_GUARDIAN_PROVENANCE_UNCERTAIN'});});
  const f=await signedFixture(t);await assert.rejects(inspectMcpGuardianProvenance({store:f.store,stateRoot:f.root,trustedDarwinHost:true},{...f.authority.scope,taskId:'other'}));await assert.rejects(inspectMcpGuardianProvenance({store:f.store,stateRoot:f.root,trustedDarwinHost:true,bootSessionId:f.descriptor.bootSessionId},f.authority.scope));
 });
@@ -84,18 +85,18 @@ function database(authority){
  },release(){}});
  return{store:new PostgresDiscoveryAuthorityStore({async connect(){return client;}},{schema:'bowerloom_mcp_provenance_test'}),queries,get row(){return row;},set row(v){row=v;},set metadata(v){metadata=v;},set version(v){version=v;},set hook(v){hook=v;},set ack(v){ack=v;}};
 }
-test('binding uses full authority lock, immutable exact identity and explicit schema without authority update',async t=>{
+test('binding uses full authority lock, immutable exact identity and explicit schema without authority update',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);f.authority.status='IN_FLIGHT';f.authority.reason=null;const d=database(f.authority),before=canonicalJson(f.authority);let checked=0;
  const b=await d.store.bindContainerGuardian(f.authority,f.descriptor,()=>{checked++;});await d.store.bindContainerGuardian(f.authority,f.descriptor,()=>{});assert.ok(checked>=3);assert.deepEqual((await d.store.readGuardianEvidence(f.authority.scope)).binding,b);assert.equal(canonicalJson(f.authority),before);assert.equal(d.queries.some(q=>q.startsWith('UPDATE')),false);assert.ok(d.queries.some(q=>q.includes('.discoveries')&&q.includes('FOR UPDATE')));
  await assert.rejects(d.store.bindContainerGuardian(f.authority,{...f.descriptor,guardianSessionId:'d'.repeat(64)},()=>{}));assert.deepEqual(d.row.binding,JSON.parse(JSON.stringify(b)));
 });
-test('binding refuses unavailable schema, live callback drift/async/mutation, corruption and lost commit acknowledgement',async t=>{
+test('binding refuses unavailable schema, live callback drift/async/mutation, corruption and lost commit acknowledgement',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);f.authority.status='IN_FLIGHT';f.authority.reason=null;const d=database(f.authority);d.metadata=false;await assert.rejects(d.store.bindContainerGuardian(f.authority,f.descriptor,()=>{}));assert.equal(d.row,null);assert.equal(d.queries.some(q=>q.startsWith('CREATE')),false);await d.store.initializeGuardianBindings();
  await assert.rejects(d.store.bindContainerGuardian(f.authority,f.descriptor,async()=>{}));await assert.rejects(d.store.bindContainerGuardian(f.authority,f.descriptor,state=>{state.grant.revoked=true;}));
  const expected=clone(f.authority);d.hook=sql=>{if(sql.includes('.discoveries'))f.authority.grant.revoked=true;};await assert.rejects(d.store.bindContainerGuardian(expected,f.descriptor,()=>{}));assert.equal(d.row,null);d.hook=null;f.authority.grant.revoked=false;
  d.ack=()=>{throw Error('PRIVATE_LOST_ACK');};await assert.rejects(d.store.bindContainerGuardian(f.authority,f.descriptor,()=>{}),{code:'MCP_AUTHORITY_COMMIT_UNKNOWN'});assert.ok(d.row);d.ack=null;d.row.checksum='sha256:'+'f'.repeat(64);await assert.rejects(d.store.readGuardianEvidence(f.authority.scope));d.version=2;await assert.rejects(d.store.readGuardianEvidence(f.authority.scope));
 });
-test('even signed malformed body shapes do not pass the verifier',async t=>{
+test('even signed malformed body shapes do not pass the verifier',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);
  for(const change of [b=>b.extra=true,b=>b.launchOperationKey='sha256:'+'f'.repeat(64),b=>b.name='/wrong',b=>b.attachPid=-1,b=>b.lease.sequence=0,b=>b.lease.expiresMonotonicMs=-1,b=>{b.stage='STARTED';b.attachPid=null;}]){const b=JSON.parse(f.journal.text);change(b);assert.throws(()=>verifyGuardianJournal(f.signed(b),f.binding));}
 });

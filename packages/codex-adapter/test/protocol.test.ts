@@ -26,7 +26,18 @@ test('public controls preserve homes and remove injected environment',()=>{
   assert.deepEqual(args.filter(a=>a.startsWith('model_reasoning_effort=')),['model_reasoning_effort="low"']);
   assert.ok(!args.includes('gpt-5.5')&&!args.includes('gpt-5.6-sol')&&!args.includes('gpt-6.1-sol'));
 });
-test('invalid routes, cancelled signals, aliases and unpinned installation reject without any launch',async()=>{
+// installationChecks refuses every platform but macOS on arm64 (UNSUPPORTED_PLATFORM) before it looks at the pin, so the test below can only reach UNSUPPORTED_BINARY there.
+const notMacArm=process.platform!=='darwin'||process.arch!=='arm64';
+test('on a platform other than macOS arm64, start refuses UNSUPPORTED_PLATFORM before the pin check, and still refuses invalid routes and cancelled signals',{skip:!notMacArm&&'this is macOS arm64: the platform check passes, and the test below covers the pin'},async()=>{
+  const installation={nativePath:'/synthetic-nonexistent',nativeSha256:'invalid',version:'0.157.0' as const,workRoot:'/synthetic-nonexistent'};
+  const binding={canonicalAccountId:'canonical',aliases:['synthetic'],providerAccountSha256:accountBindingDigest('synthetic'),requiredWindows:['primary' as const],optionalWindows:['secondary' as const]};
+  const a=new CodexAdapter({installation,binding,accountAlias:'synthetic'});const task={launcherId:'launcher',taskInput:'synthetic',modelRoute:MODEL_ROUTE};
+  for(const modelRoute of ['paid','codex:gpt-5.5:low','codex:gpt-5.6-sol:low','codex:gpt-6.1-sol:low','codex:gpt-6-sol:medium'])await assert.rejects(a.start({...task,modelRoute},new AbortController().signal),/UNSUPPORTED_ROUTE/);
+  const cancelled=new AbortController();cancelled.abort();await assert.rejects(a.start(task,cancelled.signal));
+  await assert.rejects(a.start(task,new AbortController().signal),/UNSUPPORTED_PLATFORM/);
+  await assert.rejects(new CodexObservationReader(installation,binding).read('worker-controlled-other-alias'),/UNKNOWN_ACCOUNT_ALIAS/);
+});
+test('invalid routes, cancelled signals, aliases and unpinned installation reject without any launch',{skip:notMacArm&&'macOS arm64 only: on any other platform start refuses UNSUPPORTED_PLATFORM before it reaches UNSUPPORTED_BINARY'},async()=>{
   const installation={nativePath:'/synthetic-nonexistent',nativeSha256:'invalid',version:'0.157.0' as const,workRoot:'/synthetic-nonexistent'};
   const binding={canonicalAccountId:'canonical',aliases:['synthetic'],providerAccountSha256:accountBindingDigest('synthetic'),requiredWindows:['primary' as const],optionalWindows:['secondary' as const]};
   const a=new CodexAdapter({installation,binding,accountAlias:'synthetic'});const task={launcherId:'launcher',taskInput:'synthetic',modelRoute:MODEL_ROUTE};
