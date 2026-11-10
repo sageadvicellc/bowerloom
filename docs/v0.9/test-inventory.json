@@ -43,6 +43,20 @@
      "reason": "skips unless the environment variable TRELLIS_RECIPE_PROOF is set"
     },
     {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE",
+     "status": "skip",
+     "kind": "never-runs-in-gate",
+     "reason": "depends on the machine: skips when the file system does not take a path of more than 1024 bytes"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "P6: two definition files that differ only in case are refused (case-sensitive file systems only)",
+     "status": "skip",
+     "kind": "never-runs-in-gate",
+     "reason": "depends on the machine: skips when the file system folds case (the default macOS disk)"
+    },
+    {
      "file": "packages/admission/test/postgres.test.mjs",
      "name": "account admission against a dedicated synthetic PostgreSQL database",
      "status": "skip",
@@ -111,6 +125,13 @@
      "status": "skip",
      "kind": "never-runs-in-gate",
      "reason": "skips unless the environment variable BOWERLOOM_MCP_STDIO_PROOF is set"
+    },
+    {
+     "file": "packages/project-context/test/discovery.test.mjs",
+     "name": "L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked",
+     "status": "skip",
+     "kind": "never-runs-in-gate",
+     "reason": "depends on the machine: skips when the machine has no /System/Volumes/Data alias of the home folder"
     },
     {
      "file": "packages/project-sync/test/locked-live.test.mjs",
@@ -232,6 +253,13 @@
      "reason": "skips unless the environment variable TRELLIS_RUNTIME_PROOF is set"
     },
     {
+     "file": "packages/skill-sources/test/remove-cache.test.mjs",
+     "name": "3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED",
+     "status": "skip",
+     "kind": "never-runs-in-gate",
+     "reason": "depends on the machine: skips unless the user is root, and the gate user is not root"
+    },
+    {
      "file": "packages/team/test/start.test.mjs",
      "name": "check 10: a rename of a member label does not break delivery (needs the relay bus: decision 7 keeps it out of 0.8 until the one-week Repowire trial shows demand)",
      "status": "todo",
@@ -344,36 +372,7 @@
      "reason": "skips unless the environment variable BOWERLOOM_RELEASE_GATE is set"
     }
    ],
-   "observedMustRun": [
-    {
-     "file": "dist/tests/support/lock-slot-retry.js",
-     "name": "20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    },
-    {
-     "file": "dist/tests/support/lock-slot-retry.js",
-     "name": "P6: two definition files that differ only in case are refused (case-sensitive file systems only)",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    },
-    {
-     "file": "packages/project-context/test/discovery.test.mjs",
-     "name": "L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    },
-    {
-     "file": "packages/skill-sources/test/remove-cache.test.mjs",
-     "name": "3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    }
-   ],
+   "observedMustRun": [],
    "files": {
     "apps/mcp/test/integration.test.mjs": [
      "compiled recipe controller rejects invalid MCP arguments and matches CLI inspection without connections"
@@ -4055,7 +4054,7 @@
     "packages/harness-bundle/test/review.test.mjs": [
      "BUNDLE_FILE_FAILED: the code, the words, the reason by system code, and the cause that is a code and nothing else",
      "a bundle object that decode did not issue is loaded fresh every time: a path pushed in later never reaches a target",
-     "a bundle with straße and strasse is refused BUNDLE_PATH_UNSAFE on decode and on encode",
+     "a bundle with stra\u00dfe and strasse is refused BUNDLE_PATH_UNSAFE on decode and on encode",
      "a file with more than 100 paths does not hide the paths of a later file: the cap of a file moves on to the next",
      "a refusal crosses a boundary as toJSON and comes back with fromPlain, its message rebuilt from the code and never copied; a bad value is BUNDLE_USAGE",
      "a secret in a file name is BUNDLE_SECRET_FOUND on export and on import, and the value is not repeated",
@@ -7392,7 +7391,7 @@
      "an import whose question is answered after a quit began writes nothing, returns QUIT_BEGUN, and logs one line",
      "busy() is false while a share dialog is open (the hold does not wait on a file chooser) and true while a queued call runs",
      "chooseFolder compares the label the window shows after the window cleaned it: a name with a hidden character is the folder shown, under home and outside it",
-     "chooseFolder with a cut label (a folder outside home shown as …/name): only an outside folder with that last name is registered; a folder under home or another name is refused first",
+     "chooseFolder with a cut label (a folder outside home shown as \u2026/name): only an outside folder with that last name is registered; a folder under home or another name is refused first",
      "chooseFolder with the label the window wants: another folder is refused before main registers it, so folders() never lists it",
      "every argument is checked in shape before any lookup: a bad later argument is BAD_ARGUMENT even when the folder or the bundle is unknown",
      "every share call checks its arguments before it looks anything up: a wrong type, a malformed id, a revision that is not 64 lowercase hex, an acknowledgement that is neither null nor hex",

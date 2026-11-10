@@ -164,3 +164,33 @@ test('check prints the needs-decision line and exits 0 for the frozen inventory'
   assert.equal(rr.status, 0, rr.stderr);
   assert.match(rr.stdout, /needs-decision: 7 skips unsorted/);
 });
+
+const machineDependent = [
+  ['dist/tests/support/lock-slot-retry.js', '20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE'],
+  ['dist/tests/support/lock-slot-retry.js', 'P6: two definition files that differ only in case are refused (case-sensitive file systems only)'],
+  ['packages/project-context/test/discovery.test.mjs', 'L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked'],
+  ['packages/skill-sources/test/remove-cache.test.mjs', '3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED'],
+];
+
+test('the four machine-dependent root skips are frozen by name as never-runs-in-gate', () => {
+  const root = inventory.suites.root;
+  for (const [file, name] of machineDependent) {
+    const entry = root.skips.find(s => s.file === file && s.name === name);
+    assert.ok(entry, `${name} is a frozen skip`);
+    assert.equal(entry.kind, NEVER_RUNS);
+    assert.ok(entry.reason.length > 0 && !/no environment flag/.test(entry.reason), 'the reason names the machine');
+    assert.equal(root.observedMustRun.some(s => s.file === file && s.name === name), false);
+  }
+});
+
+test('exactly 3 must-run skips remain, all build-dependent, and the base root run checks clean', () => {
+  const must = Object.values(inventory.suites).flatMap(s => s.observedMustRun.map(m => m.file));
+  assert.equal(must.length, 3);
+  assert.deepEqual(must.map(f => path.basename(f)).sort(), ['launch.test.mjs', 'packaged-app.spec.ts', 'packaging.test.mjs']);
+  const root = inventory.suites.root;
+  const rows = Object.entries(root.files).flatMap(([file, names]) => names.map(name => ({ file, name, status: root.skips.find(s => s.file === file && s.name === name)?.status ?? 'pass' })));
+  const result = checkRun({ frozen: root, run: rows });
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.needsDecision.length, 7);
+  assert.equal(root.observedMustRun.length, 0);
+});
