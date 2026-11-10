@@ -9,6 +9,7 @@
 // Skip kinds (docs/v0.9/carry-over-scope.md, "What working means", item 6):
 //   never-runs-in-gate  a skip that depends on an environment flag, and every fixme test. The names are frozen.
 //   must-run-on-gate    every other skip. It is never frozen as allowed: the gate machine has what it needs, and a skip of this kind fails the gate.
+//   machine-dependent   a skip that depends on the machine and not on a flag (disk case, path limit, root user). It may skip or pass; it still fails on a fail, a fixme or a todo, and when it is missing.
 //   needs-decision      a skip the rule does not sort: an unconditional skip, and a todo test. It is frozen by name, and the maintainer decides its kind.
 // The kinds file maps "<file>" or "<file>::<test name>" to { kind, reason }. A skip with no entry is must-run-on-gate.
 import fs from 'node:fs';
@@ -17,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 export const NEVER_RUNS = 'never-runs-in-gate';
 export const MUST_RUN = 'must-run-on-gate';
 export const NEEDS_DECISION = 'needs-decision';
+export const MACHINE_DEPENDENT = 'machine-dependent';
 const DEFAULT_INVENTORY = fileURLToPath(new URL('../docs/v0.9/test-inventory.json', import.meta.url));
 
 /** Reads reporter output into [{file, name, status}]. status is pass, fail, skip, todo or fixme. `fixme` is a Playwright test annotated fixme. */
@@ -106,6 +108,7 @@ export function checkRun({ frozen, run, mapped = [] }) {
       for (const status of statuses) {
         if (status === 'fail') problems.push(`failed: ${file}: ${name}`);
         if (skip === undefined && !isMustRun(file, name) && (status === 'skip' || status === 'fixme' || status === 'todo')) problems.push(`skipped, not frozen: ${file}: ${name}`);
+        if (skip !== undefined && skip.kind === MACHINE_DEPENDENT && status !== 'pass' && status !== 'skip' && status !== 'fail') problems.push(`machine-dependent test neither passed nor skipped: ${file}: ${name}`);
         if (skip !== undefined && skip.kind === NEVER_RUNS && status === 'pass') problems.push(`frozen never-runs skip ran: ${file}: ${name}`);
       }
     }
