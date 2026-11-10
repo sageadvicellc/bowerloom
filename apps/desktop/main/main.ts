@@ -24,6 +24,8 @@ import { dockFolder, followAppearance } from './dock-icon.js';
 import { windowFailure } from './window-failure.js';
 import { bringForBox, closeGuard } from './close-guard.js';
 import { quitHold } from './quit-hold.js';
+import { extensionsBundleRoot, startExtensions } from './extension-host.js';
+import type { ExtensionHost } from './extension-host.js';
 import { stderrErrorHandler } from './stderr-guard.js';
 import type { EngineService } from './engine-service.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
@@ -88,6 +90,9 @@ function startupFailed(error: unknown, title = 'Bowerloom could not start'): voi
 
 /** The engine calls of this launch, once registered; null for a launch with none. A window that dies waits for this to be idle (main/window-failure.ts). */
 let engineForExit: EngineService | null = null;
+
+/** The extensions of this run: the six protected defaults and the ones inside the app bundle. Held for the whole run; set once the app is ready. */
+let extensionHost: ExtensionHost | null = null;
 
 /** True once a failed window has started the quit of the app. The close guard then lets the unload go on without a box (main/close-guard.ts). */
 let closeEnding = false;
@@ -265,6 +270,8 @@ app.whenReady().then(async () => {
       app.once('quit', () => { try { engine.clearReportCopies(); } finally { void engine.close(); } });
     }
   }
+  // The extension loader reads the app bundle's own extensions folder and nothing else (main/extension-host.ts). A bad extension is told on stderr and skipped; it never stops the start.
+  extensionHost = startExtensions(extensionsBundleRoot({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }), line => { process.stderr.write(`${line}\n`); });
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(startupFailed);
