@@ -15,6 +15,9 @@ export function summarize(report) {
   return lines;
 }
 
+/** The step a file name asks for: gates-<step>.json. Null for any other name. */
+const requestedStep = file => (/(?:^|\/)gates-([a-z-]+)\.json$/.exec(file) ?? [])[1] ?? null;
+
 function main(files) {
   let ok = files.length > 0;
   for (const file of files) {
@@ -22,6 +25,8 @@ function main(files) {
     try { report = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) { process.stdout.write(`cannot read the gates record ${file}: ${error.message}\n`); ok = false; continue; }
     process.stdout.write(summarize(report).join('\n') + '\n');
     if (report.ok !== true) ok = false;
+    const wanted = requestedStep(file);
+    if (wanted !== null && !(report.steps ?? []).some(step => step.name === wanted)) { process.stdout.write(`step ${wanted} is missing from ${file}\n`); ok = false; }
   }
   return ok ? 0 : 1;
 }

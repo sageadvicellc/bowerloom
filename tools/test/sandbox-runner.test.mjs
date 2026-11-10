@@ -29,7 +29,7 @@ test('the run command mounts nothing from the host, publishes no port, and never
   assert.doesNotMatch(run, /(^| )(-v|--volume|--mount)( |=)/, 'no bind mount and no volume');
   assert.doesNotMatch(run, /(^| )(-p|-P|--publish|--publish-all)( |=|$)/, 'no published port');
   assert.doesNotMatch(run, /docker\.sock/);
-  assert.doesNotMatch(run, /--privileged|--cap-add|--pid=host|--network[= ]host|--net[= ]host|--userns=host/);
+  assert.doesNotMatch(run, /--privileged|--pid=host|--network[= ]host|--net[= ]host|--userns=host/);
   assert.doesNotMatch(run, /(^| )(-e|--env)( |=)(HOME|DOCKER_HOST)/);
   assert.doesNotMatch(run, /--env-file/);
 });
@@ -48,8 +48,8 @@ test('the build command uses the sandbox Dockerfile and the repository as its on
 
 test('the Dockerfile has a pinned Node tag in the engine range, copies the source in, and declares no volume', () => {
   const text = fs.readFileSync(path.join(root, 'tools/sandbox/Dockerfile'), 'utf8');
-  const from = text.match(/^FROM node:(\d+)\.(\d+)\.(\d+)-\S+$/m);
-  assert.ok(from, 'FROM names an exact node version');
+  const from = text.match(/^FROM node:(\d+)\.(\d+)\.(\d+)-[a-z]+@sha256:[0-9a-f]{64}$/m);
+  assert.ok(from, 'FROM names an exact node version and a digest');
   const [major, minor] = [Number(from[1]), Number(from[2])];
   assert.equal(major, 24);
   assert.ok(minor >= 11, 'node 24.11 or later');
@@ -140,7 +140,7 @@ test('the e2e summary prints the Playwright counts and names each failed test', 
   assert.match(result.stdout, /FAILED +pass 2, fail 1, flaky 0, skipped 3/);
   assert.match(result.stdout, /failed: apps\/desktop\/e2e\/a\.spec\.ts: breaks/);
   fs.writeFileSync(file, JSON.stringify({ stats: { expected: 2, unexpected: 0, flaky: 0, skipped: 1 }, suites: [] }));
-  assert.equal(spawnSync('node', [E2E, file], { encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('node', [E2E, file, '--inventory', '/nonexistent'], { encoding: 'utf8' }).status, 0);
 });
 
 test('the e2e summary fails when no test passed, and when the file is missing', () => {
@@ -149,4 +149,179 @@ test('the e2e summary fails when no test passed, and when the file is missing', 
   fs.writeFileSync(file, JSON.stringify({ stats: { expected: 0, unexpected: 0, flaky: 0, skipped: 5 }, suites: [] }));
   assert.equal(spawnSync('node', [E2E, file], { encoding: 'utf8' }).status, 1);
   assert.equal(spawnSync('node', [E2E, path.join(dir, 'none.json')], { encoding: 'utf8' }).status, 1);
+});
+
+// ---- round 1: hardening, --out safety, exit handling ----
+
+test('the run command drops every capability but a short list, blocks new privileges, and limits processes, memory and time', () => {
+  const run = printed().find(l => l.startsWith('docker run '));
+  assert.match(run, /--cap-drop ALL/);
+  assert.match(run, /--security-opt no-new-privileges/);
+  assert.match(run, /--pids-limit \d+/);
+  assert.match(run, /--memory \d+g/);
+  const added = [...run.matchAll(/--cap-add (\w+)/g)].map(m => m[1]);
+  assert.ok(added.length > 0 && added.length <= 8, 'a short, named list of capabilities');
+  assert.ok(!added.includes('SYS_ADMIN') && !added.includes('NET_ADMIN') && !added.includes('ALL'));
+});
+
+const runOut = (args, env = {}) => spawnSync('bash', [runner, '--print-commands', ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+
+test('--out refuses a leading dash, the root folder, the home folder, a file, and a folder that holds files', () => {
+  const home = tmp();
+  const full = tmp(); fs.writeFileSync(path.join(full, 'keep.txt'), 'x');
+  const file = path.join(tmp(), 'f'); fs.writeFileSync(file, 'x');
+  for (const [out, env] of [['-x', {}], ['/', {}], [home, { HOME: home }], [`${home}/`, { HOME: home }], [file, {}], [full, {}], ['', {}]]) {
+    const result = runOut(['--out', out], env);
+    assert.equal(result.status, 2, `--out "${out}": ${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /--out/);
+  }
+});
+
+test('--out takes a folder that does not exist or is empty, and the empty one stays empty until the copy', () => {
+  const base = tmp();
+  assert.equal(runOut(['--out', path.join(base, 'new')], { HOME: '/nonexistent-home' }).status, 0);
+  const empty = path.join(base, 'empty'); fs.mkdirSync(empty);
+  assert.equal(runOut(['--out', empty], { HOME: '/nonexistent-home' }).status, 0);
+  assert.deepEqual(fs.readdirSync(empty), []);
+});
+
+/** A fake docker that records its calls and makes files for `docker cp`. */
+const fakeDocker = (bin, log) => {
+  fs.writeFileSync(path.join(bin, 'docker'), `#!/bin/sh
+echo "$*" >> "${log}"
+case "$1" in
+  info|build|inspect) exit 0 ;;
+  run) exit \${FAKE_RUN_EXIT:-0} ;;
+  rm) [ -n "\${FAKE_RM_FAIL:-}" ] && { echo "rm failed: busy" >&2; exit 1; }; exit 0 ;;
+  kill) exit 0 ;;
+  cp) [ -n "\${FAKE_CP_FAIL:-}" ] && exit 1
+      src="\${2#*:}"; dst="$3"
+      case "$src" in
+        */logs) mkdir -p "$dst"; echo log > "$dst/a.log"; ln -s /etc/passwd "$dst/evil" ;;
+        *) case "$src" in */gates-root-test.json) [ -n "\${FAKE_MISSING:-}" ] && exit 0 ;; esac; echo x > "$dst" ;;
+      esac; exit 0 ;;
+esac
+exit 0
+`, { mode: 0o755 });
+};
+const withFake = () => { const bin = tmp(); const log = path.join(bin, 'calls.log'); fakeDocker(bin, log); return { bin, log, env: bin2 => ({ PATH: `${bin}:${process.env.PATH}`, HOME: bin2 ?? bin }) }; };
+const REQUIRED = ['gates-root-typecheck.json', 'gates-root-test.json', 'gates-desktop-typecheck.json', 'gates-desktop-test.json', 'e2e.json', 'machine-dependent.jsonl'];
+
+test('a good copy puts the named result files in the out folder, drops symlinks, and exits with the container status', () => {
+  const f = withFake(); const out = path.join(tmp(), 'out');
+  const result = spawnSync('bash', [runner, '--out', out], { encoding: 'utf8', env: { ...f.env(), FAKE_RUN_EXIT: '1' } });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  for (const name of REQUIRED) assert.ok(fs.existsSync(path.join(out, name)), name);
+  assert.ok(fs.existsSync(path.join(out, 'logs', 'a.log')));
+  assert.ok(!fs.existsSync(path.join(out, 'logs', 'evil')) && !fs.lstatSync(path.join(out, 'logs'), { throwIfNoEntry: false })?.isSymbolicLink());
+  assert.deepEqual(fs.readdirSync(out).filter(n => n.startsWith('.')), [], 'no temporary folder is left');
+});
+
+test('a failed docker cp exits 5, and so does a result file that did not arrive', () => {
+  for (const extra of [{ FAKE_CP_FAIL: '1' }, { FAKE_MISSING: '1' }]) {
+    const f = withFake(); const out = path.join(tmp(), 'out');
+    const result = spawnSync('bash', [runner, '--out', out], { encoding: 'utf8', env: { ...f.env(), ...extra } });
+    assert.equal(result.status, 5, result.stdout + result.stderr);
+    assert.match(result.stderr, /could not copy|missing/);
+  }
+});
+
+test('a failed container removal is a warning, and an overall time limit kills the container', () => {
+  const f = withFake();
+  const warn = spawnSync('bash', [runner], { encoding: 'utf8', env: { ...f.env(), FAKE_RM_FAIL: '1' } });
+  assert.match(warn.stderr, /could not remove the container/);
+  const text = fs.readFileSync(runner, 'utf8');
+  assert.match(text, /BOWERLOOM_SANDBOX_LIMIT_SECONDS/);
+  assert.match(text, /docker kill/);
+});
+
+test('the usage text matches the options', () => {
+  const result = spawnSync('bash', [runner, '--help'], { encoding: 'utf8' });
+  assert.equal(result.status, 0);
+  for (const word of ['--out', '--print-commands', 'new folder']) assert.ok(result.stdout.includes(word), word);
+});
+
+// ---- in-container.sh, run in a temporary working folder with stub tools ----
+const inContainer = path.join(root, 'tools/sandbox/in-container.sh');
+const canRun = process.getuid?.() === 0 && spawnSync('sh', ['-c', 'command -v timeout'], { encoding: 'utf8' }).status === 0;
+const sandboxRun = (extraEnv = {}) => {
+  const cwd = tmp(); const out = path.join(cwd, 'out'); const bin = path.join(cwd, 'bin');
+  fs.mkdirSync(path.join(cwd, 'tools/sandbox'), { recursive: true }); fs.mkdirSync(path.join(cwd, 'apps/desktop'), { recursive: true }); fs.mkdirSync(bin);
+  for (const f of ['summarize-gates.mjs', 'summarize-e2e.mjs', 'machine-dependent.mjs']) fs.symlinkSync(path.join(root, 'tools/sandbox', f), path.join(cwd, 'tools/sandbox', f));
+  fs.symlinkSync(path.join(root, 'tools/inventory-reporter.mjs'), path.join(cwd, 'tools/inventory-reporter.mjs'));
+  fs.writeFileSync(path.join(cwd, 'tools/gates.mjs'), `const step=process.argv[process.argv.indexOf('--only')+1];const bad=process.env.FAKE_GATE_FAIL===step;
+console.log(JSON.stringify({ok:!bad,steps:[{name:step,passed:!bad,exitCode:bad?1:0,counts:{pass:1,fail:bad?1:0,skipped:0}}],notRun:[]}));process.exit(bad?1:0);\n`);
+  fs.mkdirSync(path.join(cwd, '.trellis/gates'), { recursive: true });
+  const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent').map(s => s.name);
+  fs.mkdirSync(path.join(cwd, 'md')); fs.writeFileSync(path.join(cwd, 'md/four.test.mjs'), `import test from 'node:test';\n${names.map(n => `test(${JSON.stringify(n)}, () => {});`).join('\n')}\n`);
+  const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  stub('npm', 'case "$*" in *"run build"*) [ "${FAKE_NPM_FAIL:-}" = build ] && { echo build broke >&2; exit 1; } ;; *"run bundle"*) [ "${FAKE_NPM_FAIL:-}" = bundle ] && exit 1 ;; esac; exit 0');
+  stub('xvfb-run', 'shift; shift; exec "$@"');
+  stub('npx', `echo '${JSON.stringify({ stats: { expected: 300, unexpected: 0, flaky: 0, skipped: 5 }, suites: [], errors: [] })}' > "$PLAYWRIGHT_JSON_OUTPUT_NAME"; exit \${FAKE_PW_EXIT:-0}`);
+  const result = spawnSync('sh', [inContainer], { cwd, encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: undefined, PATH: `${bin}:${process.env.PATH}`, BOWERLOOM_SANDBOX: '1', BOWERLOOM_SANDBOX_OUT: out, BOWERLOOM_SANDBOX_MD_FILES: 'md/four.test.mjs', ...extraEnv } });
+  return { result, out };
+};
+
+test('in-container: a clean run exits 0', { skip: !canRun && 'runs in the container, as root, with timeout' }, () => {
+  const { result, out } = sandboxRun();
+  assert.equal(result.status, 0, result.stdout + result.stderr + fs.readFileSync(path.join(out, 'machine-dependent.stderr'), 'utf8'));
+});
+
+test('in-container: a Playwright timeout (124) fails the step, is logged, and cannot read as passed', { skip: !canRun && 'runs in the container, as root, with timeout' }, () => {
+  const { result, out } = sandboxRun({ FAKE_PW_EXIT: '124' });
+  assert.notEqual(result.status, 0);
+  assert.match(fs.readFileSync(path.join(out, 'logs/desktop-e2e.exitcode'), 'utf8'), /124/);
+  assert.match(result.stdout, /timed out|124/);
+});
+
+test('in-container: a gate that fails, and a build that fails, fail the run, and the build error is shown', { skip: !canRun && 'runs in the container, as root, with timeout' }, () => {
+  assert.notEqual(sandboxRun({ FAKE_GATE_FAIL: 'root-test' }).result.status, 0);
+  const build = sandboxRun({ FAKE_NPM_FAIL: 'build' });
+  assert.notEqual(build.result.status, 0);
+  assert.match(build.result.stdout + build.result.stderr, /build broke|build failed/);
+  assert.notEqual(sandboxRun({ FAKE_NPM_FAIL: 'bundle' }).result.status, 0);
+});
+
+test('in-container: every long command has a time limit, and it refuses outside the container', () => {
+  const text = fs.readFileSync(inContainer, 'utf8');
+  for (const needle of [/timeout \d+ npm run bundle/, /timeout \d+ npm run build/, /timeout \d+ node --test/, /timeout \d+ xvfb-run/]) assert.match(text, needle);
+  const result = spawnSync('sh', [inContainer], { encoding: 'utf8', env: { ...process.env, BOWERLOOM_SANDBOX: '' } });
+  assert.equal(result.status, 2);
+});
+
+// ---- summaries ----
+const e2eReport = over => JSON.stringify({ stats: { expected: 300, unexpected: 0, flaky: 0, skipped: 5 }, suites: [], errors: [], ...over });
+const e2eRun = (report, extra = []) => { const f = path.join(tmp(), 'e2e.json'); fs.writeFileSync(f, report); return spawnSync('node', [E2E, f, ...extra], { encoding: 'utf8' }); };
+
+test('the e2e summary fails on a top-level error, on an interrupted run, on a nonzero exit code, and on fewer tests than the frozen count', () => {
+  assert.equal(e2eRun(e2eReport({})).status, 0);
+  const withError = e2eRun(e2eReport({ errors: [{ message: 'spec failed to load' }] }));
+  assert.equal(withError.status, 1); assert.match(withError.stdout, /spec failed to load/);
+  const interrupted = e2eRun(e2eReport({ suites: [{ title: 'a', file: 'a.spec.ts', specs: [{ title: 't', file: 'a.spec.ts', tests: [{ status: 'skipped', annotations: [], results: [{ status: 'interrupted' }] }] }] }] }));
+  assert.equal(interrupted.status, 1); assert.match(interrupted.stdout, /interrupted/);
+  const code = e2eRun(e2eReport({}), ['--exit-code', '124']);
+  assert.equal(code.status, 1); assert.match(code.stdout, /124/);
+  const few = e2eRun(e2eReport({ stats: { expected: 10, unexpected: 0, flaky: 0, skipped: 0 } }));
+  assert.equal(few.status, 1); assert.match(few.stdout, /frozen/);
+});
+
+test('the e2e summary prints a warning with the skipped count', () => {
+  assert.match(e2eRun(e2eReport({})).stdout, /warning: 5 skipped/);
+});
+
+test('the gates summary fails when the step named by the file is not in the record', () => {
+  const dir = tmp(); const file = path.join(dir, 'gates-root-test.json');
+  fs.writeFileSync(file, JSON.stringify({ ok: true, steps: [{ name: 'desktop-test', passed: true, exitCode: 0, counts: { pass: 1, fail: 0, skipped: 0 } }], notRun: [] }));
+  const result = spawnSync('node', [SUMMARY, file], { encoding: 'utf8' });
+  assert.equal(result.status, 1); assert.match(result.stdout, /step root-test is missing/);
+});
+
+test('the machine-dependent check prints the node --test exit code and judges by the four names', () => {
+  const file = path.join(tmp(), 'run.jsonl');
+  fs.writeFileSync(file, names.map(name => JSON.stringify({ file: 'f.mjs', name, status: 'pass' })).join('\n') + '\n');
+  const other = spawnSync('node', [MD, file, '--node-exit', '1'], { encoding: 'utf8' });
+  assert.match(other.stdout, /node --test exit code: 1/);
+  assert.equal(other.status, 0, 'other tests of the same files may fail for root');
+  fs.writeFileSync(file, names.slice(1).map(name => JSON.stringify({ file: 'f.mjs', name, status: 'pass' })).join('\n') + '\n');
+  assert.equal(spawnSync('node', [MD, file, '--node-exit', '0'], { encoding: 'utf8' }).status, 1);
 });

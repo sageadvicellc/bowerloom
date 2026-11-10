@@ -1,13 +1,21 @@
-# The sandbox image copies the source in. Keep out anything built, installed or private to the host.
+# The sandbox image copies the source in. Keep out anything built, installed, secret or private to the host.
 .git
 .github
 .trellis
+.claude
+.codex
+.hermes
+.impeccable
 **/node_modules
 dist
 **/.build
 **/test-results
 apps/desktop/release
 apps/desktop/dist
-.env
-.env.*
+**/.env
+**/.env.*
+**/.npmrc
+**/*.pem
+**/*.key
+*.log
 .DS_Store
