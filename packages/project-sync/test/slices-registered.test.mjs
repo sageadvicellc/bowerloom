@@ -17,6 +17,7 @@ import { parse } from 'yaml';
 import { planProjectApply } from '../../../dist/packages/project-sync/src/index.js';
 import { readSliceTree as readSliceTreeFor } from '../../../dist/packages/managed-skills/src/local-source.js';
 import { writeConfig } from './config-fixture.mjs';
+import { skipOnReusedFolderIdentity } from '../../../dist/tests/support/machine-skips.js';
 
 const network = denyNetwork();
 after(() => assert.deepEqual(network, []));
@@ -270,7 +271,7 @@ test('N5. a project root slice has no copy note and no tracked-skills warning', 
   const f = await wikiProject(t); fs.mkdirSync(path.join(f.projectDir, '.git')); const p = await plan(f, ['claude-code']);
   assert.doesNotMatch(review(p), /Note: slice wiki (copies|puts text)|Do not commit it/); assert.equal(p.skillsMayBeTracked, false); assert.equal(slice(p).copies, null);
 });
-test('S6. a folder replaced at the same path plans root changed, with the same members', async t => {
+test('S6. a folder replaced at the same path plans root changed, with the same members', { skip: skipOnReusedFolderIdentity('a replaced registered folder from the one it replaced') }, async t => {
   const { f, kb } = await registeredProject(t); await applied(f, ['claude-code']);
   fs.cpSync(kb.wiki, kb.wiki + '-copy', { recursive: true }); fs.rmSync(kb.wiki, { recursive: true }); fs.cpSync(kb.wiki + '-copy', kb.wiki, { recursive: true });
   const p = await plan(f, ['claude-code']), s = slice(p);
