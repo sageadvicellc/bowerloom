@@ -42,7 +42,7 @@ test('main.ts: the app on the person\'s own folders gets the read-only bridge an
 });
 
 test('the mode comes from the address, not from the bridge: the mount asks the address, and a real address without its bridge is an error, not the sample', () => {
-  const mount = strip(read('renderer/harness/mount.tsx')), app = strip(read('renderer/harness/HarnessApp.tsx')), router = strip(read('renderer/harness/router.ts'));
+  const mount = strip(read('renderer/harness/mount.tsx')), app = strip(read('renderer/harness/HarnessApp.tsx') + read('renderer/harness/extension-mounts.tsx')), router = strip(read('renderer/harness/router.ts'));
   assert.match(mount, /isRealHash\(location\.hash\)/); assert.doesNotMatch(mount, /real=\{getApiClient\(\)\.reader\}/);
   assert.match(app, /chooseKind\(/); assert.match(app, /realMode \? blankRealState/);
   assert.doesNotMatch(app, /real === null \? createSampleWorld/, 'a missing bridge never decides the world');
