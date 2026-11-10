@@ -153,6 +153,8 @@ test('Journey 5, create: the tour, the starter wiki with one commit, the Notes k
     await expect(weaker).toContainText('notes-keeper (tools)');
     for (const box of await weaker.locator('input').all()) await box.check();
     await install.getByRole('button', { name: 'Plan with these approvals', exact: true }).click();
+    // The plan is on the page once the Write button is. Reading the files before that read an empty list on a slow screen.
+    await expect(install.getByRole('button', { name: /^Write \d+ files$/ })).toBeVisible();
     const planned = (await install.locator('[data-file]').evaluateAll(els => els.map(e => e.getAttribute('data-file') ?? ''))).sort();
     const before = Object.keys(readTree(harnessDir)).filter(f => !f.startsWith('.bowerloom/'));
     expect(before).toEqual([]);
