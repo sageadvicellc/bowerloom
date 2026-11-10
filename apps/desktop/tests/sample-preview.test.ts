@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SAMPLE_PREVIEW_ATTRIBUTE, SAMPLE_PREVIEW_FLAG, withSamplePreviewEngines } from '../shared/engine/sample-switch.js';
 import { SAMPLE_FOLDERS, createSampleEngine } from '../shared/engine/sample.js';
+import { fallbackEngine } from '../renderer/api/client.js';
 import { DESKTOP } from './support.js';
 
 const read = (rel: string): string => readFileSync(join(DESKTOP, rel), 'utf8');
@@ -47,7 +48,29 @@ test('the shipped page does not carry the attribute, and main reads the launch a
   assert.doesNotMatch(main, /process\.env[^\n]*SAMPLE_PREVIEW|SAMPLE_PREVIEW[^\n]*process\.env/, 'the environment cannot turn it on');
 });
 
-test('the page reads the attribute once, to make its sample world', () => {
-  const app = read('renderer/harness/HarnessApp.tsx');
-  assert.match(app, /createSampleEngine\(\{ previewEngines: document\.body\.getAttribute\(SAMPLE_PREVIEW_ATTRIBUTE\) === '1' \}\)/);
+test('the page reads the attribute once, to make its sample world, and only the API client does it', () => {
+  assert.match(read('renderer/api/client.ts'), /createSampleEngine\(\{ previewEngines: samplePreviewEngines\(\) \}\)/);
+  assert.match(read('renderer/api/transport.ts'), /document\.body\.getAttribute\(SAMPLE_PREVIEW_ATTRIBUTE\) === '1'/);
+  assert.doesNotMatch(read('renderer/harness/HarnessApp.tsx'), /createSampleEngine|SAMPLE_PREVIEW_ATTRIBUTE/, 'the screen tree makes no engine of its own');
+});
+
+/** Runs `body` with a page whose body has the attribute `attribute` (null for none), and puts the global back. */
+async function withPage(attribute: string | null, body: () => Promise<void>): Promise<void> {
+  const global = globalThis as unknown as { document?: unknown };
+  const before = global.document;
+  global.document = { body: { getAttribute: (name: string) => (name === SAMPLE_PREVIEW_ATTRIBUTE ? attribute : null) } };
+  try { await body(); } finally { if (before === undefined) delete global.document; else global.document = before; }
+}
+
+test('the API client gives the sample launch the sample engine, with the preview engines locked as the page says, and the launch on the person\'s own folders none', async () => {
+  assert.equal(fallbackEngine(true), null, 'real mode never falls back to the sample');
+  await withPage(null, async () => {
+    const engine = fallbackEngine(false);
+    assert.notEqual(engine, null);
+    assert.equal(engine!.mode, 'sample');
+    for (const f of await engine!.folders()) assert.equal(f.previewEngines, false, f.name);
+  });
+  await withPage('1', async () => { for (const f of await fallbackEngine(false)!.folders()) assert.equal(f.previewEngines, true, f.name); });
+  await withPage('0', async () => { for (const f of await fallbackEngine(false)!.folders()) assert.equal(f.previewEngines, false, f.name); });
+  await withPage('1', async () => { assert.equal(fallbackEngine(true), null, 'the attribute does not turn the sample on in real mode'); });
 });
