@@ -6,9 +6,19 @@ One command runs every gate inside a Linux container. No test runs on your compu
 npm run sandbox:test
 ```
 
-## Status today: this command exits 1
+## Status today
 
-The command is not a pass or fail gate yet. It exits 1 today. The tests fail in the container for reasons that belong to Linux and to the root user. The section "First full run" lists them. Do not use the exit code as a release gate until those failures are settled.
+The command is close to a gate, and it is not one yet. It can still exit 1 when a test fails by chance. Do not use the exit code as a release gate until the last item below is settled.
+
+The last full run of `npm run sandbox:test` was on 2026-11-10, on the source of commit `265c170b`. It exited 1:
+
+- Root typecheck and desktop typecheck passed.
+- Root tests: 6078 tests, 5860 passed, 2 failed, 210 skipped, 6 todo.
+- Desktop unit tests: 1980 tests, 1960 passed, 0 failed, 20 skipped.
+- Desktop end-to-end tests: 303 tests, 275 passed, 1 failed, 27 skipped.
+- The four machine-dependent tests all passed, as root.
+
+The two root failures were B5 of the context guard, which needs a new folder identity, and the lock race test, which met one lock slot collision in 600 tries. B5 and one more test of the same cause now skip on a file system that reuses folder identity. After that, the root tests ran twice more as root in the same image, in the same container limits. Both runs had 6078 tests, 5860 passed, 0 failed and 212 skipped. Those two runs did not go through the script. A second full run through the script did not start: the build failed because the disk of the host was full.
 
 ## What runs
 
@@ -18,7 +28,7 @@ The container runs these steps. All of them run, also after a failure.
 2. Root tests.
 3. Desktop typecheck.
 4. Desktop unit tests.
-5. Desktop end-to-end tests, on a virtual screen that exists only in the container.
+5. Desktop end-to-end tests, on a virtual screen that exists only in the container. The windows are shown on that screen, because a hidden window gets no frames under Linux (see "What was done about each cause").
 6. The four machine-dependent tests, with a short report of each.
 
 Steps 1 to 4 run one at a time through `tools/gates.mjs`. Step 5 runs Playwright directly, with a limit of three hours. The gates tool stops an end-to-end step at 30 minutes, and a full run in the container takes longer. Each long command has its own time limit. A failed build, or a failed `npm run bundle` before the end-to-end step, stops nothing else. It fails the run and prints the end of its log.
@@ -90,13 +100,18 @@ Each skips on macOS and runs in the container:
 
 ## What cannot run here
 
-The container is Linux. These stay skipped, and the run says so:
+The container is Linux, and it runs as root. These tests skip there, and each skip carries a reason. The run prints the reason.
 
 - The packaged-app spec, because it needs a macOS build.
 - The check of the Electron fuses on a built app.
 - The launch of a macOS build.
+- The macOS container guardian, its supervisor, its recovery collector and the Codex startup guardian. They read the macOS boot session and refuse every other platform.
+- The tests that need a file mode to refuse a user. Root ignores modes.
+- The tests that need a quick change to show in a file time, or a replaced folder to show as a new folder. The file system in the container stamps from a coarse clock and hands a freed inode to the next folder at once.
+- Four close and quit specs that need macOS behavior.
+- Two tests that depend on the Node version. They skip while the test runs.
 
-For a root user, a few tests skip, such as the checks that a file with mode 000 cannot be read. Those skip in the container for that reason. They run on the host.
+Every skip of this work is listed in "Every skip this work added". They run on a Mac, for a user who is not root, on a file system with fine file times.
 
 ## First full run
 
@@ -108,14 +123,224 @@ The first full run in the container, on 2026-11-10, did not pass. It found these
 - Desktop end-to-end tests: 269 passed, 11 failed, 23 skipped.
 - The four machine-dependent tests all passed.
 
-The root log counts 159 failures. It holds 139 different test names, because some tests fail and run again. The causes below count different names, by the error code or by words in the test name:
+This work started from that run. It ran the same tree again as a baseline. The numbers moved a little, because a few tests fail by chance. The baseline found 154 failing results in the root tests, which are 140 different test names, 17 failing desktop tests, and 15 failing end-to-end tests.
 
-- Root, 72 tests: code that reads the macOS boot session fails on Linux. They show the error codes `MCP_GUARDIAN_BOOT_UNKNOWN`, `MCP_RECOVERY_COLLECTOR_UNCERTAIN` or `STARTUP_VALIDATION`.
-- Root, 14 tests, and desktop, 4 tests: tests that expect a permission error fail for root, because root can read and delete anything. These are the mode 0 and cannot-delete tests.
-- Root, 53 tests, and desktop, 13 tests: not sorted by cause yet. Some could also be root effects. This run did not find out.
-- End-to-end, 11 tests: two call a macOS menu function that Linux does not have. The rest time out on the virtual screen, close the page, fail to start Electron, or fail an assertion. This run did not sort them further.
+## What was done about each cause
 
-A decision on how to treat these failures belongs to the maintainer.
+Each failing test was sorted by cause. Two checks told root causes from the rest. A test that fails as root and passes for a non-root user in the same container is a root cause. A test that fails for both is a file system or Linux cause. The counts below are different test names in the baseline run.
+
+| Cause | Root | Desktop | End-to-end | What was done |
+|---|---|---|---|---|
+| Code that is macOS only: the boot session of the container guardian, its supervisor and collector, and the Codex startup guardian | 102 | 0 | 0 | The tests skip off macOS, with a reason. No Linux boot-session reader was added (see the decisions below). |
+| Root ignores file modes | 30 | 13 | 0 | The tests skip as root, with a reason. |
+| The file system has coarse file times or reuses a folder identity | 5 | 3 | 0 | The tests skip when a probe finds the file system too coarse, with a reason. The probe never answers true on macOS. |
+| Node 24.21.0 differs from the Node the tests were written for | 2 | 0 | 0 | One test skips while it runs. The other half of the other test still runs. |
+| A fixture that depended on the machine | 1 | 1 | 0 | Fixed. A preload now waits for its output to drain. A test input is now really long. |
+| The sandbox renamed Electron's binary, so every app counted as packaged | 0 | 0 | 4 | Fixed in the Dockerfile. |
+| A hidden window under X11 gets no frames, so a screenshot, the wheel and hover never finish | 0 | 0 | 3 | The sandbox shows the windows on its own virtual screen. |
+| Specs that need macOS: the native Quit action, and the app staying alive with no window | 0 | 0 | 4 | The specs skip off macOS, with a reason. |
+| Specs that read the page before it was drawn, or passed no screen to Electron | 0 | 0 | 4 | Fixed in the specs. No assertion changed. |
+
+The totals are 140, 17 and 15. Nothing was deleted. No assertion changed to make a test pass. Where a test skips, the test body is as it was.
+
+### Decisions for the maintainer
+
+- **No Linux boot-session reader.** A reader of `/proc/sys/kernel/random/boot_id` would not make the container tests pass. The container launch refuses every platform but macOS in its own check (`MCP_CONTAINER_PLATFORM`), and so does the recovery collector (`TRUST`). A Linux reader would only turn on part of a feature that the product keeps off elsewhere. Two new tests keep the choice explicit. `darwin-boot-session.test.mjs` shows the refusal off macOS, and a new protocol test shows `UNSUPPORTED_PLATFORM`. The macOS half of the first one did not run in the sandbox.
+- **Windows are shown in the sandbox.** The e2e step sets `BOWERLOOM_E2E_SHOW=1`. The screen exists only in the container, so nothing shows on your screen. The hidden mode of the specs is then not exercised in the sandbox: the specs that check it take their "watching" branch. The other way is to skip the three specs for hidden windows on Linux. That would also skip the wheel and hover checks of two product screens.
+- **The Node version.** The sandbox pins Node 24.21.0, and the engines range is 24.11.0 to below 25. Two tests were written against an earlier Node 24. In 24.21.0 the child of `node --test` also gets `NODE_TEST_WORKER_ID`, and the proof guard in `tools/cli-distribution/installed-container-guard.mjs` refuses every `NODE_` variable except `NODE_TEST_CONTEXT=child-v8`. The guard is not changed here. A person on Node 24.21.0 would meet the refusal when they run that proof under `node --test`.
+- **The skip kinds.** The frozen inventory (`docs/v0.9/test-inventory.json`) does not list these skips. They skip only as root or off macOS, so the inventory check on a Mac does not see them. The sandbox does not run that check. If it did, each one would count as a skip that must run.
+
+## Every skip this work added
+
+Each row is one skipped test. A skipped test with subtests skips all of them. The helpers are in `tests/support/machine-skips.ts`.
+
+### Skips off macOS (64 tests)
+
+Each test skips when the platform is not macOS, because the code it checks refuses every other platform. The reason text is "macOS only: the container guardian reads the macOS boot session and refuses every other platform (MCP_GUARDIAN_BOOT_UNKNOWN)" for the tests of the container guardian, and a reason of its own for the two codex-adapter startup and protocol tests, written in the test file. The two files are `packages/mcp-connections/test/support/macos-only.mjs` and `packages/codex-adapter/test`.
+
+| File | Test |
+|---|---|
+| `packages/codex-adapter/test/protocol.test.ts` | invalid routes, cancelled signals, aliases and unpinned installation reject without any launch |
+| `packages/codex-adapter/test/startup-deadline.test.ts` | real private guardian accepts one correctly bound synthetic Node fixture and verifies its acknowledgment |
+| `packages/codex-adapter/test/startup-deadline.test.ts` | real guardian refuses expired, future-parent, wrong runtime/boot, tampered and duplicate startup before fixture spawn |
+| `packages/codex-adapter/test/startup-deadline.test.ts` | controlled guardian rejects changed prompt and still reaps only its owned child |
+| `packages/codex-adapter/test/startup-deadline.test.ts` | supervisor refuses a missing or mismatched controlled started acknowledgment and cleans its guardian |
+| `packages/codex-adapter/test/startup-deadline.test.ts` | supervisor sends final post-fork parent sample and binds that exact transferred snapshot |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | checkpoint chain pins exact signed bytes, monotonic sequence and prior revision |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | terminal CAS refuses unseen normal commit, is exactly idempotent and prevents higher signed checkpoints |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | seal is domain separated and exact clean owned incarnation is required |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | rollback, checkpoint equality and newer local snapshots never assert latest state |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | fresh versioned inspection and private operator receipt preserve authority and falsify every effect flag |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | normal PostgreSQL checkpoint compares all authority bytes and invokes live checks under lock; reads create nothing |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | normal schema, async authorization, late commit acknowledgement and terminal audit remain fail closed |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | inspector fences changed database evidence and never accepts fabricated observations |
+| `packages/mcp-connections/test/container-guardian-checkpoint.test.mjs` | lost final COMMIT acknowledgement returns uncertainty while immutable closure remains readable without changing authority |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | actual file and kernel boot inspection verifies historical signatures without freshness or PID authority |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | body, signature, operation and substituted key corruption refuse |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | different boot and unknown attach process remain held despite valid signature |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | legacy and missing journal/binding never receive retroactive provenance |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | authority/binding drift, file change, cross scope and database failure refuse |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | binding uses full authority lock, immutable exact identity and explicit schema without authority update |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | binding refuses unavailable schema, live callback drift/async/mutation, corruption and lost commit acknowledgement |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | even signed malformed body shapes do not pass the verifier |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | unknown create result stays uncertain and never discovers or removes a container by name |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | corrupt persisted journal prevents rewriting ownership and prevents cleanup by guessed identity |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | mismatched inspected container identity never starts or removes that container |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | existing name collision is never adopted or removed, even when public labels can match |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | journal replaced by symlink is refused without touching its target |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | IPC forwarding checks absolute deadline even before the scheduled timer runs |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | monotonic lease is checked at IPC forwarding before a delayed expiry timer can run |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | live container loses authority when renewal stops, with exact owned cleanup and no redispatch |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | replayed and wrong-session renewal frames fail closed without extending authority |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | missing or delayed initial authority creates no container |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | repeated valid renewals cannot extend the original absolute deadline |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | real child-generated journal signature binds exact operation and independent public key |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | stop during CREATING fsync drains the write, seals CANCELLED and never requests create |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | missing, stopped and late checkpoint acknowledgements cannot create or resume |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | stop or lease expiry while STARTED checkpoint awaits acknowledgement cleans up without forwarding |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | collector reads actual private bytes and exact process/container queries while holding provenance unknown |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | actual ps observes this live test process without signaling it |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | present or failed process observations remain distinct and non-authorizing |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | Docker errors, wrong IDs, invalid text, flood and timeout never mean absence |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | missing operation directory and missing journal yield held reports and no read commands |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | file content, file identity, and ancestor replacement during observations invalidate the report |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | unresponsive trusted store has a bounded collection deadline and cannot resume host reads later |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | collector-owned persistence takes only fresh observations and retains uncertainty |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | collector timeout cannot turn a late persistence completion into success |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | v2 envelope normalization does not promote signature-shaped bytes into origin or host trust |
+| `packages/mcp-connections/test/container.test.mjs` | container factory pins exact launch and deadline while exposing discovery only |
+| `packages/mcp-connections/test/container.test.mjs` | launch changes, missing deadline, secrets and unsupported effects cannot fork a guardian |
+| `packages/mcp-connections/test/container.test.mjs` | options and context getters stay inert; explicit trust and private canonical state root required |
+| `packages/mcp-connections/test/container.test.mjs` | abort before or during queued filesystem preflight starts nothing |
+| `packages/mcp-connections/test/container.test.mjs` | unsolicited data, invalid UTF8, duplicate keys, wrong IDs, extra envelopes and flood close safely |
+| `packages/mcp-connections/test/container.test.mjs` | request timeout and local close observe pending rejection and require guardian closure |
+| `packages/mcp-connections/test/container.test.mjs` | uncertain container absence or unreaped attach prevents successful close |
+| `packages/mcp-connections/test/container.test.mjs` | method order and overlapping requests fail without tool calls or retry |
+| `packages/mcp-connections/test/container.test.mjs` | stale connected IPC callback and synchronous errors never recursively cancel or leak |
+| `packages/mcp-connections/test/container.test.mjs` | failed initial durable renewal opens no protocol session and cancels the owned guardian |
+| `packages/mcp-connections/test/container.test.mjs` | renewal completion after cancellation never sends an authority response or protocol request |
+| `packages/mcp-connections/test/container.test.mjs` | missing durable binding capability or failed acknowledgement never reaches a lease or protocol |
+| `packages/mcp-connections/test/container.test.mjs` | binding completion after cancellation cannot start lease or protocol |
+| `packages/mcp-connections/test/container.test.mjs` | checkpoint failure and delayed acknowledgement after stop never forward or reopen |
+| `packages/mcp-connections/test/container.test.mjs` | terminal received with pending normal callback uses last acknowledged head and does not rebase |
+| `packages/mcp-connections/test/container.test.mjs` | checkpoint callback getters are inert before guardian fork |
+
+### Skips for root (43 tests)
+
+Each test skips when the user is root. The reason text is "root ignores file modes, so this cannot refuse as the test expects:" followed by the last column. The helper is `skipAsRoot` in `tests/support/machine-skips.ts`.
+
+| File | Test | What the test needs |
+|---|---|---|
+| `apps/desktop/tests/engine-review-fixes.test.ts` | item 7: approval drafts that cannot be cleared after an install or a removal are a warning the window gets, and the write stays done | a drafts file in a folder at mode 500 cannot be kept |
+| `apps/desktop/tests/engine-save-review.test.ts` | a save point that cannot be kept after a save is a warning in words that Go back has no entry for it, and is logged | a folder at mode 500 cannot take a write |
+| `apps/desktop/tests/engine-save-review.test.ts` | a save that finished but left its journal is kept by the recovery: every file stays, the note is cleared, and the save points do not change | a state folder at mode 500 cannot lose its journal file |
+| `apps/desktop/tests/engine-save-review.test.ts` | a save whose files are all written is taken back, not finished, when a file outside it changed since, so the recovery can never refuse for good | a state folder at mode 500 cannot lose its journal file |
+| `apps/desktop/tests/engine-save-review.test.ts` | the mode of a save recovery is part of the plan shown: when a file outside the save changes after the plan, the run is refused as not the shown plan, and nothing changes | a state folder at mode 500 cannot lose its journal file |
+| `apps/desktop/tests/engine-save-review.test.ts` | a finished save whose emptied folder came back with a .DS_Store is taken back, so the recovery never refuses for good, and no journal is left | a state folder at mode 500 cannot lose its journal file |
+| `apps/desktop/tests/real-map.test.ts` | what was found is counted, merged across programs, and split by scope | the fixture holds a folder at mode 000 that must not open |
+| `apps/desktop/tests/real-scan.test.ts` | step one finds one place for each program under the home folder, and counts by structure | the fixture holds a folder at mode 000 that must not open |
+| `apps/desktop/tests/real-scan.test.ts` | step two reads text only for the places that were chosen, and hides what looks like a key | the fixture holds a folder at mode 000 that must not open |
+| `apps/desktop/tests/real-tool-home.test.ts` | rootDirs: only the named top-level folders are entered (any case), top-level files still count, and a folder left out is neither listed nor flagged | a folder at mode 000 cannot be opened |
+| `apps/desktop/tests/real-tool-home.test.ts` | a link that leads outside, a folder that will not open, a file over 2 MB and a file that is not text are named too; five names at most, each one plain line of at most 80 characters | a folder at mode 000 cannot be opened |
+| `apps/desktop/tests/scan-cache.test.ts` | a file that is a folder, or cannot be opened, is damaged and never throws | a cache file at mode 000 cannot be opened |
+| `apps/desktop/tests/scan-cache.test.ts` | an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path | a folder at mode 500 cannot be deleted |
+| `apps/desktop/tests/scan-fingerprint.test.ts` | a parent folder that cannot be listed cannot be told apart from its neighbours, so the check says it is not complete | a parent folder at mode 311 cannot be listed |
+| `packages/adoption/test/save.test.mjs` | a journal that cannot be removed after a finished save is reported, and the save is not undone | a state folder at mode 500 cannot lose its journal file |
+| `packages/adoption/test/save.test.mjs` | under umask 002, an undo that stopped part way and is run again finishes cleanly | a folder at mode 555 cannot lose a file |
+| `packages/adoption/test/save.test.mjs` | under umask 002, a finish after an undo that stopped part way writes the steps it lists | a folder at mode 555 cannot lose a file |
+| `packages/harness-definition/test/load.test.mjs` | silent 2: a file or folder that cannot be read is a problem, not a throw | a file and a folder at mode 000 cannot be read |
+| `packages/notes-source/test/summary.test.mjs` | a folder that cannot be listed leaves the count incomplete, not wrong | a folder at mode 000 cannot be listed |
+| `packages/project-authoring/test/team-adopt-unlisted.test.mjs` | H2. a read error of the recovery check propagates, and TEAM_EXISTS on the unlisted path names a next step | a team folder at mode 000 cannot be read |
+| `packages/project-config/test/shared.test.mjs` | 7. an unreadable config counts as shared and does not throw | a git config at mode 000 cannot be read |
+| `packages/project-context/test/discovery.test.mjs` | checkProjectPath refuses when macOS or permissions block the marker: lstat or realpath EACCES | a folder at mode 000 cannot be searched |
+| `packages/project-context/test/discovery.test.mjs` | an unreadable folder on the way up refuses PROJECT_UNREADABLE instead of being skipped | a folder at mode 311 cannot be listed |
+| `packages/project-context/test/store.test.mjs` | 18. a home folder at mode 0 throws STORE_UNREADABLE | a home folder at mode 0 cannot be read |
+| `packages/project-sync/test/cache-admin.test.mjs` | M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes last, and its refusal and cache list name the fix | a folder at mode 500 cannot be deleted |
+| `packages/project-sync/test/cache-admin.test.mjs` | L3 (round 4). a .tmp- leftover that fails at the delete step names the .prune- folder it became | a folder at mode 500 cannot be deleted |
+| `packages/project-sync/test/cache-admin.test.mjs` | L-2 (round 5). a blocked .prune- leftover goes after every leftover that can be deleted | a folder at mode 500 cannot be deleted |
+| `packages/project-sync/test/portable-projection.test.mjs` | a failure part way rolls back every step, and leaves no receipt and no marker | a write into a folder at mode 555 cannot fail |
+| `packages/project-sync/test/review-fixes.test.mjs` | F8. the stale check rethrows a store item it cannot read | a store item at mode 000 cannot be read |
+| `packages/project-sync/test/review-fixes.test.mjs` | M2. an unknown shared state that causes a refusal says so honestly | a git config at mode 000 cannot be read |
+| `packages/skill-sources/test/remove-cache.test.mjs` | 11. a folder that cannot be deleted refuses at the delete step, names the leftover and the inner path, and says how to fix it | a folder at mode 500 cannot be deleted |
+| `packages/skill-sources/test/remove-cache.test.mjs` | 14. a leftover whose name holds a control character gets guidance, not a command | a folder at mode 500 cannot be deleted |
+| `packages/skill-sources/test/remove-cache.test.mjs` | a cache entry holding a bidi-named folder that cannot be deleted names it on one line | a folder at mode 500 cannot be deleted |
+| `packages/team/test/review.test.mjs` | T12: a file that cleanup cannot remove is reported with its path, and no success is claimed | a folder at mode 555 cannot lose a file |
+| `packages/team/test/review.test.mjs` | T14: a missing team folder, an unreadable folder, and a link are told apart | a folder at mode 000 cannot be listed |
+| `packages/team/test/review.test.mjs` | T14: a member folder that is missing, unreadable, or a link is told apart | a folder at mode 000 cannot be listed |
+| `tests/cache-cli.test.ts` | L-1 (round 5). a delete-step refusal gives a bare command as next and fix; run in a shell, it changes only the leftover | a leftover folder at mode 500 cannot be deleted |
+| `tests/harness-bundle-cli.test.ts` | every refusal code of the bundle is reachable from the command line with its exact words | a write into a folder at mode 555 cannot fail, and this test must reach BUNDLE_FILE_FAILED |
+| `tests/harness-review-fixes-cli.test.ts` | item 7: a draft that cannot be cleared after a good install is a warning in the result, not a failure | a drafts file in a folder at mode 500 cannot be kept |
+| `tests/item-sources-cli.test.ts` | round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence | a skill file at mode 000 cannot be read |
+| `tests/store-foundation-cli.test.ts` | 16. store status with the home folder at mode 0 prints Store: refused (STORE_UNREADABLE) and exits 0 | a home folder at mode 0 cannot be read |
+| `tests/store-write-cli.test.ts` | 29. F6: a seed that fails after the pin is written says so in plain words for the store | a folder at mode 500 cannot take a write |
+| `tests/store-write-cli.test.ts` | 34. F5: a store team folder that cannot be read is not "not found" | a team folder at mode 000 cannot be listed |
+
+### Skips for coarse file times (9 tests)
+
+Each test skips when a probe of the temporary folder finds that two quick changes can carry one timestamp. The probe never answers true on macOS. The helper is `skipOnCoarseFileTimes`. The reason text is "this file system gives two quick changes one timestamp, so the test cannot see" followed by the last column.
+
+| File | Test | What the test needs |
+|---|---|---|
+| `apps/desktop/tests/scan-cache.test.ts` | a save keeps only the newest of the folders it moved aside, and leaves everything that is not one of them | which of several folders was made last |
+| `apps/desktop/tests/scan-cache.test.ts` | an aside entry that vanishes between the listing and the look does not stop the sweep of the others | which of several folders was made last |
+| `apps/desktop/tests/scan-cache.test.ts` | an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path | a folder at mode 500 cannot be deleted |
+| `packages/managed-skills/test/v2-slice.test.mjs` | 14. readSliceTree throws MANAGED_SKILL_STALE_APPROVAL when a file changes during the read | a folder change when a file is added, or a file change when it is appended to |
+| `packages/project-context/test/store.test.mjs` | S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json | store.json change when it is rewritten in place |
+| `tests/skills-cli.test.ts` | a parent folder that changes once during the first read is read again once, then the command dispatches | the parent folder change when a file is added |
+| `tests/skills-cli.test.ts` | a parent folder that changes during the check before dispatch is read again once, and the same value dispatches | the parent folder change when a file is added |
+| `tests/skills-cli.test.ts` | a parent folder that keeps changing still refuses SKILLS_CHANGED after exactly one more read, with no dispatch | the parent folder change when a file is added |
+| `tests/skills-cli.test.ts` | the record file changing during the first read refuses at once: only a parent change is read again | the record file change when it is rewritten |
+
+### Skips for reused folder identity (6 tests)
+
+Each test skips when a probe finds that a folder removed and made again at one path can come back with the same device, inode and birth time. The probe never answers true on macOS. The helper is `skipOnReusedFolderIdentity`. The reason text is "this file system gives a replaced folder the same inode and birth time, so the test cannot tell" followed by the last column.
+
+| File | Test | What the test needs |
+|---|---|---|
+| `packages/managed-skills/test/v2-slice.test.mjs` | B10. planning refuses when the folder was replaced between the request and the read | a replaced wiki folder from the one it replaced |
+| `packages/managed-skills/test/v2-slice.test.mjs` | S6. the catalog root carries the id of the root folder: a folder replaced at the same path is another root | a replaced wiki folder from the one it replaced |
+| `packages/project-context/test/registered-folders.test.mjs` | 23. folder add refuses STALE_APPROVAL, and writes nothing, when the folder was replaced after the plan | a replaced folder from the one it replaced |
+| `packages/project-context/test/registered-folders.test.mjs` | 36. folder allow refuses an unknown name, a folder that is gone or unsafe, and a stale plan | a replaced folder from the one it replaced |
+| `packages/project-sync/test/slices-registered.test.mjs` | S6. a folder replaced at the same path plans root changed, with the same members | a replaced registered folder from the one it replaced |
+| `tests/context-guard-cli.test.ts` | B5. a registered folder replaced by a new folder at the same path denies every call with GUARD_ROOT_MISSING | a registered folder replaced by a new folder from the one it replaced |
+
+### End-to-end skips off macOS (4 tests)
+
+Each spec skips through `test.skip(process.platform !== 'darwin', reason)`. The reason is in the spec.
+
+| File | Test |
+|---|---|
+| `apps/desktop/e2e/harness-close-guard.spec.ts` | closing the window with a change: Discard closes it |
+| `apps/desktop/e2e/harness-close-guard.spec.ts` | a window that stayed after Keep editing asks again at the next close, and Discard closes it |
+| `apps/desktop/e2e/harness-close-guard.spec.ts` | Quit from the application menu (Cmd+Q) with a change asks, and no quit happens while the window refuses to close |
+| `apps/desktop/e2e/harness-close-guard.spec.ts` | Quit from the application menu (Cmd+Q) with no change quits at once and asks nothing |
+
+### Skips on macOS only (3 tests)
+
+These tests check that other platforms refuse. They skip on macOS, where the real code runs and the existing tests cover it.
+
+| File | Test |
+|---|---|
+| `packages/codex-adapter/test/protocol.test.ts` | on a platform other than macOS arm64, start refuses UNSUPPORTED_PLATFORM before the pin check, and still refuses invalid routes and cancelled signals |
+| `packages/mcp-connections/test/darwin-boot-session.test.mjs` | a platform other than macOS never reports a boot session: it refuses MCP_GUARDIAN_BOOT_UNKNOWN |
+| `packages/mcp-connections/test/darwin-boot-session.test.mjs` | on macOS the boot session is one valid UUID, and the same on every read |
+
+### Skips decided while a test runs
+
+| File | Test | Why it skips |
+|---|---|---|
+| `packages/skill-sources/test/response-headers.test.mjs` | a guarded repeat after 1000 padding headers refuses, including when Node dropped the repeat | Node 24.21.0 keeps only 1000 header pairs, so the repeat at the end of 1004 pairs never reaches the guard. The test is split in two, with its assertions unchanged. The 1100-header half runs on every Node. |
+| `tools/cli-distribution/test/installed-container.test.mjs` | real node --test subprocess permits only its exact child-v8 bookkeeping metadata | The child of `node --test` gets `NODE_TEST_WORKER_ID` too. The test probes the child first and skips with that reason. |
+
+One row of one test is left out for root and told with `t.diagnostic`: the row "a file this user cannot read" of "round 2. each fault of a store item refuses lock update with its own Next: line" in `tests/item-sources-cli.test.ts`. The rest of that test needs no mode, so it runs.
+
+## Still failing, and what did not run
+
+- **One end-to-end spec failed by chance, and its cause is not known.** `harness-compare.spec.ts`, "unticking an engine drops the notice and changes the count; an empty instruction or no tick disables Start". A `status` element stayed on the page. The spec passed four times in a row when run alone in the container. This work did not find out why it failed once in the full run.
+- **One root test can fail by chance.** The lock race test in `packages/project-context/test/lock.test.mjs` asserts that four processes never meet a lock slot collision. It met one in 600 tries in one full run, and it did not in the next two runs. The test uses `node:test` directly, and not the retry wrapper that the other lock tests use, so it was not changed.
+- **A tree of this size has more tests like the ones skipped.** Tests that replace a folder and expect a new identity pass or fail by chance on this file system. Repeated runs of 16 test files that do this found one more (S6 of the registered slices). Other files were not repeated. A later run can find another.
+- **The macOS half of this work did not run.** Nothing ran on a Mac, by design. The skips evaluate to false on macOS, and the macOS branch of `darwin-boot-session.test.mjs` has not run anywhere.
+- **No second full run.** After the last two skips, the second run through the script stopped at the image build with an input and output error, because the disk of the host was full. The evidence for those two skips is the two root runs above.
 
 ## If the build hangs
 
