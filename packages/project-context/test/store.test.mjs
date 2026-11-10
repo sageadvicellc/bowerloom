@@ -8,7 +8,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import '../../../dist/tests/support/isolate-home.js';
 import { inspectStoreWith, openStoreWith, isValidStore, verifyStorePins, pathInsideStore, assertNotInStore, storeRootOf, STORE_FORMAT } from '../../../dist/packages/project-context/src/store.js';
 import { inspectStore, openStore } from '../../../dist/packages/project-context/src/index.js';
-import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
+import { skipAsRoot, skipOnCoarseFileTimes } from '../../../dist/tests/support/machine-skips.js';
 
 const code = expected => error => error?.code === expected;
 const BODY = `{"format":"${STORE_FORMAT}"}\n`;
@@ -250,7 +250,7 @@ test('a refusal message carries no path', t => {
 });
 
 // ---- Review fixes: S2, S3, S4, S7 ----
-test('S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json', t => {
+test('S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json', { skip: skipOnCoarseFileTimes('store.json change when it is rewritten in place') }, t => {
   let w = mkStore(world(t)); let c = openStoreWith(w.home, solo(w));
   fs.chmodSync(w.store, 0o777); assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'store 777'); fs.chmodSync(w.store, 0o700);
   assert.doesNotThrow(() => verifyStorePins(c));
