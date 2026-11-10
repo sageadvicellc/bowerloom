@@ -52,4 +52,7 @@ try { ok = (await transport.get(plan.url, 1024, new AbortController().signal)).t
 catch (error) { failure = String((error as { code?: unknown }).code ?? 'unknown'); }
 finally { transport.close(); }
 fs.writeFileSync(plan.out, JSON.stringify({ ok, failure, ...seen }));
+// NODE_DEBUG=* writes far more than a pipe holds, and process.exit does not wait for a pipe that is full. Wait until the parent has read
+// everything written to stderr, or the HTTP lines that come last are lost whenever the parent reads slowly.
+await new Promise<void>(done => process.stderr.write('', () => done()));
 process.exit(0);
