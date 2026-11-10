@@ -43,6 +43,20 @@
      "reason": "skips unless the environment variable TRELLIS_RECIPE_PROOF is set"
     },
     {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system does not take a path of more than 1024 bytes (the test cannot make the folder)"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "P6: two definition files that differ only in case are refused (case-sensitive file systems only)",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system is case-insensitive (it folds case, so the pair of names cannot exist)"
+    },
+    {
      "file": "packages/admission/test/postgres.test.mjs",
      "name": "account admission against a dedicated synthetic PostgreSQL database",
      "status": "skip",
@@ -111,6 +125,13 @@
      "status": "skip",
      "kind": "never-runs-in-gate",
      "reason": "skips unless the environment variable BOWERLOOM_MCP_STDIO_PROOF is set"
+    },
+    {
+     "file": "packages/project-context/test/discovery.test.mjs",
+     "name": "L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the disk is case-insensitive (the second name .BOWERLOOM cannot exist beside .bowerloom)"
     },
     {
      "file": "packages/project-sync/test/locked-live.test.mjs",
@@ -232,6 +253,13 @@
      "reason": "skips unless the environment variable TRELLIS_RUNTIME_PROOF is set"
     },
     {
+     "file": "packages/skill-sources/test/remove-cache.test.mjs",
+     "name": "3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips unless the user is root (only root can make a folder that another user owns); the gate user is not root"
+    },
+    {
      "file": "packages/team/test/start.test.mjs",
      "name": "check 10: a rename of a member label does not break delivery (needs the relay bus: decision 7 keeps it out of 0.8 until the one-week Repowire trial shows demand)",
      "status": "todo",
@@ -344,36 +372,7 @@
      "reason": "skips unless the environment variable BOWERLOOM_RELEASE_GATE is set"
     }
    ],
-   "observedMustRun": [
-    {
-     "file": "dist/tests/support/lock-slot-retry.js",
-     "name": "20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    },
-    {
-     "file": "dist/tests/support/lock-slot-retry.js",
-     "name": "P6: two definition files that differ only in case are refused (case-sensitive file systems only)",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    },
-    {
-     "file": "packages/project-context/test/discovery.test.mjs",
-     "name": "L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    },
-    {
-     "file": "packages/skill-sources/test/remove-cache.test.mjs",
-     "name": "3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED",
-     "status": "skip",
-     "kind": "must-run-on-gate",
-     "reason": "no environment flag: the gate machine must run it"
-    }
-   ],
+   "observedMustRun": [],
    "files": {
     "apps/mcp/test/integration.test.mjs": [
      "compiled recipe controller rejects invalid MCP arguments and matches CLI inspection without connections"

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { MUST_RUN, NEEDS_DECISION, NEVER_RUNS, buildSuite, checkRun, readRun, skipKind, validateRun, unusedKinds } from '../test-inventory.mjs';
+import { MACHINE_DEPENDENT, MUST_RUN, NEEDS_DECISION, NEVER_RUNS, buildSuite, checkRun, readRun, skipKind, validateRun, unusedKinds } from '../test-inventory.mjs';
 
 const tool = fileURLToPath(new URL('../test-inventory.mjs', import.meta.url));
 const cli = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: 'utf8' });
@@ -95,7 +95,7 @@ test('every frozen skip names a test that is in the files list, and the kinds fo
       assert.ok((suite.files[skip.file] ?? []).includes(skip.name), `${name}: ${skip.file}: ${skip.name}`);
       assert.equal(typeof skip.reason, 'string');
     }
-    for (const skip of suite.skips) assert.ok([NEVER_RUNS, NEEDS_DECISION].includes(skip.kind), `${name}: ${skip.name}`);
+    for (const skip of suite.skips) assert.ok([NEVER_RUNS, NEEDS_DECISION, MACHINE_DEPENDENT].includes(skip.kind), `${name}: ${skip.name}`);
     for (const skip of suite.observedMustRun) assert.equal(skip.kind, MUST_RUN);
     for (const skip of suite.skips.filter(s => s.status === 'fixme')) assert.equal(skip.kind, NEVER_RUNS, 'every fixme is never-runs');
   }
@@ -163,4 +163,54 @@ test('check prints the needs-decision line and exits 0 for the frozen inventory'
   const rr = cli('check', 'root', rootRows);
   assert.equal(rr.status, 0, rr.stderr);
   assert.match(rr.stdout, /needs-decision: 7 skips unsorted/);
+});
+
+const machineDependent = [
+  ['dist/tests/support/lock-slot-retry.js', '20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE', /1024/],
+  ['dist/tests/support/lock-slot-retry.js', 'P6: two definition files that differ only in case are refused (case-sensitive file systems only)', /folds case|case-insensitive/],
+  ['packages/project-context/test/discovery.test.mjs', 'L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked', /case-insensitive/],
+  ['packages/skill-sources/test/remove-cache.test.mjs', '3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED', /root/],
+];
+
+test('the four machine-dependent root skips are frozen by name as machine-dependent, each reason names its real condition', () => {
+  const root = inventory.suites.root;
+  for (const [file, name, keyword] of machineDependent) {
+    const entry = root.skips.find(s => s.file === file && s.name === name);
+    assert.ok(entry, `${name} is a frozen skip`);
+    assert.equal(entry.kind, MACHINE_DEPENDENT);
+    assert.match(entry.reason, keyword, `${name}: the reason names the real condition`);
+    assert.doesNotMatch(entry.reason, /System\/Volumes/, 'no reason names the alias test condition');
+    assert.equal(root.observedMustRun.some(s => s.file === file && s.name === name), false);
+  }
+});
+
+test('the counts by kind: 3 must-run, 7 needs-decision, 4 machine-dependent, 40 flag-gated never-runs in root', () => {
+  const must = Object.values(inventory.suites).flatMap(s => s.observedMustRun.map(m => m.file));
+  assert.deepEqual(must.map(f => path.basename(f)).sort(), ['launch.test.mjs', 'packaged-app.spec.ts', 'packaging.test.mjs']);
+  const root = inventory.suites.root;
+  const kind = k => root.skips.filter(s => s.kind === k).length;
+  assert.equal(root.observedMustRun.length, 0);
+  assert.equal(kind(NEEDS_DECISION), 7);
+  assert.equal(kind(MACHINE_DEPENDENT), 4);
+  assert.equal(kind(NEVER_RUNS), 40);
+});
+
+test('the base root run checks clean, whether the machine-dependent tests skip or pass', () => {
+  const root = inventory.suites.root;
+  const rows = ran => Object.entries(root.files).flatMap(([file, names]) => names.map(name => {
+    const s = root.skips.find(x => x.file === file && x.name === name);
+    return { file, name, status: s === undefined ? 'pass' : (ran && s.kind === MACHINE_DEPENDENT ? 'pass' : s.status) };
+  }));
+  for (const ran of [false, true]) { const result = checkRun({ frozen: root, run: rows(ran) }); assert.deepEqual(result.problems, []); assert.equal(result.needsDecision.length, 7); }
+});
+
+test('a machine-dependent test may skip or pass, and fails the check when it fails, turns fixme, or goes missing', () => {
+  const frozen = buildSuite({ runner: 'r', command: '', cwd: '', kinds: { 'a.js::m': { kind: MACHINE_DEPENDENT, reason: 'root' } }, run: run(['a.js', 'm', 'skip'], ['a.js', 'o', 'pass']) });
+  const other = ['a.js', 'o', 'pass'];
+  assert.equal(frozen.skips[0].kind, MACHINE_DEPENDENT);
+  assert.equal(checkRun({ frozen, run: run(['a.js', 'm', 'skip'], other) }).ok, true);
+  assert.equal(checkRun({ frozen, run: run(['a.js', 'm', 'pass'], other) }).ok, true);
+  assert.deepEqual(checkRun({ frozen, run: run(['a.js', 'm', 'fail'], other) }).problems, ['failed: a.js: m']);
+  assert.deepEqual(checkRun({ frozen, run: run(['a.js', 'm', 'fixme'], other) }).problems, ['machine-dependent test neither passed nor skipped: a.js: m']);
+  assert.deepEqual(checkRun({ frozen, run: run(other) }).problems, ['missing: a.js: m']);
 });
