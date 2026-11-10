@@ -1,6 +1,6 @@
 /**
  * The default extensions: the six work areas of v0.9. Each is protected, and together they own the 15 base routes of the harness app, one owner each.
- * This file mounts no screen. A later change registers a mount for each id.
+ * This file mounts no screen. The harness app registers a screen mount for each id (renderer/harness/extension-mounts.tsx).
  */
 
 import type { RouteName } from '../harness/route.js';

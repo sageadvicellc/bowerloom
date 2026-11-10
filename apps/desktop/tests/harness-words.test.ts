@@ -78,7 +78,7 @@ test('the words the logic builds (statuses, counts, install lines, notices) obey
  */
 const times = (piece: string, n: number): string[] => Array.from({ length: n }, () => piece);
 const CODE_NAMES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  'renderer/harness/HarnessApp.tsx': times('interfaces', 1), 'renderer/harness/Navigation.tsx': times('interfaces', 3), 'renderer/harness/Shell.tsx': times('interfaces', 1), 'renderer/harness/ui.tsx': times('interfaces', 2),
+  'renderer/harness/extension-mounts.tsx': ['interfaces', 'interfaces-history-help'], 'renderer/harness/Navigation.tsx': times('interfaces', 3), 'renderer/harness/Shell.tsx': times('interfaces', 1), 'renderer/harness/ui.tsx': times('interfaces', 2),
   'renderer/harness/screens/Interfaces.tsx': times('interfaces', 2), 'renderer/harness/screens/Projects.tsx': times('interfaces', 1), 'renderer/harness/sheets/InstallSheet.tsx': times('interfaces', 5), 'renderer/harness/sheets/ProjectSheet.tsx': times('interfaces', 9),
   'shared/harness/builder-draft.ts': times('last-interface', 2), 'shared/harness/route.ts': times('interfaces', 8), 'shared/harness/status.ts': times('interfaces', 1),
   'shared/harness/store.ts': [...times('set-interface', 4), ...times('interface', 4)], 'shared/harness/types.ts': ['set-interface', 'mcp', 'mcp'], 'shared/harness/overview.ts': ['mcp'],

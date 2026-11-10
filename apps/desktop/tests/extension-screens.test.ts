@@ -22,7 +22,7 @@ import { parseRoute } from '../shared/harness/route.js';
 import type { Route } from '../shared/harness/route.js';
 import { DESKTOP } from './support.js';
 
-const NOW = { iso: '2026-11-09T10:00:00.000Z', label: 'Today, 10:00' } as never;
+const NOW = { daysAgo: 0, time: '10:00' };
 type G = { location?: { hash: string } };
 
 /** An address for each route, with the parameters the screen takes. */
@@ -31,11 +31,12 @@ const ADDRESS: Record<string, string> = {
   file: '/file/check-facts', library: '/library/skill', projects: '/projects', runs: '/runs', compare: '/compare/group-1', interfaces: '/interfaces', history: '/history', help: '/help',
 };
 
-function render(hash: string, registry: Registry<ScreenMount> | undefined, options: { realMode?: boolean; real?: null } = {}): string {
+function render(hash: string, registry: Registry<ScreenMount> | undefined, options: { realMode?: boolean; real?: unknown } = {}): string {
   (globalThis as G).location = { hash };
   try {
     const store = createHarnessStore({ initial: createSampleWorld(NOW), now: () => NOW, finishRunning: false });
-    const props = { store, engine: createSampleEngine(), registry, ...options };
+    // The real launch has no engine here: with one, the saved read is awaited before anything draws, and a server render stops at the empty first frame.
+    const props = { store, engine: options.realMode === true ? null : createSampleEngine(), registry, ...options };
     return renderToStaticMarkup(createElement(HarnessApp, props as never) as ReactElement);
   } finally { delete (globalThis as G).location; }
 }
@@ -112,6 +113,10 @@ test('the sample, real and no-bridge launches still reach their Choose screens t
   assert.match(noBridge, /data-error="NO_BRIDGE"/, 'a real launch with no bridge says so');
   assert.doesNotMatch(noBridge, NOT_FOUND);
   assert.notEqual(sample, noBridge);
+  const real = render('#app/choose', undefined, { realMode: true, real: { scan: () => undefined } });
+  assert.doesNotMatch(real, NOT_FOUND);
+  assert.doesNotMatch(real, /data-error="NO_BRIDGE"/, 'a launch with a bridge reads the person\'s folders');
+  assert.notEqual(real, sample);
 });
 
 test('the sample launch lands on Welcome, and the app renders with the default registry when none is given', () => {
