@@ -113,6 +113,12 @@ The container is Linux, and it runs as root. These tests skip there, and each sk
 
 Every skip of this work is listed in "Every skip this work added". They run on a Mac, for a user who is not root, on a file system with fine file times.
 
+### What a green sandbox run does not cover
+
+- **The root-skipped tests.** A green run does not cover the tests in "Skips for root". Each one checks a refusal that needs a file mode, and root ignores modes. They run on a Mac. A second pass of the same tests as a non-root user in the container is a follow-up. In this work, a non-root pass was used by hand to sort causes, and it is not part of the command.
+- **A known limit of the file time and folder identity skips.** These tests skip: B5 of the context guard, tests 23 and 36 of the registered folders, B10 and S6 of the managed skills, S6 of the registered slices, the parent-change tests of `skills-cli`, the three `scan-cache` ordering tests, and S2 of the store. On a file system that reuses folder identity or has coarse file times, a replaced folder or a quick change can look unchanged to Bowerloom. The tests cannot show that Bowerloom tells them apart there. This work records that limit. It does not fix it.
+- **The identity probe also answers true when the birth time is missing.** The probe compares device, inode and birth time. A file system that reports no birth time gives the same value twice, so a reused inode reads as the same identity.
+
 ## First full run
 
 The first full run in the container, on 2026-11-10, did not pass. It found these:
@@ -145,10 +151,10 @@ The totals are 140, 17 and 15. Nothing was deleted. No assertion changed to make
 
 ### Decisions for the maintainer
 
-- **No Linux boot-session reader.** A reader of `/proc/sys/kernel/random/boot_id` would not make the container tests pass. The container launch refuses every platform but macOS in its own check (`MCP_CONTAINER_PLATFORM`), and so does the recovery collector (`TRUST`). A Linux reader would only turn on part of a feature that the product keeps off elsewhere. Two new tests keep the choice explicit. `darwin-boot-session.test.mjs` shows the refusal off macOS, and a new protocol test shows `UNSUPPORTED_PLATFORM`. The macOS half of the first one did not run in the sandbox.
+- **No Linux boot-session reader.** A reader of `/proc/sys/kernel/random/boot_id` would not make the container tests pass. The container launch refuses every platform but macOS in its own check (`MCP_CONTAINER_PLATFORM`), and so does the recovery collector (`TRUST`). A Linux reader would only turn on part of a feature that the product keeps off elsewhere. Two new tests pin part of the choice. `darwin-boot-session.test.mjs` shows that `readDarwinBootSession` refuses off macOS, and a new protocol test shows that codex-adapter `start` refuses `UNSUPPORTED_PLATFORM`. The other two refusals have no Linux test: `MCP_CONTAINER_PLATFORM` of the container launch, and the collector refusal. The macOS half of `darwin-boot-session.test.mjs` did not run in the sandbox.
 - **Windows are shown in the sandbox.** The e2e step sets `BOWERLOOM_E2E_SHOW=1`. The screen exists only in the container, so nothing shows on your screen. The hidden mode of the specs is then not exercised in the sandbox: the specs that check it take their "watching" branch. The other way is to skip the three specs for hidden windows on Linux. That would also skip the wheel and hover checks of two product screens.
 - **The Node version.** The sandbox pins Node 24.21.0, and the engines range is 24.11.0 to below 25. Two tests were written against an earlier Node 24. In 24.21.0 the child of `node --test` also gets `NODE_TEST_WORKER_ID`, and the proof guard in `tools/cli-distribution/installed-container-guard.mjs` refuses every `NODE_` variable except `NODE_TEST_CONTEXT=child-v8`. The guard is not changed here. A person on Node 24.21.0 would meet the refusal when they run that proof under `node --test`.
-- **The skip kinds.** The frozen inventory (`docs/v0.9/test-inventory.json`) does not list these skips. They skip only as root or off macOS, so the inventory check on a Mac does not see them. The sandbox does not run that check. If it did, each one would count as a skip that must run.
+- **The skip kinds.** The frozen inventory (`docs/v0.9/test-inventory.json`) does not list these skips. Most skip only as root, off macOS, or on a file system with coarse times. The two Node-version skips fire on any system that runs Node 24.21.0, a Mac included. So the inventory check on a Mac does not see the first kind, and it can see the second. The sandbox does not run that check. If it did, each one would count as a skip that must run.
 
 ## Every skip this work added
 
@@ -317,7 +323,7 @@ Each spec skips through `test.skip(process.platform !== 'darwin', reason)`. The 
 
 ### Skips on macOS only (3 tests)
 
-These tests check that other platforms refuse. They skip on macOS, where the real code runs and the existing tests cover it.
+These tests check that other platforms refuse. The two boot-session tests skip on macOS in the direction their names say: the refusal test skips on macOS, and the UUID test skips elsewhere. The protocol test skips on macOS arm64 only, because it expects `UNSUPPORTED_PLATFORM`, and that platform passes the check. On macOS the real code runs, and the existing tests cover it.
 
 | File | Test |
 |---|---|
@@ -339,7 +345,7 @@ One row of one test is left out for root and told with `t.diagnostic`: the row "
 - **One end-to-end spec failed by chance, and its cause is not known.** `harness-compare.spec.ts`, "unticking an engine drops the notice and changes the count; an empty instruction or no tick disables Start". A `status` element stayed on the page. The spec passed four times in a row when run alone in the container. This work did not find out why it failed once in the full run.
 - **One root test can fail by chance.** The lock race test in `packages/project-context/test/lock.test.mjs` asserts that four processes never meet a lock slot collision. It met one in 600 tries in one full run, and it did not in the next two runs. The test uses `node:test` directly, and not the retry wrapper that the other lock tests use, so it was not changed.
 - **A tree of this size has more tests like the ones skipped.** Tests that replace a folder and expect a new identity pass or fail by chance on this file system. Repeated runs of 16 test files that do this found one more (S6 of the registered slices). Other files were not repeated. A later run can find another.
-- **The macOS half of this work did not run.** Nothing ran on a Mac, by design. The skips evaluate to false on macOS, and the macOS branch of `darwin-boot-session.test.mjs` has not run anywhere.
+- **The macOS half of this work did not run.** Nothing ran on a Mac, by design. The skips for root, file times, folder identity and the macOS-only code evaluate to false on macOS. The two Node-version skips do not: they fire on any system that runs Node 24.21.0. The macOS branch of `darwin-boot-session.test.mjs` has not run anywhere.
 - **No second full run.** After the last two skips, the second run through the script stopped at the image build with an input and output error, because the disk of the host was full. The evidence for those two skips is the two root runs above.
 
 ## If the build hangs
