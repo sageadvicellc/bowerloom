@@ -6,7 +6,9 @@ This page lists what the packaged Electron app must hold. Each item has a statem
 
 Status words:
 
-- exists: a test or a spec holds the check today.
+- exists: a test or a spec at the release head holds the check today.
+- pending PR 171: the test is in PR 171, which is open, and is not at the release head.
+- pending PR 173: the test is in PR 173, which is open, and is not at the release head.
 - proposed: the check is new. No file holds it yet.
 - unknown: a fact is missing. The item says which one.
 
@@ -23,7 +25,8 @@ Status words:
 
 - Sandbox: unit tests of `apps/desktop`. Also end-to-end specs, with a Linux Electron.
 - macOS only: anything that reads or starts the `.app` bundle, builds the disk image, or reads a code signature. The sandbox doc lists three of these as not run in the container: the packaged-app spec, the fuse check of a built app, and the launch of a macOS build.
-- Count warning: the sandbox doc reports 17 known failures in the desktop unit suite, from the first full run on 2026-11-10. They belong to Linux and to the root user. Compare a run with the base by test name, not by count.
+- Count warning: the sandbox doc reports 17 failures in the desktop unit suite, from the first full run on 2026-11-10. It says 4 of them are root effects and 13 are not yet sorted by cause. Compare a run with the base by test name, not by count.
+- The `CI` variable: if `CI` is set, the packaged-app spec throws on a missing build. If `CI` is not set, it skips. Nothing in the repository sets `CI`, and `tools/sandbox/in-container.sh` sets none. So in the sandbox the spec skips on Linux. The scope says the gate runs `e2e` with `CI=1`. No script in the repository does that. Who sets it on the gate machine is unknown.
 
 ## A. Build and identity
 
@@ -39,7 +42,7 @@ P2. The build is newer than the source.
 - Statement: `Contents/Resources/app.asar` is newer than the newest source file. The source files are the folders `main`, `preload`, `renderer` and `shared`, the root `kits` folder, and the `src` folder of every package. They also include `tools/bundle.mjs` and `package.json`.
 - Check: `e2e/packaged-app.spec.ts`, with `newestSourceOf` from `e2e/packaged-support.ts`. The unit test `newestSourceOf counts the shipped kits, the packages, and the desktop sources` in `tests/packaged-support.test.ts` holds the function.
 - Runs: the spec on macOS only. The unit test in the sandbox.
-- Status: exists. Gap: the function does not watch `build/dock`, which ships through `extraResources`. After PR 171 it also does not watch an `apps/desktop/extensions` folder, which does not exist yet.
+- Status: exists. Gap: the function does not watch `build/dock`, which ships through `extraResources`. It also does not watch an `apps/desktop/extensions` folder. That folder does not exist yet, and PR 171 does not add it.
 
 P3. Identity.
 
@@ -69,7 +72,7 @@ F1. The seven fuses are as promised.
 - Statement: `RunAsNode` off. `EnableNodeOptionsEnvironmentVariable` off. `EnableNodeCliInspectArguments` off. `GrantFileProtocolExtraPrivileges` off. `EnableCookieEncryption` on. `EnableEmbeddedAsarIntegrityValidation` on. `OnlyLoadAppFromAsar` on.
 - Check: `cd apps/desktop && npm run verify:fuses`. It prints `Fuses are as promised.` and exits 0. It exits 1 and lists each wrong fuse. If no build exists, it exits 2. An optional first argument names another binary.
 - Runs: macOS only. The default path is the macOS arm64 build. Whether the tool reads a Linux or Windows binary is unknown.
-- Status: exists. The spec `e2e/packaged-app.spec.ts` runs it too. Test `the built binary has those fuses` in `tests/packaging.test.ts` runs it too. If no macOS build exists, that test skips. The test inventory lists that skip as one that must not happen on the gate machine.
+- Status: exists. The spec `e2e/packaged-app.spec.ts` runs it too. Test `the built binary has those fuses` in `tests/packaging.test.ts` runs it too. The test looks only at `release/mac-arm64`. If only an x64 build exists, the test skips. With no build at all, it skips as well. The test inventory lists that skip as one that must not happen on the gate machine.
 
 F2. The package settings and the fuse tool agree.
 
@@ -82,6 +85,7 @@ F3. The debugging port.
 
 - Statement: the inspect switch is off in the build, so the packaged spec starts the binary itself. It attaches over the remote debugging port of Chromium.
 - Check: `e2e/packaged-app.spec.ts`.
+- Runs: macOS only.
 - Status: exists. Decision for the maintainer: the spec depends on the packaged app accepting `--remote-debugging-port`. Nobody decided whether a release build must refuse it.
 
 ## C. Resources and the archive
@@ -117,7 +121,7 @@ R4. The archive holds the app files and none of the old files.
 R5. The archive holds the other build files.
 
 - Statement: the archive lists `dist/main.mjs`, `dist/bundle-worker.mjs` and `dist/renderer/index.html`. It lists the four style files `brand.css`, `tokens.css`, `styles.css` and `app.css`. It also lists the font files of `newsreader` and `manrope`, with their `OFL.txt` licence files.
-- Check: proposed, in `e2e/packaged-app.spec.ts`. Today the test `the one-command launcher works from another folder...` in `tests/packaging.test.ts` checks seven files in `dist/` before packing: `main.mjs`, `bundle-worker.mjs`, `preload-real.cjs`, `renderer/app.js`, `renderer/index.html`, `renderer/tokens.css` and `renderer/styles.css`. No test checks `brand.css`, `app.css` or the fonts in `dist/` or in the archive.
+- Check: proposed, in `e2e/packaged-app.spec.ts`. Today the test `the one-command launcher works from another folder...` in `tests/packaging.test.ts` checks seven files in `dist/` before packing: `main.mjs`, `bundle-worker.mjs`, `preload-real.cjs`, `renderer/app.js`, `renderer/index.html`, `renderer/tokens.css` and `renderer/styles.css`. No test checks `brand.css`, `app.css` or the fonts in the archive. `e2e/brand-fonts.spec.ts` checks that both faces load in a real window, and `tests/brand-parity.test.ts` checks the font sources and the build script. Neither reads the archive.
 - Runs: archive part macOS only. The `dist/` part runs in the sandbox.
 - Status: proposed for the archive. The worker file must load from inside the archive. `e2e/bundle-worker-asar.spec.ts` proves that in the development Electron and not in the packaged app.
 
@@ -142,16 +146,16 @@ At the head, no `extensions` folder exists in `apps/desktop`, and no `extraResou
 E1. A bundled extensions folder ships.
 
 - Statement: if `apps/desktop/extensions` holds a file, `package.json` copies it into the app resources.
-- Check: after PR 171, test `M2: if apps/desktop/extensions holds anything, package.json extraResources ships it into the app resources` in `tests/extensions-host.test.ts`. The test holds nothing while the folder is empty. Its comment says to add the entry `{ "from": "extensions", "to": "extensions" }` together with the first bundled extension. `tests/packaging.test.ts` pins `extraResources` to exactly the kits and the Dock icons. The first bundled extension must change both tests in one commit.
+- Check: in PR 171, test `M2: if apps/desktop/extensions holds anything, package.json extraResources ships it into the app resources` in `tests/extensions-host.test.ts`. The test holds nothing while the folder is empty. Its comment says to add the entry `{ "from": "extensions", "to": "extensions" }` together with the first bundled extension. `tests/packaging.test.ts` pins `extraResources` to exactly the kits and the Dock icons. The first bundled extension must change both tests in one commit.
 - Runs: sandbox for the settings. Bundle part macOS only.
-- Status: after PR 171, exists but vacuous until the first bundled extension exists.
+- Status: pending PR 171. After PR 171 the test passes vacuously until the first bundled extension exists.
 
 E2. Where the bundle root sits.
 
-- Statement: after PR 171, `extensionsBundleRoot` returns `process.resourcesPath` in a packaged build, and `apps/desktop` in development. So the loader reads `Contents/Resources/extensions`. That folder is outside `app.asar`, so the loader does not go through the asar layer of Electron.
-- Check: after PR 171, tests `extensionsBundleRoot: resources in a packaged build, the app folder in development` and `LOW d: extensionsBundleRoot points at the folder the loader reads, in a real layout, packaged or not`.
+- Statement: after PR 171, `extensionsBundleRoot` returns `process.resourcesPath` in a packaged build, and `apps/desktop` in development. So the loader reads `Contents/Resources/extensions`. That folder is outside `app.asar`, so the loader does not go through the asar layer of Electron. The asar integrity fuse covers only the archive, so it does not cover this folder.
+- Check: in PR 171, tests `extensionsBundleRoot: resources in a packaged build, the app folder in development` and `LOW d: extensionsBundleRoot points at the folder the loader reads, in a real layout, packaged or not`.
 - Runs: sandbox.
-- Status: after PR 171, exists.
+- Status: pending PR 171.
 
 E3. A packaged build loads every bundled extension.
 
@@ -198,9 +202,9 @@ U3. An extension loaded from outside cannot claim protection.
 U4. The guard in main refuses.
 
 - Statement: after PR 171, `uninstallExtension` in `main/extension-host.ts` answers `PROTECTED` for a default id, whatever the registry holds. If the registry throws, or answers with something that is not an answer, the guard also answers `PROTECTED`.
-- Check: after PR 171, the tests named `fail closed: ...` and `LOW c: ...` in `tests/extensions-host.test.ts`.
+- Check: in PR 171, the tests named `fail closed: ...` and `LOW c: ...` in `tests/extensions-host.test.ts`.
 - Runs: sandbox.
-- Status: after PR 171, exists.
+- Status: pending PR 171.
 
 U5. The refusal in the packaged app.
 
@@ -212,7 +216,7 @@ U6. No main code deletes bundle files.
 - Statement: a short list names the files that can create, change or remove a file in the source of the app. The extension loader only opens a manifest for reading.
 - Check: `tests/writers.test.ts` and `tests/writers-imports.test.ts`.
 - Runs: sandbox.
-- Status: exists for the list of writers. Whether the list covers a path into the bundle folder is unknown. I read the test titles and not every assertion.
+- Status: exists for the list of writers. Whether the list covers a path into the bundle folder is unknown. The test titles were read and the assertions were not.
 
 ## F. Launch and behaviour of the packaged app
 
@@ -220,7 +224,7 @@ L1. The app opens on the person's own folders.
 
 - Statement: started with no flag and a made-up home folder, the window opens `app://viewer/index.html#app`. It shows the heading `Bowerloom` and the line `Bowerloom only reads. It writes only after you approve what it will write.` The page has no `window.bowerloom`. `bowerloomReal` has exactly `discoverPlaces`, `pickFolder` and `readSelected`. `bowerloomEngine.mode` is `real`. The page holds no part of the old viewer. The button `Find my files` leads to the heading `Found 4 places`. The page text holds no path of the fixture root.
 - Check: `cd apps/desktop && npm run e2e -- e2e/packaged-app.spec.ts`. Take the lock `/tmp/bowerloom-test.lock` around the run, as the README says.
-- Runs: macOS only. The spec skips on another platform. If `CI` is set, a missing build fails it, and so does a build older than the source.
+- Runs: macOS only. If the platform is not macOS or no build is in `release/`, the spec skips. If `CI` is set, it throws instead. A build older than the source fails it in both cases. See the `CI` note under "Where each check runs".
 - Status: exists.
 
 L2. The app ends cleanly and keeps its data folder.
@@ -234,7 +238,7 @@ L3. An unknown flag refuses the start.
 
 - Statement: for a misspelled or retired flag, Electron exits with code 2 and prints the words on stderr. It opens no window.
 - Check: `tests/launch.test.ts`, test `the built app exits with code 2 and the words on stderr...`. The test starts the development Electron binary from `node_modules` on a private build of `main.ts`. It does not start the packaged app. If that binary is missing, the test skips.
-- Runs: sandbox, with the Linux Electron. The test inventory lists the skip as one that must not happen on the gate machine.
+- Runs: the test needs the development Electron binary in `node_modules`, so it can run in the sandbox. It ran and passed once in a container run for PR 174. The sandbox doc does not list its result, so its result in a full sandbox run is unknown. The test inventory lists its skip as one that must not happen on the gate machine.
 - Status: exists. A check on the packaged app itself is proposed.
 
 L4. Every real-mode route draws in the packaged app.
@@ -247,7 +251,7 @@ L4. Every real-mode route draws in the packaged app.
 L5. Developer tools are off in a packaged build.
 
 - Statement: `webPreferences(preload, true).devTools` is `false`. Context isolation and the sandbox are on. Node integration is off.
-- Check: `tests/security.test.ts`, tests `the window has context isolation, no Node, a sandbox, and no webview` and `the packaged window turns the developer tools off, and every frame navigation and device permission is refused`. A check on the real window of a packaged app is proposed.
+- Check: `tests/security.test.ts`, tests `the window has context isolation, no Node, a sandbox, and no webview` and `the packaged window turns the developer tools off, and every frame navigation and device permission is refused`. A check on the real window of a packaged app is proposed. Turning developer tools off does not refuse the remote debugging port. F3 covers that port.
 - Runs: unit part sandbox. Window part macOS only.
 - Status: unit part exists. Window part proposed.
 
@@ -282,7 +286,7 @@ S3. A signed and notarized build.
 
 macOS only:
 
-- Whole items: P1, R1, R3, R4, E3, L1, L2, L4, S1 and S2.
+- Whole items: P1, F3, R1, R3, R4, E3, L1, L2, L4, S1 and S2.
 - Parts of items:
   - The spec part of P2.
   - The binary part of F1.
@@ -300,7 +304,7 @@ The sandbox runs:
   - The unit part of L5 and L6.
   - The unit test of `newestSourceOf`.
 
-The gate runs `npm run desktop:build` first and `e2e` with `CI=1`. A skip of the fuse test in `tests/packaging.test.ts`, of the exit-code-2 test in `tests/launch.test.ts`, or of the packaged-app spec fails the gate. The test inventory lists these three as the skips that must not happen.
+The scope says the gate runs `npm run desktop:build` first and `e2e` with `CI=1`. See the `CI` note above. A skip of the fuse test in `tests/packaging.test.ts`, of the exit-code-2 test in `tests/launch.test.ts`, or of the packaged-app spec fails the gate. The test inventory lists these three as the skips that must not happen.
 
 ## Unknown
 
@@ -308,5 +312,6 @@ The gate runs `npm run desktop:build` first and `e2e` with `CI=1`. A skip of the
 - Which reading of "only default extensions" holds (E5).
 - Whether a call for uninstall exists before the 0.9 gate (U5). This is a decision for the maintainer.
 - Whether a release build must refuse the remote debugging port (F3).
+- Who sets `CI=1` on the gate machine, and whether the exit-code-2 test (L3) passes in a full sandbox run.
 - The file names of the disk image and the zip (S2).
 - Whether `tests/writers*.test.ts` cover a write into the bundle folder (U6).

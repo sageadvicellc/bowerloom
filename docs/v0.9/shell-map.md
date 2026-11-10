@@ -2,7 +2,7 @@
 
 Status: written for the v0.9 shell question. Read at commit `328dd90b` of `release/0.8.0-beta.2`. Three open pull requests change parts of this map. Each item that depends on one says "after PR 171", "after PR 173" or "after PR 172".
 
-This page sorts each part of `apps/desktop` into shell, core, API or page. It names each file that holds two sides. It changes no code. The only new code is one test, `apps/desktop/tests/shell-boundary.test.ts`, which holds the main boundary.
+This page sorts each part of `apps/desktop` into shell, core, API or page. It names each file that holds two sides. It changes no code. The only new code is one test, `apps/desktop/tests/shell-boundary.test.ts`, which holds the boundary of the main process, the preload and the page.
 
 ## Why this page exists
 
@@ -27,21 +27,35 @@ All are in `carry-over-scope.md` on `main`, except the last two.
 
 - Question 7: if the shell framework changes, the core and the API stay the home of these ideas.
 - The Tauri order: Electron first, Tauri after.
-- Acceptance item 5: the shell keeps its protections. The page scheme, the permission refusal, the content security policy, the close guard and two fuses work as at the base.
+- Acceptance item 5: the shell keeps its protections. The scope words it this way. The fuses `runAsNode` and `enableNodeOptionsEnvironmentVariable` stay off. The content security policy, the permission refusal, the page scheme and the close guard work as at the base. The build sets seven fuses in all. See "Shell protections and the test that covers each".
 - Acceptance item 3: the page reaches the engine only through one client. No page file reads the two bridges except the transport adapter. No page file imports Electron or a Node module.
 - V9-9 and the split into core and optional parts. The pull request that records it is PR 172, still open. Its core list is the engine API, extension loading and protected extensions. Its examples of optional parts are windows, menus and local file access. In this map, windows and menus are shell. Local file access is not shell. Almost every core file uses it, so a host without it cannot run most calls.
-- The Tauri plan, PR 163, a draft. It proposes a shell written in Rust and the Node core running beside it as a sidecar. A sidecar is a separate process that the shell starts. The plan puts windows, dialogs, the clipboard, links, the page scheme, the policy, the close guard and the Dock icon in the shell. Nothing in this page depends on that plan being accepted.
+- The Tauri plan, PR 163, a draft. It proposes a shell written in Rust and the Node core running beside it as a sidecar. A sidecar is a separate process that the shell starts. The plan puts windows, dialogs, the clipboard, links, the page scheme, the policy, the close guard and the Dock icon in the shell. It names the injection points in `main.ts` as the start of the port. It does not design a request path from the core to the shell. Nothing in this page depends on that plan being accepted.
 
-## The two rules, and the test that holds them
+## The three rules, and the test that holds them
 
-1. Only `main/main.ts` and `preload/real-preload.ts` load Electron. No other file in `main`, `preload`, `shared` or `renderer` does.
+1. Only `main/main.ts` and `preload/real-preload.ts` load Electron. No other file in `main`, `preload`, `shared` or `renderer` does. No package that those folders reach by relative imports does either.
 2. Only `renderer/api/transport.ts` reads the two bridges `bowerloomReal` and `bowerloomEngine` in the page. Only `preload/real-preload.ts` puts them on the window.
+3. No relative import leaves `main`, `preload`, `shared`, `renderer` and the `src` folders of packages. An import into `tools`, `e2e`, `tests`, another app or a package folder other than `src` fails.
 
-`apps/desktop/tests/shell-boundary.test.ts` holds both. It reads every code file of the four folders. It uses the tokenizer of `tests/fixtures-real/static-check.ts`. A comment or a string does not count as a load. The test reads each file as written and as plain JavaScript, so a type-only import counts. It fails on an empty file set, on a file that does not parse, on a link, and on a stale list. It also feeds each rule bad samples. Each failing sample proves that its rule catches a break.
+`apps/desktop/tests/shell-boundary.test.ts` holds all three. The scan starts at the four folders. It follows each relative import into `packages/<name>/src` until no new package appears. Today it reaches 27 packages and 499 files. It uses the tokenizer of `tests/fixtures-real/static-check.ts`. A comment or a string does not count as a load. The test reads each file as written and as plain JavaScript, so a type-only import counts.
 
-These checks already exist in part, and the new test adds to them. `tests/api-call-layer.test.ts` holds the one reader of the window. It also holds the absence of `electron` and `node:` strings in the page. It uses a pattern over text with comments removed. `tests/engine-api-imports.test.ts` holds the import graph of `packages/engine-api`. After PR 173, `tests/renderer-client-purity.test.ts` holds the page to the client with a longer rule list.
+A load is `import ... from`, `import 'x'`, `export ... from`, `import('x')`, `require('x')` and `x.require('x')`. The module names that count are `electron`, its subpaths, `electron-*` packages, and `@electron/*` and `@electron-*` packages. Three other forms also fail, because the check cannot say where they go. They are a load with a name that is not a string, `createRequire`, and a `require` that is not a call with a string.
 
-Known limit: a bridge name built at run time or reached through an alias is not a name in the source. A runtime check in the end-to-end suite backs the static check for that case, as the scope says. That runtime check does not exist yet.
+The test fails on an empty file set. It fails on a folder that holds far fewer files than today. It fails on a file that does not parse, on a link, and on a stale list. It feeds each rule bad samples. Each sample must produce a problem that names the load or the bridge, and a parse error does not count. It plants a violation in a file of each extension that the scan reads.
+
+No package that the core reaches imports Electron today. A search of the nine packages that the core imports directly, and of `packages/engine-api`, found no use of the word `electron` in them. The test reaches 18 more packages through them, and none loads Electron.
+
+What the test does not cover:
+
+- The folders `tools/`, `e2e/` and `tests/`.
+- A package that only a bare package name reaches.
+- A bridge name built at run time or reached through an alias.
+- A person who works round the check on purpose.
+
+No runtime check backs the static check yet. The scope asks for one for the bridge names, and it does not exist.
+
+Some checks exist in part already. `tests/api-call-layer.test.ts` holds the one reader of the window. It also holds the absence of `electron` and `node:` strings in the page, by pattern over text with comments removed. `tests/engine-api-imports.test.ts` holds the import graph of `packages/engine-api`. After PR 173, `tests/renderer-client-purity.test.ts` holds the page to the client with a longer rule list.
 
 ## Shell: a Tauri shell writes this again
 
@@ -129,7 +143,7 @@ Each item names the file, the two sides and a proposed split. No split is done h
 4. `main/window-options.ts`. The size, the minimum size and the title are plain data (1280 by 800, minimum 900 by 600, title Bowerloom). The `--e2e-hidden` switch, `paintWhenInitiallyHidden`, the Dock hide and the quiet-dialog replacement are Electron-shaped.
 5. `main/launch.ts`. The launch plan is pure, and any shell needs the same flag rules: the `--sample` flag and the refusal of near-miss flags. Its field `preload` and some comments use Electron words.
 6. `main/temp-data.mjs` and `temp-data.d.mts`. Plain Node code. It exists for the temporary Electron data folder of the sample launch, and `tools/run.mjs` imports it too.
-7. `preload/real-preload.ts`. The call list comes from `shared`. The file also holds two refusal patterns written out as literal codes, one for the reader and one for the engine. I found no test that compares these two patterns with the shared tables.
+7. `preload/real-preload.ts`. The call list comes from `shared`. The file also holds two refusal patterns written out as literal codes, one for the reader and one for the engine. A search found no test that compares these two patterns with the shared tables.
 8. `tools/bundle.mjs`. The page and worker entries are portable. The `main.ts` and preload entries and `external: ['electron']` are shell.
 9. `renderer/api/transport.ts`. The one page file that names the two bridges. A Tauri shell must fill these two names on the window, or this file must change. After PR 173 the file also reads the attribute that main puts on the body of the sample page.
 10. The side channels between the page and main. They carry no engine call:
@@ -149,7 +163,29 @@ The core asks the shell for these things through injected tools, all handed over
 - The reader: `chooseFolder`.
 - The engine service: `confirm` (the question before every write), `chooseFolder`, `chooseBundleOpen`, `chooseBundleSave`, `chooseNotesFolder`, `openPath` (opens a report in another app), `writeClipboard` and `quitBegun`.
 
-If the core runs in its own process, each of these becomes a request from the core to the shell. The API contract does not describe them, because the page never sees them. The draft plan does not describe them either.
+If the core runs in its own process, each of these becomes a request from the core to the shell. The API contract does not describe them, because the page never sees them. The draft plan names the injection points but does not design a request path from the core to the shell.
+
+## Shell protections and the test that covers each
+
+Acceptance item 5 asks for a map of the file that covers each protection. A text match reads `main/main.ts` as text and checks that a line is there. It does not show that the line works. A behavior check runs code.
+
+- Page scheme (`app://viewer`, with only files below the page folder served):
+  - Behavior: `tests/security.test.ts`, test `the page is served by the app itself, and only files below its renderer folder can be asked for`. It runs `decideNavigation`, `allowRequest` and `resolveAppFile` on good and bad paths.
+  - Text match: the same test matches `protocol.handle(APP_SCHEME`, `registerSchemesAsPrivileged` and `loadURL` in `main.ts`. `tests/real-static.test.ts` matches the line that picks the file.
+  - Real window: every end-to-end spec loads the page through the scheme.
+  - Not covered: no test found sends a traversal request through the registered handler.
+- Permission refusal:
+  - Text match only: `tests/security.test.ts`, lines 65 to 69, test `the packaged window turns the developer tools off, and every frame navigation and device permission is refused`. It matches `setPermissionRequestHandler`, `setPermissionCheckHandler` and `setDevicePermissionHandler` in `main.ts`.
+  - Not covered: no test requests a browser permission in a window, so no test shows that the refusal works.
+- Content security policy:
+  - Text match: `tests/security.test.ts` holds the `CSP` constant equal to the tag in `renderer/index.html`. `tests/real-static.test.ts` holds the tag equal to a written-out string.
+  - Behavior: `e2e/window-security.spec.ts` shows in a real window that an inline script does not run. It runs in the sandbox, with a Linux Electron.
+- Close guard:
+  - Behavior: `tests/close-guard.test.ts` runs the guard with fake tools. `e2e/harness-close-guard.spec.ts` and `e2e/quit-menu.spec.ts` run it in a real window.
+  - Text match: `tests/close-guard.test.ts`, test `main handles will-prevent-unload with the guard and a synchronous box...`, matches the wiring in `main.ts`.
+- Fuses:
+  - Package file: `tests/packaging.test.ts` holds the `electronFuses` block of `package.json` against the list in `tools/check-fuses.mjs`. This is a comparison of two files, not a read of a binary.
+  - Binary: the test `the built binary has those fuses` and `e2e/packaged-app.spec.ts` read a built app. Both need a macOS arm64 build, so neither runs in the sandbox. See `docs/v0.9/packaged-app-spec.md`, item F1.
 
 ## What a Tauri shell writes again
 
@@ -179,11 +215,12 @@ The engine and reader code, the kits, the extension registry and loader, the API
 1. Electron is loaded by two files only, and the bridges are named by two files only. Test: `tests/shell-boundary.test.ts`. It runs in the sandbox container.
 2. The engine API library imports nothing from `apps/desktop` or Electron. Test: `tests/engine-api-imports.test.ts`.
 3. The call lists agree with the preload and with main. Test: `tests/api-call-layer.test.ts`.
-4. If a core file gains an Electron import, the new test fails. This holds after any move of a core file out of `main/`.
+4. A core file that gains an Electron import fails the new test. This holds in `main/`, in `shared/`, and in any package that the four folders reach by relative imports. It does not hold for a file in `tools/`, `e2e/` or `tests/`.
 
 ## Unknown
 
 - Whether a Tauri shell reuses the TypeScript of the shell behaviours or writes them again in Rust. The draft plan proposes Rust.
+- Whether any test sends a traversal request through the registered page handler, or requests a browser permission in a window. None was found.
 - The Tauri names for the wire channels.
 - The way the core asks the shell for a dialog. This is open for a core in its own process.
 - Whether the sample launch needs a Tauri counterpart for the rewritten body attribute and the temporary data folder.
