@@ -67,7 +67,8 @@
     "desktop:sample": "node apps/desktop/tools/run.mjs --sample",
     "desktop:dev": "node apps/desktop/tools/run.mjs --sample",
     "desktop:build": "npm --prefix apps/desktop run build",
-    "desktop:test": "npm --prefix apps/desktop run test"
+    "desktop:test": "npm --prefix apps/desktop run test",
+    "sandbox:test": "bash tools/sandbox/run-gates.sh"
   },
   "devDependencies": {
     "@types/node": "24.11.0",
