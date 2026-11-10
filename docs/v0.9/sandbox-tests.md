@@ -79,4 +79,4 @@ The other failures are not yet diagnosed. A decision on how to treat them belong
 
 ## If the build hangs
 
-Docker Desktop can hang on its credential helper when the build pulls the base image. The command then prints nothing after "load metadata". Run the command with an empty Docker config folder that links to the same plug-ins and the same socket.
+The credential helper of Docker Desktop can hang while the build pulls the base image. The command then prints nothing after "load metadata". Run the command with an empty Docker config folder that links to the same plug-ins and the same socket.
