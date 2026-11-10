@@ -77,6 +77,7 @@ test('closing the window with a change asks "Discard 1 change?": Keep editing ke
 });
 
 test('closing the window with a change: Discard closes it', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS only: on any other platform the app quits when its last window closes (main/main.ts, window-all-closed), so the test loses the app it still reads');
   const x = await start(1);
   await change(x.page);
   await closeWindow(x);
@@ -105,6 +106,7 @@ test('a change that was undone asks nothing when the window closes', async () =>
 });
 
 test('a window that stayed after Keep editing asks again at the next close, and Discard closes it', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS only: on any other platform the app quits when its last window closes (main/main.ts, window-all-closed), so the test loses the app it still reads');
   // This build's Window menu has no Close item, so Cmd+W is not bound; the close button and `window.close()` are the paths (see the manual check in apps/desktop/README.md).
   const x = await start(0);
   await change(x.page);
@@ -134,6 +136,7 @@ test('a reload with a change asks: Keep editing keeps the page and the change, D
 });
 
 test('Quit from the application menu (Cmd+Q) with a change asks, and no quit happens while the window refuses to close', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS only: Menu.sendActionToFirstResponder sends the native terminate: action, and no other platform has it');
   const x = await start(0);
   await change(x.page);
   let closed = false;
@@ -153,6 +156,7 @@ test('Quit from the application menu (Cmd+Q) with a change asks, and no quit hap
 });
 
 test('Quit from the application menu (Cmd+Q) with no change quits at once and asks nothing', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS only: Menu.sendActionToFirstResponder sends the native terminate: action, and no other platform has it');
   const x = await start(0);
   await fresh(x.page, BUILDER);
   await expect(count(x.page)).toContainText('No change yet.');
