@@ -20,7 +20,7 @@ These items come from the maintainer's stated direction. V9-1 to V9-7 date from 
 - V9-6, traces and logging API. It records sessions, reviews, usage, and working-tree locks. The maintainer wants it specified only after two working harnesses exist. Under the relayed direction change, it becomes one more engine API (relayed, not on GitHub, an inference to confirm).
 - V9-7, a possible new name. Research only. Nothing is decided.
 - V9-8, structured agent output in the included chat interface. A request relayed through chat on 2026-11-09, not on GitHub. It is a request, not a build. See "New feature request".
-- V9-9, host-neutral API contract. Relayed through chat on 2026-11-09, not on GitHub. The maintainer confirmed in chat that it is a requirement. The relayed text says the concepts also ship as extensions on other platforms where possible. The engine API must work for hosts beyond the Bowerloom app. The shape of the contract is answered in question 6. Which parts another platform can leave out is answered on 2026-11-10: a required core plus declared optional parts. V9-9 has no open point left. A requirement, not a build. See "Direction change".
+- V9-9, host-neutral API contract. Relayed through chat on 2026-11-09, not on GitHub. The maintainer confirmed in chat that it is a requirement. The relayed text says the concepts also ship as extensions on other platforms where possible. The engine API must work for hosts beyond the Bowerloom app. The shape of the contract is answered in question 6. Which parts another platform can leave out is answered on 2026-11-10: a required core plus declared optional parts. The decision is answered. The build gaps stay open: see "Core and optional parts". A requirement, not a build. See "Direction change".
 
 ## State of 0.8 on 2026-11-08
 
@@ -158,7 +158,7 @@ All lines are relayed, not on GitHub. Each is a selection from options that the 
 - Answered in chat, 2026-11-09 (relayed, not on GitHub): question 4, who can call the engine API. "Only Bowerloom surfaces (desktop, terminal, CLI). No other program on the machine."
 - Answered in chat, 2026-11-09 (relayed, not on GitHub): question 5, no lock-in to a bundled style. "Yes, no lock-in, through the engine API." Doc note: a user or host builds another interface on the API, and theming of the default UI is optional.
 - Answered in chat, 2026-11-09 (relayed, not on GitHub): question 6, shape of the host-neutral contract (V9-9). "Other hosts implement Bowerloom's contract and prove it with the conformance suite. Bowerloom owns and versions it." Doc note: the contract and its tests exist from PR 166.
-- Answered in chat, 2026-11-10 (relayed, not on GitHub): V9-9, which parts of the contract another platform can leave out. "A required core plus declared optional parts." The maintainer said "do it" to this proposal. Doc note: the core is the engine API, extension loading, and protected extensions. A host skips optional parts only if it declares them, and the conformance suite then tests only what it claims. This keeps answers 5 and 6. See "Core and optional parts".
+- Answered in chat, 2026-11-10 (relayed, not on GitHub): V9-9, which parts of the contract another platform can leave out. "A required core plus declared optional parts." Proposed by the factory manager session, accepted by the maintainer with "do it" on 2026-11-10. Doc note: the core list is the proposal's wording: the engine API, extension loading, and protected extensions. The proposal gave windows, menus, and local file access as examples of optional parts. A host skips optional parts only if it declares them, and the conformance suite then tests only what it claims. This keeps answers 5 and 6. See "Core and optional parts".
 - Answered in chat, 2026-11-09: Tauri order "A Electron first, Tauri after (Recommended)". It relates to question 7.
 - Answered in chat, 2026-11-09 (relayed, not on GitHub): question 7, if the shell moves from Electron to Tauri, do the core and API stay the home of these ideas? "Yes. The core and the API stay the home of these ideas."
 
@@ -201,6 +201,7 @@ This list is a delivery cut. It does not remove anything from "What 0.9 needs", 
 - The assistant agent that relayed the scope spoke of five default UI extensions. Item 2 lists the work areas of the base, which come to six groups when the first-run flow counts as one. The count is a grouping choice, and the list above does not depend on it.
 - V9-9 has one consumer in 0.9, the desktop app. A second consumer, such as the command line or another platform, is later work.
 - Questions 2 to 7 are answered by relayed selections. See "Chosen scope and related answers". Only the points in the other bullets here remain open.
+- V9-9 optional parts. The contract names no optional part, and nothing lets a host declare what it skips in a form that the conformance suite reads. See "Core and optional parts".
 - The doc has no screen-by-screen behavior list. The route-to-spec matrix in item 1 is the first lane's output, and it becomes the reference.
 
 ## Branches
@@ -287,20 +288,21 @@ A host is a program that runs the Bowerloom engine, such as the desktop app. The
 The split below comes from the contract text on `release/0.8.0-beta.2` at commit `328dd90b`: `docs/v0.9/engine-api-library.md`, `packages/engine-api`, and `apps/desktop/shared/extensions`. Those files are not on `main` yet. The list names only parts that the text names.
 
 Core:
-1. The engine calls. 39 engine calls and 3 reader calls. Each has a name, an argument count, a return kind, and a wire channel (`packages/engine-api/src/calls.ts`). The reader is the three-call API that looks at existing setups.
+1. The engine calls. 39 engine calls and 3 reader calls. Each has a name, an argument count, a return kind, and a wire channel (`packages/engine-api/src/calls.ts`). A wire channel is the name of the message route that carries a call between the app window and the engine. The reader is the three-call API that looks at existing setups.
 2. The answer shapes: `Answer`, `Refusal`, and the return kinds (`packages/engine-api/src/types.ts`).
-3. The refusal codes (`packages/engine-api/src/refusals.ts`). They are 5 call refusals, the 2 named outcomes `NOT_THE_PLAN_SHOWN` and `CANCELLED`, 17 main refusals with words, 14 main answer refusals, 5 steps of a `FAILED` refusal, and the reader codes. Codes that come from other packages (`ADOPTION_*` and the like) are an open list. The contract fixes only their format.
+3. The refusal codes (`packages/engine-api/src/refusals.ts`). They are 5 call refusals, the 2 named outcomes `NOT_THE_PLAN_SHOWN` and `CANCELLED`, 17 main refusals with words (main is the app's main process, the part that runs the engine), 14 main answer refusals, 5 steps of a `FAILED` refusal, and the reader codes. Codes that come from other packages (`ADOPTION_*` and the like) are an open list. The contract fixes only their format.
 4. Extension loading. The manifest check, the registry (`register`, `uninstall`, `resolve`, `list`), the 7 extension refusal codes, and the loader. The loader reads manifests only from inside the app bundle (`apps/desktop/shared/extensions` and `apps/desktop/main/extension-loader.ts`).
 5. Protected extensions. The manifest has a `protected` flag. An uninstall of a protected extension returns `PROTECTED`, and the extension stays registered.
 
-Optional: the contract text names no optional part. The maintainer's examples are windows, menus, and local file access. The text does not support a clean split for any of them. The gaps:
+Optional: the contract text names no optional part. The proposal's examples are windows, menus, and local file access. The text does not support a clean split for any of them. The gaps:
 - Windows and menus are app shell code. The contract has no part with either name.
 - Local file access runs through almost every engine call (adoption, projection, save, notes, and bundles). The contract does not separate those calls from the rest.
 - The library document says the engine reaches the host through functions that the app passes in: a confirm dialog, folder and file choosers, `openPath`, and `writeClipboard`. By name, these calls depend on them: `chooseFolder`, `chooseNotesFolder`, `chooseBundle`, `pickFolder` (reader), `openNotesReport`, and `startCommandToClipboard`. The outcome `CANCELLED` depends on the dialog. They are candidates for optional parts, but the contract does not mark them, and the match from call to function was not checked.
 - The six default extensions own 15 desktop routes, and `ui` is the only extension kind. The text does not say whether a host with no windows must register them.
 - Extension loading and protected extensions live in `apps/desktop`, not in `packages/engine-api`. The contract package has no text for them yet.
-- Each call names a wire channel (`bowerloom-engine:<call>`), which is the desktop transport. The text does not say whether another host keeps the channels. Answer 3 fixes the in-process library form, which has no wire.
-- Nothing in the contract or the suite lets a host declare what it skips. The shape suite takes one factory and one option, `declaresEveryParameter`. The suite cannot yet test only what a host claims. A later lane builds that.
+- Each call names a wire channel. The 39 engine calls use `bowerloom-engine:<call>`, and the 3 reader calls use `bowerloom-real:*`. These are the desktop transport. The text does not say whether another host keeps the channels. Answer 3 fixes the in-process library form, which has no wire.
+- Nothing in the contract or the suite lets a host declare what it skips. The shape suite takes one subject with a `label`, a `make()` function, the `ids` it knows, and the optional `declaresEveryParameter`. None of these is a declaration of skipped parts. The suite cannot yet test only what a host claims. A later lane builds that.
+- The conformance suite has no extension part today. The extension checks are desktop unit tests in `apps/desktop/tests`.
 
 A lane that closes these gaps adds a named optional part to the contract, and a declaration the suite reads. It does not guess the parts.
 
