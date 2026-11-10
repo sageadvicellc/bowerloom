@@ -17,5 +17,9 @@ apps/desktop/dist
 **/.npmrc
 **/*.pem
 **/*.key
-*.log
+**/*.log
+.ssh
+.aws
+*.p12
+**/*.p12
 .DS_Store

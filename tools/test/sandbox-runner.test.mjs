@@ -129,6 +129,7 @@ test('the gates summary fails on a missing or unreadable file', () => {
 });
 
 const E2E = path.join(root, 'tools/sandbox/summarize-e2e.mjs');
+const fixtureInventory = () => { const f = path.join(tmp(), 'inv.json'); fs.writeFileSync(f, JSON.stringify({ suites: { e2e: { counts: { tests: 1 } } } })); return f; };
 const spec = (title, status) => ({ title, file: 'a.spec.ts', tests: [{ status, annotations: [] }] });
 
 test('the e2e summary prints the Playwright counts and names each failed test', () => {
@@ -140,7 +141,7 @@ test('the e2e summary prints the Playwright counts and names each failed test', 
   assert.match(result.stdout, /FAILED +pass 2, fail 1, flaky 0, skipped 3/);
   assert.match(result.stdout, /failed: apps\/desktop\/e2e\/a\.spec\.ts: breaks/);
   fs.writeFileSync(file, JSON.stringify({ stats: { expected: 2, unexpected: 0, flaky: 0, skipped: 1 }, suites: [] }));
-  assert.equal(spawnSync('node', [E2E, file, '--inventory', '/nonexistent'], { encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('node', [E2E, file, '--inventory', fixtureInventory()], { encoding: 'utf8' }).status, 0);
 });
 
 test('the e2e summary fails when no test passed, and when the file is missing', () => {
@@ -191,13 +192,13 @@ const fakeDocker = (bin, log) => {
 echo "$*" >> "${log}"
 case "$1" in
   info|build|inspect) exit 0 ;;
-  run) exit \${FAKE_RUN_EXIT:-0} ;;
+  run) [ -n "\${FAKE_RUN_SLEEP:-}" ] && sleep "\$FAKE_RUN_SLEEP"; exit \${FAKE_RUN_EXIT:-0} ;;
   rm) [ -n "\${FAKE_RM_FAIL:-}" ] && { echo "rm failed: busy" >&2; exit 1; }; exit 0 ;;
   kill) exit 0 ;;
   cp) [ -n "\${FAKE_CP_FAIL:-}" ] && exit 1
       src="\${2#*:}"; dst="$3"
       case "$src" in
-        */logs) mkdir -p "$dst"; echo log > "$dst/a.log"; ln -s /etc/passwd "$dst/evil" ;;
+        */logs) mkdir -p "$dst"; echo log > "$dst/a.log"; ln -s /etc/passwd "$dst/evil"; mkfifo "$dst/pipe" ;;
         *) case "$src" in */gates-root-test.json) [ -n "\${FAKE_MISSING:-}" ] && exit 0 ;; esac; echo x > "$dst" ;;
       esac; exit 0 ;;
 esac
@@ -284,7 +285,7 @@ test('in-container: a gate that fails, and a build that fails, fail the run, and
 
 test('in-container: every long command has a time limit, and it refuses outside the container', () => {
   const text = fs.readFileSync(inContainer, 'utf8');
-  for (const needle of [/timeout \d+ npm run bundle/, /timeout \d+ npm run build/, /timeout \d+ node --test/, /timeout \d+ xvfb-run/]) assert.match(text, needle);
+  for (const needle of [/timeout -k 30 \d+ npm run bundle/, /timeout -k 30 \d+ npm run build/, /timeout -k 30 \d+ node --test/, /timeout -k 30 \d+ xvfb-run/]) assert.match(text, needle);
   const result = spawnSync('sh', [inContainer], { encoding: 'utf8', env: { ...process.env, BOWERLOOM_SANDBOX: '' } });
   assert.equal(result.status, 2);
 });
@@ -324,4 +325,55 @@ test('the machine-dependent check prints the node --test exit code and judges by
   assert.equal(other.status, 0, 'other tests of the same files may fail for root');
   fs.writeFileSync(file, names.slice(1).map(name => JSON.stringify({ file: 'f.mjs', name, status: 'pass' })).join('\n') + '\n');
   assert.equal(spawnSync('node', [MD, file, '--node-exit', '0'], { encoding: 'utf8' }).status, 1);
+});
+
+
+// ---- round 2 ----
+test('a relative --out is resolved against the caller folder, so a copy never lands in the repository', () => {
+  const f = withFake(); const cwd = tmp();
+  fs.mkdirSync(path.join(cwd, 'docs')); fs.writeFileSync(path.join(cwd, 'docs/keep.md'), 'x');
+  const refused = spawnSync('bash', [runner, '--print-commands', '--out', 'docs'], { cwd, encoding: 'utf8' });
+  assert.equal(refused.status, 2, 'docs in the caller folder holds a file, so it is refused');
+  const result = spawnSync('bash', [runner, '--out', 'rel-out'], { cwd, encoding: 'utf8', env: { ...f.env() } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  for (const name of REQUIRED) assert.ok(fs.existsSync(path.join(cwd, 'rel-out', name)), name);
+  assert.ok(!fs.existsSync(path.join(root, 'rel-out')), 'nothing was written into the repository');
+});
+
+test('--out refuses a ".." part, so $HOME/nope/.. cannot reach the home folder', () => {
+  const home = tmp();
+  const result = runOut(['--out', `${home}/nope/..`], { HOME: home });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /\.\./);
+  assert.ok(!fs.existsSync(path.join(home, 'nope')), 'the check made no folder');
+});
+
+test('staging removes a pipe and a link, and leaves no stage folder or timeout marker', () => {
+  const f = withFake(); const out = path.join(tmp(), 'out'); const tmpdir = tmp();
+  const result = spawnSync('bash', [runner, '--out', out], { encoding: 'utf8', env: { ...f.env(), TMPDIR: tmpdir } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!fs.existsSync(path.join(out, 'logs', 'pipe')) && !fs.existsSync(path.join(out, 'logs', 'evil')));
+  assert.deepEqual(fs.readdirSync(out).filter(n => n.startsWith('.')), []);
+  assert.deepEqual(fs.readdirSync(tmpdir), [], 'the timeout marker is removed');
+});
+
+test('a TERM signal exits 130 and still removes the container', () => {
+  const f = withFake();
+  const result = spawnSync('sh', ['-c', `bash "${runner}" & pid=$!; sleep 1; kill -TERM $pid; wait $pid; echo status:$?`], { encoding: 'utf8', env: { ...f.env(), FAKE_RUN_SLEEP: '3' } });
+  assert.match(result.stdout, /status:130/);
+  assert.match(fs.readFileSync(f.log, 'utf8'), /rm -f bowerloom-sandbox-/);
+});
+
+test('the runner writes the timeout marker before it kills, and traps INT and TERM', () => {
+  const text = fs.readFileSync(runner, 'utf8');
+  assert.match(text, /trap 'exit 130' INT TERM/);
+  assert.match(text, /mktemp "\$\{TMPDIR:-\/tmp\}\/bowerloom-sandbox-timeout/);
+  assert.ok(text.indexOf('echo timeout > "$marker"') < text.indexOf('docker kill'), 'marker first');
+});
+
+test('the e2e summary fails when the frozen count cannot be read, and when --exit-code has no value', () => {
+  const missing = e2eRun(e2eReport({}), ['--inventory', '/nonexistent']);
+  assert.equal(missing.status, 1); assert.match(missing.stdout, /frozen count unavailable/);
+  const noValue = e2eRun(e2eReport({}), ['--exit-code']);
+  assert.equal(noValue.status, 1); assert.match(noValue.stdout + noValue.stderr, /exit-code/);
 });

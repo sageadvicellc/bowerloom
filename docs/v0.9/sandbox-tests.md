@@ -21,14 +21,16 @@ The container runs these steps. All of them run, also after a failure.
 5. Desktop end-to-end tests, on a virtual screen that exists only in the container.
 6. The four machine-dependent tests, with a short report of each.
 
-Steps 1 to 4 run one at a time through `tools/gates.mjs`. Step 5 runs Playwright directly, with a limit of three hours. The gates tool stops an end-to-end step at 30 minutes, and a full run in the container takes longer. Each long command has its own time limit. A failed build stops nothing, but it fails the run and prints the end of its log.
+Steps 1 to 4 run one at a time through `tools/gates.mjs`. Step 5 runs Playwright directly, with a limit of three hours. The gates tool stops an end-to-end step at 30 minutes, and a full run in the container takes longer. Each long command has its own time limit. A failed build, or a failed `npm run bundle` before the end-to-end step, stops nothing else. It fails the run and prints the end of its log.
 
 Step 5 fails in these cases:
 
+- `npm run bundle` fails, so Playwright does not start.
 - Playwright exits with a code other than 0. Code 124 means the time limit stopped it.
 - The report holds an error.
 - A test was interrupted.
 - The report holds fewer tests than the frozen end-to-end suite. That suite has 285 tests in `docs/v0.9/test-inventory.json`.
+- The frozen count cannot be read. The summary then says "frozen count unavailable".
 
 ## How it stays off your computer
 
@@ -49,7 +51,17 @@ The network is on while the image builds, because the build installs the package
 - `--out <folder>` copies the result files to a folder on your computer after the run.
 - `BOWERLOOM_SANDBOX_LIMIT_SECONDS` sets the time limit of the whole container run. The default is 14400.
 
-The `--out` folder must be a new folder, or an empty one. The command refuses a folder that holds files, `/`, your home folder, a link, and a name that starts with a dash. It copies only the named result files, one by one, into a fresh folder inside `--out`. It removes any link, then moves the files up.
+The `--out` folder must be a new folder, or an empty one. The command refuses these:
+
+- A folder that holds files.
+- `/` and your home folder.
+- A link.
+- A name that starts with a dash.
+- A path with a `..` part.
+
+A relative path counts from the folder where you run the command. The command checks the folder again right before the copy.
+
+ It copies only the named result files, one by one, into a fresh folder inside `--out`. It removes any link or special file, then moves the files up.
 
 The result files are `gates-<step>.json` for each of the four gates steps, `e2e.json`, `machine-dependent.jsonl`, and a `logs` folder.
 

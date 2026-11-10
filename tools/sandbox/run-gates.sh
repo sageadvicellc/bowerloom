@@ -35,20 +35,29 @@ while [ $# -gt 0 ]; do
 done
 
 # --out is checked before anything runs. The copy must never write over a file of the host.
+# out_problem prints why a folder cannot take the copy, or nothing. It is used before the run and again right before the copy.
+out_problem() {
+  local dir="$1" resolved
+  [ -n "$dir" ] || { echo "the folder name is empty"; return; }
+  trimmed="${dir%/}"; [ -n "$trimmed" ] || { echo "that is the root folder"; return; }
+  if [ -L "$dir" ]; then echo "that is a link"; return; fi
+  if [ -e "$dir" ]; then
+    [ -d "$dir" ] || { echo "that exists and is not a folder"; return; }
+    resolved="$(cd -- "$dir" && pwd -P)" || { echo "that folder cannot be opened"; return; }
+    [ "$resolved" = "/" ] && { echo "that is the root folder"; return; }
+    if [ -n "${HOME:-}" ] && [ -d "$HOME" ] && [ "$resolved" = "$(cd -- "$HOME" && pwd -P)" ]; then echo "that is your home folder"; return; fi
+    [ -z "$(ls -A -- "$dir")" ] || { echo "that folder already holds files. Use a new folder or an empty one"; return; }
+  fi
+  if [ -n "${HOME:-}" ] && [ "$trimmed" = "${HOME%/}" ]; then echo "that is your home folder"; return; fi
+}
+
 if [ "$out_given" = "1" ]; then
   refuse() { echo "run-gates: --out refused: $1" >&2; exit 2; }
-  [ -n "$out" ] || refuse "the folder name is empty"
   case "$out" in -*) refuse "the name starts with a dash" ;; esac
-  trimmed="${out%/}"; [ -n "$trimmed" ] || refuse "that is the root folder"
-  if [ -e "$out" ] || [ -L "$out" ]; then
-    [ -L "$out" ] && refuse "that is a link"
-    [ -d "$out" ] || refuse "that exists and is not a folder"
-    resolved="$(cd -- "$out" && pwd -P)"
-    [ "$resolved" = "/" ] && refuse "that is the root folder"
-    [ -n "${HOME:-}" ] && [ -d "$HOME" ] && [ "$resolved" = "$(cd -- "$HOME" && pwd -P)" ] && refuse "that is your home folder"
-    [ -z "$(ls -A -- "$out")" ] || refuse "that folder already holds files. Use a new folder or an empty one"
-  fi
-  if [ -n "${HOME:-}" ] && [ "$trimmed" = "${HOME%/}" ]; then refuse "that is your home folder"; fi
+  case "/$out/" in */../*) refuse "the path holds a .. part. Give a path without it" ;; esac
+  # Make the path absolute now, against the folder the caller is in. The script changes folder later.
+  case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
+  problem="$(out_problem "$out")"; [ -z "$problem" ] || refuse "$problem"
 fi
 
 limits=(--cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add SETUID --cap-add SETGID --cap-add KILL
@@ -72,7 +81,12 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   exit 3
 fi
 
+watchdog=""; stage=""; marker=""; run_pid=""
 cleanup() {
+  [ -n "$watchdog" ] && kill "$watchdog" 2>/dev/null
+  [ -n "$run_pid" ] && kill "$run_pid" 2>/dev/null
+  [ -n "$stage" ] && rm -rf -- "$stage"
+  [ -n "$marker" ] && rm -f -- "$marker"
   docker inspect "$name" >/dev/null 2>&1 || return 0
   local err
   if ! err="$(docker rm -f "$name" 2>&1 >/dev/null)"; then
@@ -81,39 +95,51 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 cd "$repo" || exit 2
 "${build_cmd[@]}" || { echo "run-gates: the image did not build" >&2; exit 4; }
 
+marker="$(mktemp "${TMPDIR:-/tmp}/bowerloom-sandbox-timeout.XXXXXX")" || { echo "run-gates: could not make a temporary file" >&2; exit 2; }
 "${run_cmd[@]}" &
 run_pid=$!
 ( waited=0
   while [ "$waited" -lt "$limit" ]; do sleep 1 >/dev/null 2>&1; waited=$((waited + 1)); done
   echo "run-gates: the time limit of $limit seconds passed; stopping the container" >&2
-  docker kill "$name" >/dev/null 2>&1
-  : > "${TMPDIR:-/tmp}/$name.timeout" ) &
+  echo timeout > "$marker"
+  docker kill "$name" >/dev/null 2>&1 ) &
 watchdog=$!
 wait "$run_pid"
 status=$?
 kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
-if [ -e "${TMPDIR:-/tmp}/$name.timeout" ]; then rm -f -- "${TMPDIR:-/tmp}/$name.timeout"; timed_out=1; else timed_out=0; fi
+watchdog=""; run_pid=""
+timed_out=0; [ -s "$marker" ] && timed_out=1
 
 copy_fail=0
 if [ "$out_given" = "1" ]; then
-  # Copy only the named files, one by one, into a fresh folder inside --out. Then remove links and move the files up.
+  # Copy only the named files, one by one, into a fresh folder inside --out. Then remove anything that is not a plain file or folder, and move the files up.
   required=(gates-root-typecheck.json gates-root-test.json gates-desktop-typecheck.json gates-desktop-test.json e2e.json machine-dependent.jsonl)
   mkdir -p -- "$out" || copy_fail=1
-  stage=""
-  [ "$copy_fail" = "0" ] && { stage="$(mktemp -d "${out%/}/.copy.XXXXXX")" || copy_fail=1; }
+  if [ "$copy_fail" = "0" ]; then
+    # Resolve again after the folder exists, and run the checks again: the folder may have changed since the start.
+    out="$(cd -- "$out" && pwd -P)" || copy_fail=1
+    problem="$(out_problem "$out")"
+    if [ -n "$problem" ]; then echo "run-gates: --out refused before the copy: $problem" >&2; copy_fail=1; fi
+  fi
+  [ "$copy_fail" = "0" ] && { stage="$(mktemp -d "$out/.copy.XXXXXX")" || copy_fail=1; }
   if [ "$copy_fail" = "0" ]; then
     for f in "${required[@]}"; do docker cp "$name:/out/$f" "$stage/$f" >/dev/null 2>&1 || echo "run-gates: could not copy $f from the container" >&2; done
     docker cp "$name:/out/logs" "$stage/logs" >/dev/null 2>&1 || echo "run-gates: could not copy logs from the container" >&2
-    find "$stage" -type l -exec rm -f -- {} + 2>/dev/null
+    find "$stage" ! -type f ! -type d -delete 2>/dev/null
+    chmod -R a-s "$stage" 2>/dev/null
     for f in "${required[@]}"; do
-      if [ -f "$stage/$f" ]; then mv -- "$stage/$f" "${out%/}/$f"; else echo "run-gates: missing result file $f; could not copy it" >&2; copy_fail=1; fi
+      if [ -f "$stage/$f" ]; then
+        mv -- "$stage/$f" "$out/$f" || { echo "run-gates: could not move $f into $out" >&2; copy_fail=1; }
+      else
+        echo "run-gates: missing result file $f; could not copy it" >&2; copy_fail=1
+      fi
     done
-    [ -d "$stage/logs" ] && mv -- "$stage/logs" "${out%/}/logs"
-    rm -rf -- "$stage"
+    if [ -d "$stage/logs" ]; then mv -- "$stage/logs" "$out/logs" || { echo "run-gates: could not move logs into $out" >&2; copy_fail=1; }; fi
   fi
 fi
 

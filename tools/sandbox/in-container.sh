@@ -19,14 +19,14 @@ for step in root-typecheck root-test desktop-typecheck desktop-test; do
   node tools/gates.mjs --only "$step" --json > "$OUT/gates-$step.json" 2> "$OUT/gates-$step.stderr" || failed=1
   files="$files $OUT/gates-$step.json"
 done
-cp .trellis/gates/*.log "$OUT/logs/" 2>/dev/null
+cp .trellis/gates/*.log "$OUT/logs/" || echo "warning: could not copy the gates logs"
 # shellcheck disable=SC2086
 node tools/sandbox/summarize-gates.mjs $files || failed=1
 
 echo "== desktop e2e, on a virtual screen"
 pw=1
-if (cd apps/desktop && timeout 1800 npm run bundle > "$OUT/logs/desktop-e2e-bundle.log" 2>&1); then
-  (cd apps/desktop && PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/e2e.json" timeout 10800 xvfb-run -a --server-args="-screen 0 1280x1024x24" \
+if (cd apps/desktop && timeout -k 30 1800 npm run bundle > "$OUT/logs/desktop-e2e-bundle.log" 2>&1); then
+  (cd apps/desktop && PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/e2e.json" timeout -k 30 10800 xvfb-run -a --server-args="-screen 0 1280x1024x24" \
     npx playwright test --config playwright.config.ts --reporter=list,json > "$OUT/logs/desktop-e2e.log" 2>&1)
   pw=$?
 else
@@ -39,13 +39,13 @@ node tools/sandbox/summarize-e2e.mjs "$OUT/e2e.json" --exit-code "$pw" || failed
 
 echo "== the four machine-dependent tests"
 if [ ! -d dist/tests ]; then
-  if ! timeout 1800 npm run build > "$OUT/logs/build.log" 2>&1; then
+  if ! timeout -k 30 1800 npm run build > "$OUT/logs/build.log" 2>&1; then
     echo "build failed. Last lines of $OUT/logs/build.log:"; tail -n 20 "$OUT/logs/build.log"; failed=1
   fi
 fi
 MD_FILES="${BOWERLOOM_SANDBOX_MD_FILES:-packages/project-context/test/registered-folders.test.mjs packages/project-sync/test/portable-review.test.mjs packages/project-context/test/discovery.test.mjs packages/skill-sources/test/remove-cache.test.mjs}"
 # shellcheck disable=SC2086
-timeout 900 node --test --test-timeout=120000 --test-reporter=./tools/inventory-reporter.mjs $MD_FILES > "$OUT/machine-dependent.jsonl" 2> "$OUT/machine-dependent.stderr"
+timeout -k 30 900 node --test --test-timeout=120000 --test-reporter=./tools/inventory-reporter.mjs $MD_FILES > "$OUT/machine-dependent.jsonl" 2> "$OUT/machine-dependent.stderr"
 nodeexit=$?
 node tools/sandbox/machine-dependent.mjs "$OUT/machine-dependent.jsonl" --node-exit "$nodeexit"
 md=$?

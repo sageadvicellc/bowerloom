@@ -2,7 +2,7 @@
 // Test tooling, never shipped. Prints the counts of a `playwright test --reporter=json` file, and the title of each failed test.
 //   node tools/sandbox/summarize-e2e.mjs <e2e.json> [--exit-code N] [--inventory <test-inventory.json>]
 // Exit 0 only when: Playwright exited 0 (when --exit-code is given), the report has no top-level error, no test was interrupted,
-// no test failed, at least one passed, and the report holds at least as many tests as the frozen e2e suite (when the inventory has one).
+// no test failed, at least one passed, and the report holds at least as many tests as the frozen e2e suite (and the frozen count must be readable).
 // Exit 1 otherwise, and on a missing or unreadable file. A skipped count is printed as a warning.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,7 @@ export function summarizeE2e(report, { exitCode = null, frozenTests = null } = {
   const interrupted = interruptedCount(report);
   if (interrupted > 0) problems.push(`${interrupted} test(s) interrupted`);
   const total = expected + unexpected + flaky + skipped;
+  if (frozenTests === null) problems.push('frozen count unavailable (docs/v0.9/test-inventory.json has no e2e test count)');
   if (frozenTests !== null && total < frozenTests) problems.push(`the report has ${total} tests, fewer than the ${frozenTests} of the frozen e2e suite`);
   const ok = unexpected === 0 && expected > 0 && problems.length === 0;
   const lines = [`desktop-e2e        ${ok ? 'passed' : 'FAILED'}  pass ${expected}, fail ${unexpected}, flaky ${flaky}, skipped ${skipped}, total ${total}`];
@@ -41,6 +42,8 @@ export function summarizeE2e(report, { exitCode = null, frozenTests = null } = {
 function main(argv) {
   const args = [...argv];
   const take = flag => { const i = args.indexOf(flag); if (i < 0) return null; const [, value] = args.splice(i, 2); return value ?? null; };
+  const codeAt = args.indexOf('--exit-code');
+  if (codeAt >= 0 && !/^\d+$/.test(args[codeAt + 1] ?? '')) { process.stdout.write('--exit-code needs a number\n'); return 1; }
   const codeText = take('--exit-code');
   const inventoryPath = take('--inventory') ?? DEFAULT_INVENTORY;
   let frozenTests = null;
