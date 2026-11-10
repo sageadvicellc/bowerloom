@@ -22,10 +22,13 @@ RUN npm ci && npm --prefix apps/desktop ci
 
 # Electron 44 has no install script. Its binary comes from `install-electron`, which needs the network, so it runs now at build time.
 # Electron also refuses to start as root without --no-sandbox, and the e2e specs start the binary themselves.
-# The wrapper adds the flag inside the image only. It changes no file of the repository.
+# So a wrapper next to the binary adds the flag, and path.txt (which names the binary for `require('electron')` and for tools/run.mjs) points at the wrapper.
+# The real binary keeps its name `electron`: Electron decides app.isPackaged from that name, and a binary renamed to anything else counts as a packaged app,
+# which sends the app to look for its kits in the wrong folder. The wrapper changes no file of the repository.
 RUN cd apps/desktop && node_modules/.bin/install-electron
-RUN set -eu; bin=apps/desktop/node_modules/electron/dist/electron; mv "$bin" "$bin.real"; \
-    printf '#!/bin/sh\nexec "%s.real" --no-sandbox "$@"\n' "/work/$bin" > "$bin"; chmod 755 "$bin"
+RUN set -eu; dir=apps/desktop/node_modules/electron; \
+    printf '#!/bin/sh\nexec "%s" --no-sandbox "$@"\n' "/work/$dir/dist/electron" > "$dir/dist/electron-no-sandbox"; chmod 755 "$dir/dist/electron-no-sandbox"; \
+    printf 'electron-no-sandbox' > "$dir/path.txt"
 
 ENV BOWERLOOM_SANDBOX=1
 CMD ["sh", "tools/sandbox/in-container.sh"]
