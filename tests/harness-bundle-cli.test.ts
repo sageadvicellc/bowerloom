@@ -18,6 +18,7 @@ import { harnessStateDirs } from '../packages/project-sync/src/index.js';
 import { NotesRefusal, readNotesSummary } from '../packages/notes-source/src/index.js';
 import { BUNDLE_CODES, BUNDLE_FORMAT, EMPTY_HARNESS_DESCRIPTION, isEmptyHarness, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
 import { computeRevision, loadDefinition } from '../packages/harness-definition/src/index.js';
+import { skipAsRoot } from './support/machine-skips.js';
 
 const sha = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -577,7 +578,7 @@ test('notes names are left out by default; --link links one with its stored path
 
 // ---- every refusal code, with its exact words ----------------------------------------------------------------------------
 
-test('every refusal code of the bundle is reachable from the command line with its exact words', t => {
+test('every refusal code of the bundle is reachable from the command line with its exact words', { skip: skipAsRoot('a write into a folder at mode 555 cannot fail, and this test must reach BUNDLE_FILE_FAILED') }, t => {
   const w = world(t);
   put(w.src, richFiles());
   exportOut(w);

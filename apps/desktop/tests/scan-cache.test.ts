@@ -11,6 +11,7 @@ import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { smallResult } from './fixtures-real/small-result.js';
 import { writeSync as writeSyncReal } from 'node:fs';
 import { tempDir } from './support.js';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 const place: RealPlace = {
   id: 'place-0123456789ab', label: 'Claude Code at home', kind: 'home', apps: ['Claude Code'], appLabel: 'Claude Code', counts: { agents: 1, skills: 2, tools: 0, hooks: 0, notes: 0 }, empty: false,
@@ -113,7 +114,7 @@ test('a folder that is a link is refused for a load, and a save moves it aside a
   assert.deepEqual(readdirSync(elsewhere), ['last-read.json'], 'nothing was written through the link');
 });
 
-test('a file that is a folder, or cannot be opened, is damaged and never throws', t => {
+test('a file that is a folder, or cannot be opened, is damaged and never throws', { skip: skipAsRoot('a cache file at mode 000 cannot be opened') }, t => {
   const root = tempDir(t), cache = createScanCache({ stateRoot: root });
   mkdirSync(cachePath(root), { recursive: true });
   assert.deepEqual(cache.load(), { status: 'damaged', why: 'linked' }, 'not a plain file');
@@ -284,7 +285,7 @@ test('an aside entry that vanishes between the listing and the look does not sto
   assert.ok(warnings.every(m => !m.includes(root) && !m.includes('eeeeeeeeeeee')), 'a report names no path');
 });
 
-test('an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path', t => {
+test('an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, t => {
   const root = tempDir(t), warnings: string[] = [];
   // Made in this order, so aaa is the oldest, bbb the one that cannot be removed, ccc the newest (kept). The locked child is made before ccc, so it does not make bbb the newest.
   const locked = join(root, 'last-read.bad.bbbbbbbbbbbb', 'locked');

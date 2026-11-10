@@ -23,6 +23,7 @@ import { atApproval, honestShared, MIGRATE_REASON } from '../packages/project-co
 import { partialRefusal } from '../packages/project-sync/src/refusal.js';
 import { reasonOf } from '../packages/project-sync/src/migrate-store.js';
 import { GITHUB_REQUEST_MAX, TOKEN_STALE_NOTE } from '../packages/project-sync/src/store-git.js';
+import { skipAsRoot } from './support/machine-skips.js';
 
 const FILE_SENTENCE = 'The item holds a file that a lock cannot record.';
 const SIZE_SENTENCE = 'The item is larger than a lock can record.';
@@ -122,7 +123,10 @@ test('round 2. each fault of a store item refuses lock update with its own Next:
     ['too many bytes', () => { mkdirSync(join(item, 'big'), { mode: 0o755 }); for (let i = 0; i < 33; i++) writeFileSync(join(item, 'big', `f${i}.md`), `${i}`.padEnd(65000, 'a')); }, () => shell(item, 'rm -r big', w), 'size',
       `${ITEM} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`],
   ];
-  for (const [label, make, undo, cause, next] of cases) {
+  // Root reads a file at mode 000, so that one row cannot refuse as it expects. It runs for every other user.
+  const rootCannot = skipAsRoot('a file at mode 000 cannot be read');
+  if (rootCannot) t.diagnostic(`row "a file this user cannot read" skipped: ${rootCannot}`);
+  for (const [label, make, undo, cause, next] of cases.filter(([label]) => !(rootCannot && label === 'a file this user cannot read'))) {
     make();
     const r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
     assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${label}: ${r.stderr}${r.stdout}`);
@@ -411,7 +415,7 @@ test('round 4. a group-writable item folder, or ~/.bowerloom/skills, prints the 
 });
 
 // Round 4, item 5: a step under the .bowerloom of a project says where to run it, and store migrate names an unreadable item.
-test('round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence', t => {
+test('round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence', { skip: skipAsRoot('a skill file at mode 000 cannot be read') }, t => {
   const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
   mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
   chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o755);

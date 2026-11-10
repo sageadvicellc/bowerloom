@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOPICS } from '../apps/cli/src/human.js';
+import { skipAsRoot } from './support/machine-skips.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 const STORE_JSON = '{"format":"bowerloom/store/v1beta1"}\n';
@@ -226,7 +227,7 @@ test('15. help store and store --help print the store topic, and the first scree
   assert.match(run(w.home, ['--help'], w.env).stdout, /\n {2}bowerloom help store {7}Your store, ~\/\.bowerloom, and how a project uses it\.\n/);
 });
 
-test('16. store status with the home folder at mode 0 prints Store: refused (STORE_UNREADABLE) and exits 0', t => {
+test('16. store status with the home folder at mode 0 prints Store: refused (STORE_UNREADABLE) and exits 0', { skip: skipAsRoot('a home folder at mode 0 cannot be read') }, t => {
   const w = world(t); mkStore(w); const elsewhere = join(w.base, 'cwd'); mkdirSync(elsewhere);
   chmodSync(w.home, 0);
   try {

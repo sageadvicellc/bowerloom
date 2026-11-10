@@ -8,6 +8,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import '../../../dist/tests/support/isolate-home.js';
 import { inspectStoreWith, openStoreWith, isValidStore, verifyStorePins, pathInsideStore, assertNotInStore, storeRootOf, STORE_FORMAT } from '../../../dist/packages/project-context/src/store.js';
 import { inspectStore, openStore } from '../../../dist/packages/project-context/src/index.js';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const code = expected => error => error?.code === expected;
 const BODY = `{"format":"${STORE_FORMAT}"}\n`;
@@ -202,7 +203,7 @@ test('17. two names that fold to store.json throw STORE_UNSAFE', t => {
   assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'));
 });
 
-test('18. a home folder at mode 0 throws STORE_UNREADABLE', t => {
+test('18. a home folder at mode 0 throws STORE_UNREADABLE', { skip: skipAsRoot('a home folder at mode 0 cannot be read') }, t => {
   const w = mkStore(world(t)); fs.chmodSync(w.home, 0);
   try { assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNREADABLE')); } finally { fs.chmodSync(w.home, 0o700); }
   assert.throws(() => inspectStoreWith('/nonexistent-home-for-bowerloom-test', solo(w)), code('STORE_UNREADABLE'));

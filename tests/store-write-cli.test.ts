@@ -13,6 +13,7 @@ import { withProjectLock } from '../packages/project-context/src/index.js';
 import { addLocalEntry } from '../packages/skill-manifest/src/add.js';
 import { STORE_MANIFEST_LIMITS, serializeManifest } from '../packages/skill-manifest/src/schema.js';
 import { seedWords } from '../apps/cli/src/manifest.js';
+import { skipAsRoot } from './support/machine-skips.js';
 
 const cli = fileURLToPath(new URL('../apps/cli/src/main.js', import.meta.url));
 const preload = pathToFileURL(fileURLToPath(new URL('./support/fake-network.js', import.meta.url))).href;
@@ -366,7 +367,7 @@ test('28. C3: a state folder aliased to the store after the plan is refused at a
   assert.deepEqual(readdirSync(w.store), []);
 });
 
-test('29. F6: a seed that fails after the pin is written says so in plain words for the store', t => {
+test('29. F6: a seed that fails after the pin is written says so in plain words for the store', { skip: skipAsRoot('a folder at mode 500 cannot take a write') }, t => {
   const w = world(t), parent = join(w.base, 'ro'); mkdirSync(parent, { mode: 0o700 });
   const env = { ...w.env, ...network(w.base), XDG_STATE_HOME: join(parent, 'state') };
   const planned = run(w.work, ['skills', 'add', NPM_SPEC, '--global', '--json'], env, ['--import', preload]);
@@ -422,7 +423,7 @@ test('33. F8: skills add --global --team names a store team', t => {
   assert.deepEqual(JSON.parse(readFileSync(join(w.store, 'skills.json'), 'utf8')).skills[0].teams, ['research']);
 });
 
-test('34. F5: a store team folder that cannot be read is not "not found"', t => {
+test('34. F5: a store team folder that cannot be read is not "not found"', { skip: skipAsRoot('a team folder at mode 000 cannot be listed') }, t => {
   const w = world(t), env = { ...w.env, ...network(w.base) };
   mustApprove(w, ['team', 'create', 'research', '--global']);
   chmodSync(join(w.store, 'teams'), 0o000);

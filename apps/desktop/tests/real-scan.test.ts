@@ -11,6 +11,7 @@ import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from './fixtures-real/b
 import { fingerprint } from './fixtures-real/fingerprint.js';
 import { tempDir } from './support.js';
 import type { TestContext } from 'node:test';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 function fixture(t: TestContext): ReturnType<typeof buildFixture> {
   const f = buildFixture();
@@ -28,7 +29,7 @@ test('an empty home folder has no places, and a home that is not there is refuse
   assert.deepEqual([d.places, d.stoppedEarly, d.couldNotRead, d.readOnly], [[], false, 0, true]);
 });
 
-test('step one finds one place for each program under the home folder, and counts by structure', async t => {
+test('step one finds one place for each program under the home folder, and counts by structure', { skip: skipAsRoot('the fixture holds a folder at mode 000 that must not open') }, async t => {
   const f = fixture(t), scanner = createScanner({ home: f.home });
   const d = await scanner.discover();
   assert.deepEqual(d.places.map(p => p.label), ['Claude Code at home', 'Codex at home', 'OpenCode at home', 'Hermes at home']);
@@ -73,7 +74,7 @@ test('a picked folder that is the home folder does not take the home tool folder
   assert.ok(d.places.some(p => p.label === 'alpha'));
 });
 
-test('step two reads text only for the places that were chosen, and hides what looks like a key', async t => {
+test('step two reads text only for the places that were chosen, and hides what looks like a key', { skip: skipAsRoot('the fixture holds a folder at mode 000 that must not open') }, async t => {
   const f = fixture(t), scanner = createScanner({ home: f.home });
   const home = await scanner.discover();
   const picked = await scanner.addFolder(f.work);

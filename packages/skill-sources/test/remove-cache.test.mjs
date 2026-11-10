@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { planNpmAcquisition } from '../../../dist/packages/skill-sources/src/npm.js';
 import { observeSkillCacheRoot, seedSkillCache, removeCacheEntry, cacheEntryProblem, shellPath, leftoverFix, leftoverTreeFix } from '../../../dist/packages/skill-sources/src/cache.js';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const sha = b => createHash('sha256').update(b).digest('hex');
 const OP = 'a'.repeat(32), PROJECT = 'c'.repeat(32), HASH = 'd'.repeat(64);
@@ -231,7 +232,7 @@ test('10. cacheEntryProblem runs the checks of steps 0, 0a and 2 without the loc
 
 // Round 3 of the reviews of PR 99, M-A and L-a: the delete step walks the renamed folder without following a link, awaits
 // each file, names the path that failed, and stops between two files when the signal aborts.
-test('11. a folder that cannot be deleted refuses at the delete step, names the leftover and the inner path, and says how to fix it', async t => {
+test('11. a folder that cannot be deleted refuses at the delete step, names the leftover and the inner path, and says how to fix it', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, async t => {
   const w = stateWorld(t), dir = entry(w.cacheRoot, 'op-' + OP), sub = path.join(dir, 'locked');
   fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'inside.md'), 'x\n'); fs.chmodSync(sub, 0o500);
   t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) { try { fs.chmodSync(path.join(w.cacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } } });
@@ -350,7 +351,7 @@ test('M2 (round 4). printed commands quote each path for a POSIX shell and put -
 
 // Round 5 of the reviews of PR 99, L-3: a name with a control character gets plain guidance, never a command that names
 // the escaped text.
-test('14. a leftover whose name holds a control character gets guidance, not a command', async t => {
+test('14. a leftover whose name holds a control character gets guidance, not a command', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, async t => {
   const w = stateWorld(t), name = 'op-' + OP, odd = path.join(w.cacheRoot, '.prune-x\u0007y');
   assert.equal(leftoverFix(odd), 'Its name holds a control character, an invisible character, or a backslash, so no command is printed. Find it with ls -i, then rename or remove it by hand.');
   // Round 10 of the reviews of PR 101: a backslash and an invisible character get the same guidance; ZWNJ is quoted.
@@ -365,7 +366,7 @@ test('14. a leftover whose name holds a control character gets guidance, not a c
 
 // Round 13 of the reviews of PR 101, item 2: a path inside a cache entry that cannot be deleted is named on one line, so
 // a bidi character in a file name cannot reorder the refusal.
-test('a cache entry holding a bidi-named folder that cannot be deleted names it on one line', async t => {
+test('a cache entry holding a bidi-named folder that cannot be deleted names it on one line', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, async t => {
   const w = stateWorld(t), name = 'op-' + OP, dir = entry(w.cacheRoot, name), sub = path.join(dir, 'lo\u202Eck\nx');
   fs.mkdirSync(sub, { mode: 0o700 }); fs.writeFileSync(path.join(sub, 'f.md'), 'x\n'); fs.chmodSync(sub, 0o500);
   t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) for (const s of fs.existsSync(path.join(w.cacheRoot, n)) ? fs.readdirSync(path.join(w.cacheRoot, n)) : []) try { fs.chmodSync(path.join(w.cacheRoot, n, s), 0o700); } catch { /* gone */ } });
