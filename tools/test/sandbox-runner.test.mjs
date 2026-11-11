@@ -83,7 +83,7 @@ test('the runner never runs a test command on the host', () => {
 
 const MD = path.join(root, 'tools/sandbox/machine-dependent.mjs');
 const frozen = JSON.parse(fs.readFileSync(path.join(root, 'docs/v0.9/test-inventory.json'), 'utf8'));
-const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent').map(s => s.name);
+const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent' && s.group === undefined).map(s => s.name);
 
 test('the machine-dependent check reads four frozen names, and passes only when all four passed', () => {
   assert.equal(names.length, 4);
@@ -253,7 +253,7 @@ const sandboxRun = (extraEnv = {}) => {
   fs.writeFileSync(path.join(cwd, 'tools/gates.mjs'), `const step=process.argv[process.argv.indexOf('--only')+1];const bad=process.env.FAKE_GATE_FAIL===step;
 console.log(JSON.stringify({ok:!bad,steps:[{name:step,passed:!bad,exitCode:bad?1:0,counts:{pass:1,fail:bad?1:0,skipped:0}}],notRun:[]}));process.exit(bad?1:0);\n`);
   fs.mkdirSync(path.join(cwd, '.trellis/gates'), { recursive: true });
-  const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent').map(s => s.name);
+  const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent' && s.group === undefined).map(s => s.name);
   fs.mkdirSync(path.join(cwd, 'md')); fs.writeFileSync(path.join(cwd, 'md/four.test.mjs'), `import test from 'node:test';\n${names.map(n => `test(${JSON.stringify(n)}, () => {});`).join('\n')}\n`);
   const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   stub('npm', 'case "$*" in *"run build"*) [ "${FAKE_NPM_FAIL:-}" = build ] && { echo build broke >&2; exit 1; } ;; *"run bundle"*) [ "${FAKE_NPM_FAIL:-}" = bundle ] && exit 1 ;; esac; exit 0');
@@ -419,4 +419,65 @@ test('the shipped ceilings name the three suites with whole numbers, and the run
   const ceilings = JSON.parse(fs.readFileSync(path.join(root, 'tools/sandbox/skip-ceilings.json'), 'utf8'));
   for (const name of ['root-test', 'desktop-test', 'desktop-e2e']) assert.ok(Number.isInteger(ceilings[name]) && ceilings[name] > 0, name);
   assert.match(fs.readFileSync(inContainer, 'utf8'), /node tools\/sandbox\/probe-report\.mjs/);
+});
+
+test('the machine-dependent check ignores the frozen skips of the sandbox work, which skip in the container by design', () => {
+  const dir = tmp();
+  const inv = path.join(dir, 'inv.json');
+  const skip = (name, group) => ({ file: 'a.mjs', name, status: 'skip', kind: 'machine-dependent', reason: 'r', ...(group ? { group } : {}) });
+  fs.writeFileSync(inv, JSON.stringify({ suites: { root: { skips: [skip('runs here'), skip('skips as root', 'sandbox-work')] } } }));
+  const file = path.join(dir, 'run.jsonl');
+  fs.writeFileSync(file, [{ file: 'a.mjs', name: 'runs here', status: 'pass' }, { file: 'a.mjs', name: 'skips as root', status: 'skip' }].map(r => JSON.stringify(r)).join('\n') + '\n');
+  const result = spawnSync('node', [MD, file, inv], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /1 machine-dependent tests: all passed/);
+});
+
+// Each run has its own image tag, so two runs on one machine never overwrite each other's image.
+const imageOf = (line, verb) => (verb === 'build' ? /(?:^| )-t (\S+)/.exec(line)?.[1] : line.trim().split(/\s+/).at(-1));
+const tagsOf = env => {
+  const result = runOut([], env);
+  assert.equal(result.status, 0, result.stderr);
+  const lines = result.stdout.split('\n').filter(line => line.startsWith('docker '));
+  return { build: imageOf(lines.find(l => l.startsWith('docker build ')), 'build'), run: imageOf(lines.find(l => l.startsWith('docker run ')), 'run') };
+};
+
+test('each run builds and runs its own image tag, and never the shared :local tag', () => {
+  const env = { BOWERLOOM_SANDBOX_IMAGE: '' };
+  const first = tagsOf(env), second = tagsOf(env);
+  for (const tags of [first, second]) {
+    assert.match(tags.build, /^bowerloom-sandbox:run-\d+-\d+$/);
+    assert.equal(tags.run, tags.build, 'the run uses the image it built');
+  }
+  assert.notEqual(first.build, second.build, 'two runs get two tags');
+});
+
+test('BOWERLOOM_SANDBOX_IMAGE overrides the tag', () => {
+  const tags = tagsOf({ BOWERLOOM_SANDBOX_IMAGE: 'bowerloom-sandbox:mine' });
+  assert.deepEqual(tags, { build: 'bowerloom-sandbox:mine', run: 'bowerloom-sandbox:mine' });
+});
+
+function fakeDockerCalls(env) {
+  const dir = tmp(), log = path.join(dir, 'calls.log');
+  fs.writeFileSync(path.join(dir, 'docker'), `#!/bin/sh\necho "$*" >> "${log}"\ncase "$1" in inspect) exit 1;; build) [ -n "$FAKE_DOCKER_BUILD_FAIL" ] && exit 1;; esac\nexit 0\n`, { mode: 0o755 });
+  const result = spawnSync('bash', [runner], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, ...env } });
+  return { result, calls: fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+}
+
+test('the run removes its own image when it ends, and no other tag', () => {
+  const { calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: '' });
+  const built = /-t (\S+)/.exec(calls.find(c => c.startsWith('build ')))[1];
+  assert.match(built, /^bowerloom-sandbox:run-\d+-\d+$/);
+  assert.deepEqual(calls.filter(c => c.startsWith('rmi ') || c.startsWith('image rm')), [`rmi ${built}`]);
+});
+
+test('a tag given by BOWERLOOM_SANDBOX_IMAGE belongs to the caller, so the run does not remove it', () => {
+  const { calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: 'bowerloom-sandbox:mine' });
+  assert.equal(calls.some(c => c.startsWith('rmi ') || c.startsWith('image rm')), false);
+});
+
+test('a build that fails leaves no image to remove, so the run does not call rmi', () => {
+  const { result, calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: '', FAKE_DOCKER_BUILD_FAIL: '1' });
+  assert.equal(result.status, 4);
+  assert.equal(calls.some(c => c.startsWith('rmi ') || c.startsWith('image rm')), false);
 });

@@ -11,7 +11,7 @@
 //   must-run-on-gate    every other skip. It is never frozen as allowed: the gate machine has what it needs, and a skip of this kind fails the gate.
 //   machine-dependent   a skip that depends on the machine and not on a flag (disk case, path limit, root user). It may skip or pass; it still fails on a fail, a fixme or a todo, and when it is missing.
 //   needs-decision      a skip the rule does not sort: an unconditional skip, and a todo test. It is frozen by name, and the maintainer decides its kind.
-// The kinds file maps "<file>" or "<file>::<test name>" to { kind, reason }. A skip with no entry is must-run-on-gate.
+// The kinds file maps "<file>" or "<file>::<test name>" to { kind, reason, group? }. A group is copied to the skip: tools/sandbox/machine-dependent.mjs leaves the grouped skips out of its check. A skip with no entry is must-run-on-gate.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -61,7 +61,7 @@ export function buildSuite({ runner, command, cwd, run, kinds = {} }) {
   for (const t of run) {
     (files[t.file] ??= []).push(t.name);
     counts.tests += 1; counts[t.status] += 1;
-    if (t.status === 'skip' || t.status === 'todo' || t.status === 'fixme') { const k = skipKind(t, kinds); (k.kind === MUST_RUN ? observedMustRun : skips).push({ file: t.file, name: t.name, status: t.status, kind: k.kind, reason: k.reason }); }
+    if (t.status === 'skip' || t.status === 'todo' || t.status === 'fixme') { const k = skipKind(t, kinds); (k.kind === MUST_RUN ? observedMustRun : skips).push({ file: t.file, name: t.name, status: t.status, kind: k.kind, reason: k.reason, ...(k.group === undefined ? {} : { group: k.group }) }); }
   }
   for (const names of Object.values(files)) names.sort();
   counts.files = Object.keys(files).length;
