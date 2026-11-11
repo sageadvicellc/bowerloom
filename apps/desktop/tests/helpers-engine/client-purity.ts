@@ -38,11 +38,12 @@ export const RESTRICTIONS: readonly Restriction[] = Object.freeze([
   { module: 'renderer/api/transport', importers: ['renderer/api/client.ts'], why: 'the transport reads the window; only the client may ask it' },
   { module: 'shared/engine/sample', importers: ['renderer/api/client.ts'], why: 'the sample engine answers the engine calls in memory; only the client may hand it out' },
   { module: 'shared/engine/sample-switch', importers: ['renderer/api/transport.ts'], why: 'the sample switch is read from the page; only the transport reads the page' },
+  { module: 'shared/api/local', members: ['LOCAL_CHANNELS'], importers: [], why: 'the channel names of the bowerloomLocal bridge belong to main and the preload; the page holds the call list only' },
   { module: 'renderer/api/client', members: ['getApiClient', 'createApiClient'], importers: ['renderer/harness/mount.tsx'], why: 'the page entry makes the client once and hands each part down; a screen asks the tree, not the window' },
 ]);
 
-const BRIDGE_NAME = /^bowerloom(?:Real|Engine)$/;
-const BRIDGE_STRING = /^bowerloom(?:Real|Engine)\b|^bowerloom-(?:real|engine)\b/;
+const BRIDGE_NAME = /^bowerloom(?:Real|Engine|Local)$/;
+const BRIDGE_STRING = /^bowerloom(?:Real|Engine|Local)\b|^bowerloom-(?:real|engine|local)\b/;
 const GLOBALS = new Set(['window', 'self', 'globalThis', 'top', 'parent', 'frames']);
 const IPC_NAME = /^(?:ipcRenderer|ipcMain|contextBridge|webContents|require|__require|process)$/;
 const FILE_CALL = /^(?:readFile|readFileSync|readdir|readdirSync|writeFile|writeFileSync|appendFile|appendFileSync|mkdirSync|mkdtempSync|rmSync|rmdirSync|unlinkSync|renameSync|copyFile|copyFileSync|statSync|lstatSync|realpathSync|openSync|opendirSync|createReadStream|createWriteStream|spawn|spawnSync|execSync|execFile|execFileSync|fork)$/;

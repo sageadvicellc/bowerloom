@@ -8,8 +8,9 @@ import { createLocalModels, CONFIG_FILE_NAME } from '../../../packages/local-mod
 import type { BoundGet, LocalModels, LocalModelsReport } from '../../../packages/local-models/src/index.js';
 import { LOCAL_CALLS, LOCAL_CHANNELS } from '../shared/api/local.js';
 import type { ExtensionsListing } from '../shared/api/local.js';
-import { extensionsBundleRoot, listingOf, registerLocalModelsIpc } from '../main/local-models-ipc.js';
-import type { LoadResult } from '../main/extension-loader.js';
+import { listingOf, registerLocalModelsIpc } from '../main/local-models-ipc.js';
+import { extensionsBundleRoot, startExtensions } from '../main/extension-host.js';
+import type { ExtensionHost } from '../main/extension-host.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
 import { tempDir } from './support.js';
@@ -24,52 +25,60 @@ const BAD_SENDERS: Record<string, RealEvent> = {
 };
 
 const REPORT: LocalModelsReport = Object.freeze({ sampledAt: '2026-01-01T00:00:00.000Z', models: Object.freeze([]), endpointsConfigured: 0, notes: Object.freeze([]) });
-const LOADED: LoadResult = { manifests: [{ id: 'alpha', title: 'Alpha', kind: 'ui', routes: ['alpha-route'], protected: false }], skipped: [{ name: 'beta', code: 'NOT_JSON', message: 'The manifest.json of "beta" is not valid JSON (at position 3). /Users/someone/secret' }] };
+const manifestText = (id: string, extra: Record<string, unknown> = {}): string => JSON.stringify({ id, title: id, kind: 'ui', routes: [`${id}-route`], protected: false, ...extra });
+/** A real extension host over a real bundle folder: an accepted extension, a skipped folder with a noisy message, and a refused one. */
+function hostOf(t: Parameters<typeof tempDir>[0]): ExtensionHost {
+  const root = tempDir(t);
+  const put = (name: string, text: string): void => { mkdirSync(join(root, 'extensions', name), { recursive: true }); writeFileSync(join(root, 'extensions', name, 'manifest.json'), text); };
+  put('alpha', manifestText('alpha'));
+  put('beta', '{ not json /Users/someone/secret');
+  put('claims', manifestText('claims', { protected: true }));
+  return startExtensions(root);
+}
 
-interface Rig { readonly handlers: Map<string, Handler>; readonly asked: string[]; readonly loaded: string[] }
-function rig(overrides: { models?: LocalModels; loadExtensions?: (root: string) => LoadResult } = {}): Rig {
-  const handlers = new Map<string, Handler>(), asked: string[] = [], loaded: string[] = [];
+interface Rig { readonly handlers: Map<string, Handler>; readonly asked: string[]; readonly host: ExtensionHost | null }
+function rig(t: Parameters<typeof tempDir>[0], overrides: { models?: LocalModels; host?: ExtensionHost | null } = {}): Rig {
+  const handlers = new Map<string, Handler>(), asked: string[] = [];
   const models: LocalModels = overrides.models ?? { localModels: async () => { asked.push('localModels'); return REPORT; } };
+  const host = overrides.host === undefined ? hostOf(t) : overrides.host;
   registerLocalModelsIpc({
     ipc: { handle: (channel, listener) => { assert.equal(handlers.has(channel), false, `${channel} registered twice`); handlers.set(channel, listener as Handler); } },
-    appIndexUrl: APP_INDEX, stateRoot: '/nonexistent-state', bundleRoot: '/nonexistent-bundle', models,
-    loadExtensions: overrides.loadExtensions ?? (root => { loaded.push(root); return LOADED; }),
+    appIndexUrl: APP_INDEX, stateRoot: '/nonexistent-state', extensionHost: () => host, models,
   });
-  return { handlers, asked, loaded };
+  return { handlers, asked, host };
 }
 const call = (r: Rig, name: (typeof LOCAL_CALLS)[number], event: RealEvent, ...args: unknown[]): Promise<unknown> => Promise.resolve((r.handlers.get(LOCAL_CHANNELS[name]) as Handler)(event, ...args));
 const code = async (promise: Promise<unknown>): Promise<string> => { try { await promise; return 'RESOLVED'; } catch (error) { return error instanceof Error ? error.message : String(error); } };
 
-test('main registers one handler on the channel of each local call and on no other channel', () => {
-  const r = rig();
+test('main registers one handler on the channel of each local call and on no other channel', t => {
+  const r = rig(t);
   assert.deepEqual([...r.handlers.keys()].sort(), Object.values(LOCAL_CHANNELS).sort());
   assert.equal(r.handlers.size, 2);
 });
 
-test('a call from any sender but the main frame of the app page is refused NOT_ALLOWED, and nothing is read', async () => {
-  const r = rig();
+test('a call from any sender but the main frame of the app page is refused NOT_ALLOWED, and nothing is read', async t => {
+  const r = rig(t);
   for (const name of LOCAL_CALLS) {
     for (const [label, event] of Object.entries(BAD_SENDERS)) assert.equal(await code(call(r, name, event)), 'NOT_ALLOWED', `${name} from ${label}`);
   }
   assert.deepEqual(r.asked, [], 'the report was never asked for');
-  assert.deepEqual(r.loaded, [], 'no manifest was read');
 });
 
-test('the sender check comes before the argument check: a foreign sender with an argument is NOT_ALLOWED, not BAD_ARGUMENT', async () => {
-  const r = rig();
+test('the sender check comes before the argument check: a foreign sender with an argument is NOT_ALLOWED, not BAD_ARGUMENT', async t => {
+  const r = rig(t);
   for (const name of LOCAL_CALLS) assert.equal(await code(call(r, name, BAD_SENDERS['a foreign page']!, 'x')), 'NOT_ALLOWED', name);
 });
 
-test('a call with any argument is refused BAD_ARGUMENT and reads nothing', async () => {
-  const r = rig();
+test('a call with any argument is refused BAD_ARGUMENT and reads nothing', async t => {
+  const r = rig(t);
   for (const name of LOCAL_CALLS) {
     for (const args of [['x'], [undefined], [null], [0], [{}], ['a', 'b']]) assert.equal(await code(call(r, name, GOOD, ...args)), 'BAD_ARGUMENT', `${name}(${args.length} args)`);
   }
-  assert.deepEqual(r.asked, []); assert.deepEqual(r.loaded, []);
+  assert.deepEqual(r.asked, []);
 });
 
-test('localModels answers the report of the package, with no argument', async () => {
-  const r = rig();
+test('localModels answers the report of the package, with no argument', async t => {
+  const r = rig(t);
   assert.equal(await call(r, 'localModels', GOOD), REPORT);
   assert.deepEqual(r.asked, ['localModels']);
 });
@@ -78,7 +87,7 @@ test('a server that is down is a state in the report, never a refusal: the call 
   const state = tempDir(t);
   writeFileSync(join(state, CONFIG_FILE_NAME), JSON.stringify({ endpoints: [{ provider: 'llama-server', port: 8091 }] }));
   const refused: BoundGet = async () => ({ ok: false, code: 'CONNECTION_REFUSED' });
-  const r = rig({ models: createLocalModels({ stateRoot: state, makeGet: () => refused, ttlMs: 0 }) });
+  const r = rig(t, { models: createLocalModels({ stateRoot: state, makeGet: () => refused, ttlMs: 0 }) });
   const report = await call(r, 'localModels', GOOD) as LocalModelsReport;
   assert.equal(report.endpointsConfigured, 1);
   const row = report.models.find(m => m.port === 8091);
@@ -87,38 +96,41 @@ test('a server that is down is a state in the report, never a refusal: the call 
   assert.equal(row.processMemoryBytes, null, 'memory is not reported in this version'); assert.equal(row.uptimeSeconds, null);
 });
 
-test('a source that throws gives the one short code FAILED, and its words never reach the page', async () => {
-  const r = rig({ models: { localModels: async () => { throw new Error('/Users/someone/secret exploded'); } }, loadExtensions: () => { throw new Error('/Users/someone/secret exploded'); } });
+test('a source that throws gives the one short code FAILED, and its words never reach the page', async t => {
+  const throwing = { registry: { list: () => { throw new Error('/Users/someone/secret exploded'); } }, skipped: [], refused: [], uninstall: () => { throw new Error('x'); } } as unknown as ExtensionHost;
+  const r = rig(t, { models: { localModels: async () => { throw new Error('/Users/someone/secret exploded'); } }, host: throwing });
   for (const name of LOCAL_CALLS) assert.equal(await code(call(r, name, GOOD)), 'FAILED', name);
 });
 
-test('listExtensions reads the bundle root main was given, and answers the manifests and the skipped folders by name and code only', async () => {
-  const r = rig();
+test('listExtensions answers from the state of the real extension host: the accepted extensions, and the skipped folders by name and code only', async t => {
+  const r = rig(t);
   const listing = await call(r, 'listExtensions', GOOD) as ExtensionsListing;
-  assert.deepEqual(r.loaded, ['/nonexistent-bundle']);
-  assert.deepEqual(listing, { extensions: [{ id: 'alpha', title: 'Alpha', kind: 'ui', routes: ['alpha-route'], protected: false }], skipped: [{ name: 'beta', code: 'NOT_JSON' }] });
+  assert.deepEqual(listing, { extensions: [{ id: 'alpha', title: 'alpha', kind: 'ui', routes: ['alpha-route'], protected: false }], skipped: [{ name: 'beta', code: 'NOT_JSON' }] });
   assert.doesNotMatch(JSON.stringify(listing), /position|secret|Users/, 'no loader message reaches the page');
+  assert.equal(listing.extensions.some(m => m.id === 'claims'), false, 'a manifest the registry refused is not listed');
+  assert.equal(listing.extensions.some(m => m.protected), false, 'the six protected defaults are not listed: the page has them');
 });
 
-test('listingOf copies each field by name, freezes the answer, and keeps an empty bundle empty', () => {
-  const noisy = { manifests: [{ id: 'a', title: 'A', kind: 'ui', routes: ['r'], protected: true, mount: 'code', extra: 1 }], skipped: [] } as unknown as LoadResult;
+test('listExtensions follows the registry as it is now: an extension that is uninstalled after the start is gone from the next answer', async t => {
+  const r = rig(t);
+  assert.deepEqual(((await call(r, 'listExtensions', GOOD)) as ExtensionsListing).extensions.map(m => m.id), ['alpha']);
+  assert.equal(r.host!.uninstall('alpha').ok, true);
+  assert.deepEqual(((await call(r, 'listExtensions', GOOD)) as ExtensionsListing).extensions, []);
+});
+
+test('listExtensions answers FAILED while main has not started the extension host, and never a made-up empty list', async t => {
+  const r = rig(t, { host: null });
+  assert.equal(await code(call(r, 'listExtensions', GOOD)), 'FAILED');
+  assert.equal(await call(r, 'localModels', GOOD), REPORT, 'the report does not wait for the host');
+});
+
+test('listingOf copies each field by name, freezes the answer, and keeps a bundle with no extension empty', t => {
+  const noisy = { registry: { list: () => [{ id: 'a', title: 'A', kind: 'ui', routes: ['r'], protected: false, mount: 'code', extra: 1 }] }, skipped: [{ name: 'b', code: 'NOT_JSON', message: '/Users/someone/secret' }], refused: [], uninstall: () => { throw new Error('x'); } } as unknown as ExtensionHost;
   const out = listingOf(noisy);
-  assert.deepEqual(out.extensions[0], { id: 'a', title: 'A', kind: 'ui', routes: ['r'], protected: true });
-  assert.equal(Object.isFrozen(out), true); assert.equal(Object.isFrozen(out.extensions), true); assert.equal(Object.isFrozen(out.extensions[0]), true);
-  assert.deepEqual(listingOf({ manifests: [], skipped: [] }), { extensions: [], skipped: [] });
-});
-
-test('listExtensions on a real bundle folder answers an empty list when there is no extensions folder, and the manifest when there is one', async t => {
-  const root = tempDir(t);
-  const handlers = new Map<string, Handler>();
-  registerLocalModelsIpc({ ipc: { handle: (channel, listener) => { handlers.set(channel, listener as Handler); } }, appIndexUrl: APP_INDEX, stateRoot: root, bundleRoot: root, models: { localModels: async () => REPORT } });
-  const ask = async (): Promise<ExtensionsListing> => (await (handlers.get(LOCAL_CHANNELS.listExtensions) as Handler)(GOOD)) as ExtensionsListing;
-  assert.deepEqual(await ask(), { extensions: [], skipped: [] });
-  mkdirSync(join(root, 'extensions', 'alpha'), { recursive: true });
-  writeFileSync(join(root, 'extensions', 'alpha', 'manifest.json'), JSON.stringify({ id: 'alpha', title: 'Alpha', kind: 'ui', routes: ['alpha-route'], protected: false }));
-  const listing = await ask();
-  assert.deepEqual(listing.extensions.map(m => m.id), ['alpha']);
-  assert.deepEqual(listing.skipped, []);
+  assert.deepEqual(out.extensions[0], { id: 'a', title: 'A', kind: 'ui', routes: ['r'], protected: false });
+  assert.deepEqual(out.skipped, [{ name: 'b', code: 'NOT_JSON' }]);
+  assert.equal(Object.isFrozen(out), true); assert.equal(Object.isFrozen(out.extensions), true); assert.equal(Object.isFrozen(out.extensions[0]), true); assert.equal(Object.isFrozen(out.skipped[0]), true);
+  assert.deepEqual(listingOf(startExtensions(tempDir(t))), { extensions: [], skipped: [] });
 });
 
 test('the bundle root is the resources folder in a packaged build and apps/desktop in development', () => {
