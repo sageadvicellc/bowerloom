@@ -36,16 +36,16 @@ function hostOf(t: Parameters<typeof tempDir>[0]): ExtensionHost {
   return startExtensions(root);
 }
 
-interface Rig { readonly handlers: Map<string, Handler>; readonly asked: string[]; readonly host: ExtensionHost | null }
+interface Rig { readonly handlers: Map<string, Handler>; readonly asked: string[]; readonly host: ExtensionHost | null; readonly told: string[] }
 function rig(t: Parameters<typeof tempDir>[0], overrides: { models?: LocalModels; host?: ExtensionHost | null } = {}): Rig {
-  const handlers = new Map<string, Handler>(), asked: string[] = [];
+  const handlers = new Map<string, Handler>(), asked: string[] = [], told: string[] = [];
   const models: LocalModels = overrides.models ?? { localModels: async () => { asked.push('localModels'); return REPORT; } };
   const host = overrides.host === undefined ? hostOf(t) : overrides.host;
   registerLocalModelsIpc({
     ipc: { handle: (channel, listener) => { assert.equal(handlers.has(channel), false, `${channel} registered twice`); handlers.set(channel, listener as Handler); } },
-    appIndexUrl: APP_INDEX, stateRoot: '/nonexistent-state', extensionHost: () => host, models,
+    appIndexUrl: APP_INDEX, stateRoot: '/nonexistent-state', extensionHost: () => host, models, tell: line => { told.push(line); },
   });
-  return { handlers, asked, host };
+  return { handlers, asked, host, told };
 }
 const call = (r: Rig, name: (typeof LOCAL_CALLS)[number], event: RealEvent, ...args: unknown[]): Promise<unknown> => Promise.resolve((r.handlers.get(LOCAL_CHANNELS[name]) as Handler)(event, ...args));
 const code = async (promise: Promise<unknown>): Promise<string> => { try { await promise; return 'RESOLVED'; } catch (error) { return error instanceof Error ? error.message : String(error); } };
@@ -102,6 +102,26 @@ test('a source that throws gives the one short code FAILED, and its words never 
   for (const name of LOCAL_CALLS) assert.equal(await code(call(r, name, GOOD)), 'FAILED', name);
 });
 
+test('a source that throws is logged in main by call name and error class only, never by its message', async t => {
+  const throwing = { registry: { list: () => { throw new RangeError('/Users/someone/secret exploded'); } }, skipped: [], refused: [], uninstall: () => { throw new Error('x'); } } as unknown as ExtensionHost;
+  const r = rig(t, { models: { localModels: async () => { throw new TypeError('/Users/someone/secret exploded'); } }, host: throwing });
+  for (const name of LOCAL_CALLS) assert.equal(await code(call(r, name, GOOD)), 'FAILED', name);
+  assert.equal(r.told.length, 2);
+  assert.ok(r.told[0]!.includes('localModels') && r.told[0]!.includes('TypeError'), r.told[0]);
+  assert.ok(r.told[1]!.includes('listExtensions') && r.told[1]!.includes('RangeError'), r.told[1]);
+  assert.ok(!r.told.join('\n').includes('secret') && !r.told.join('\n').includes('someone'));
+  const odd = rig(t, { models: { localModels: async () => { throw '/Users/someone/secret'; } } });
+  assert.equal(await code(call(odd, 'localModels', GOOD)), 'FAILED');
+  assert.ok(odd.told[0]!.includes('localModels') && !odd.told[0]!.includes('secret'));
+});
+
+test('a refusal of the sender or the argument is not logged as a failure', async t => {
+  const r = rig(t);
+  await code(call(r, 'localModels', BAD_SENDERS['a foreign page']!));
+  await code(call(r, 'localModels', GOOD, 'x'));
+  assert.deepEqual(r.told, []);
+});
+
 test('listExtensions answers from the state of the real extension host: the accepted extensions, and the skipped folders by name and code only', async t => {
   const r = rig(t);
   const listing = await call(r, 'listExtensions', GOOD) as ExtensionsListing;
@@ -118,9 +138,10 @@ test('listExtensions follows the registry as it is now: an extension that is uni
   assert.deepEqual(((await call(r, 'listExtensions', GOOD)) as ExtensionsListing).extensions, []);
 });
 
-test('listExtensions answers FAILED while main has not started the extension host, and never a made-up empty list', async t => {
+test('listExtensions answers HOST_NOT_STARTED while main has not started the extension host, and never a made-up empty list', async t => {
   const r = rig(t, { host: null });
-  assert.equal(await code(call(r, 'listExtensions', GOOD)), 'FAILED');
+  assert.equal(await code(call(r, 'listExtensions', GOOD)), 'HOST_NOT_STARTED');
+  assert.deepEqual(r.told, [], 'a host that has not started is a state, not a crash to log');
   assert.equal(await call(r, 'localModels', GOOD), REPORT, 'the report does not wait for the host');
 });
 

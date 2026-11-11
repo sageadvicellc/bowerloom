@@ -3,7 +3,7 @@
  * readers, the endpoint file and the cache. It imports no Electron, no page code and no other package. It starts no program and reads no process: memory and uptime come in
  * a later version. Nothing is written to disk and no prompt or slot text is read.
  */
-export type { LocalModel, LocalModelsNote, LocalModelsReport, ModelState, ProviderId } from './types.js';
+export type { LocalModel, LocalModelRowNote, LocalModelsNote, LocalModelsReport, ModelState, ProviderId } from './types.js';
 export { PROVIDER_IDS } from './types.js';
 export { LOOPBACK_HOST, checkEndpoint, isLoopbackHost, parsePort } from './guard.js';
 export type { EndpointCheck, EndpointRefusal } from './guard.js';

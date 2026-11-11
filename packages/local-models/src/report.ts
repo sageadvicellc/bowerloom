@@ -10,7 +10,8 @@ import { createGet } from './http.js';
 import { providerFor, PROVIDERS } from './providers.js';
 import type { BoundGet, LocalModelProvider, ProviderProbe, ProviderResult } from './provider.js';
 import { baseName, clean } from './text.js';
-import type { LocalModel, LocalModelsNote, LocalModelsReport, ModelState } from './types.js';
+import { ROW_NOTE_PATHS } from './types.js';
+import type { LocalModel, LocalModelRowNote, LocalModelsNote, LocalModelsReport, ModelState } from './types.js';
 
 export interface LocalModelsOptions {
   /** The state folder that holds `local-models.json`. */
@@ -32,6 +33,7 @@ const CODE = /^[A-Z][A-Z0-9_]{0,39}$/;
 const NOTE_TEXT: Readonly<Record<string, string>> = Object.freeze({
   METRICS_OFF: 'A server runs without metrics, so its request and speed figures are not reported.',
   PARTIAL_READ: 'A server answered, but some of its figures could not be read.',
+  METRICS_UNREADABLE: 'A server answered on its metrics path, but none of the figures it was asked for could be read.',
   NO_ENDPOINTS: 'No local model server answered. Add a port to the local models file.',
 });
 
@@ -42,6 +44,20 @@ const shown = (value: unknown): string | null => {
   return text === '' ? null : text;
 };
 const fileOf = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? shown(baseName(value)) : null);
+const PATHS: ReadonlySet<string> = new Set(ROW_NOTE_PATHS);
+/** Row notes kept field by field: a code that matches the pattern, and paths from the fixed list only. */
+const rowNotesOf = (value: unknown): readonly LocalModelRowNote[] => {
+  if (!Array.isArray(value)) return Object.freeze([]);
+  const out: LocalModelRowNote[] = [];
+  for (const entry of value as readonly unknown[]) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { code, paths } = entry as { code?: unknown; paths?: unknown };
+    if (typeof code !== 'string' || !CODE.test(code)) continue;
+    const kept = Array.isArray(paths) ? [...new Set((paths as readonly unknown[]).filter((p): p is LocalModelRowNote['paths'][number] => typeof p === 'string' && PATHS.has(p)))] : [];
+    out.push(Object.freeze({ code, paths: Object.freeze(kept) }));
+  }
+  return Object.freeze(out);
+};
 const codeOf = (value: unknown, fallback: string): string => (typeof value === 'string' && CODE.test(value) ? value : fallback);
 
 interface Probed {
@@ -77,6 +93,7 @@ function rowOf(spec: EndpointSpec, index: number, probe: { readonly state: Model
     processMemoryBytes: null,
     uptimeSeconds: null,
     build: shown(probe.build),
+    notes: rowNotesOf(probe.notes),
     sampledAt,
   });
 }
@@ -88,7 +105,9 @@ function rowsOf(spec: EndpointSpec, result: ProviderResult, sampledAt: string): 
     const state: ModelState = result.state === 'down' || result.state === 'unreachable' ? result.state : 'unsupported';
     return { rows: [failureRow(spec, state, codeOf(result.reason, 'BAD_RESPONSE'), sampledAt)], notes: [] };
   }
-  const probes = Array.isArray(result.rows) ? (result.rows as readonly ProviderProbe[]) : [];
+  // A success with no list of rows is a broken provider, not a server that is up with nothing to say.
+  if (!Array.isArray(result.rows)) return { rows: [failureRow(spec, 'unsupported', 'PROVIDER_ERROR', sampledAt)], notes: [] };
+  const probes = result.rows as readonly ProviderProbe[];
   const notes = Array.isArray(result.notes) ? (result.notes as readonly unknown[]).filter((n): n is string => typeof n === 'string' && CODE.test(n)) : [];
   if (probes.length === 0) return { rows: [rowOf(spec, 0, { state: 'up' }, sampledAt)], notes };
   const rows = probes.map((probe, index) => {
@@ -122,7 +141,7 @@ export async function collectReport(options: LocalModelsOptions): Promise<LocalM
   const config = readEndpointConfig(options.stateRoot);
   const probed = await Promise.all(config.endpoints.map(spec => probeEndpoint(spec, providers, makeGet, sampledAt)));
   const models = probed.flatMap(p => p.rows);
-  const notes: LocalModelsNote[] = config.notes.map(n => ({ code: n.code, text: n.text }));
+  const notes: LocalModelsNote[] = config.notes.map(n => (n.reason === undefined ? { code: n.code, text: n.text } : { code: n.code, text: n.text, reason: n.reason }));
   const seen = new Set(notes.map(n => n.code));
   const add = (code: string): void => { if (!seen.has(code)) { seen.add(code); notes.push({ code, text: NOTE_TEXT[code] ?? `A server reported the condition ${code}.` }); } };
   for (const p of probed) for (const code of p.notes) add(code);

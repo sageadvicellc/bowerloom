@@ -28,7 +28,7 @@ test('the local table holds two calls, each with no argument and its own channel
   assert.deepEqual(Object.keys(LOCAL_CHANNELS).sort(), [...LOCAL_CALLS].sort());
   for (const call of LOCAL_CALLS) { assert.equal(LOCAL_ARITY[call], 0, call); assert.equal(LOCAL_CHANNELS[call], `bowerloom-local:${call}`); }
   assert.equal(new Set(Object.values(LOCAL_CHANNELS)).size, 2);
-  assert.deepEqual([...LOCAL_REFUSALS], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'FAILED']);
+  assert.deepEqual([...LOCAL_REFUSALS], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'HOST_NOT_STARTED', 'FAILED']);
 });
 
 test('the local calls are not part of the 42 calls of the reader and the engine: that list, its channels and the engine golden stay as they were', () => {
@@ -40,7 +40,7 @@ test('the local calls are not part of the 42 calls of the reader and the engine:
   }
 });
 
-test('a local refusal code is read on its own side: BAD_ARGUMENT and NOT_ALLOWED are found, the codes of the other sides are not', () => {
+test('a local refusal code is read on its own side: BAD_ARGUMENT, NOT_ALLOWED and HOST_NOT_STARTED are found, the codes of the other sides are not', () => {
   for (const code of LOCAL_REFUSALS) assert.equal(localCodeOf(new Error(`Error invoking remote method 'bowerloom-local:localModels': Error: ${code}`)), code);
   for (const code of ['UNKNOWN_FOLDER', 'UNKNOWN_BUNDLE', 'UNKNOWN_PLACE', 'BUSY', 'NO_HOME', 'TOO_MANY']) assert.equal(localCodeOf(new Error(code)), 'FAILED', code);
   for (const odd of ['whatever', '', null, undefined, 5, {}, new Error('/home/person/secret exploded'), 'xBAD_ARGUMENTx']) assert.equal(localCodeOf(odd), 'FAILED', String(odd));
@@ -80,6 +80,8 @@ test('each local call sends one message on its own channel with no argument, wha
   await assert.rejects(local.localModels!(), (e: Error) => e.message === 'BAD_ARGUMENT');
   failWith(new Error("Error invoking remote method 'bowerloom-local:listExtensions': Error: NOT_ALLOWED"));
   await assert.rejects(local.listExtensions!(), (e: Error) => e.message === 'NOT_ALLOWED');
+  failWith(new Error("Error invoking remote method 'bowerloom-local:listExtensions': Error: HOST_NOT_STARTED"));
+  await assert.rejects(local.listExtensions!(), (e: Error) => e.message === 'HOST_NOT_STARTED');
   failWith(new Error('/Users/someone/secret exploded'));
   for (const call of LOCAL_CALLS) await assert.rejects(local[call]!(), (e: Error) => e.message === 'FAILED', call);
 });

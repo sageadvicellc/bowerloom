@@ -19,11 +19,24 @@ export interface ReportCache {
   get(): Promise<LocalModelsReport>;
 }
 
-const failedReport = (at: number): LocalModelsReport => Object.freeze({
+/** The class of a failure as a short code. Never the message, which can hold a path or a body. */
+export function reasonOf(error: unknown): string {
+  if (!(error instanceof Error)) return 'NOT_AN_ERROR';
+  switch (error.name) {
+    case 'TypeError': return 'TYPE_ERROR';
+    case 'RangeError': return 'RANGE_ERROR';
+    case 'SyntaxError': return 'SYNTAX_ERROR';
+    case 'ReferenceError': return 'REFERENCE_ERROR';
+    case 'AggregateError': return 'AGGREGATE_ERROR';
+    default: return 'ERROR';
+  }
+}
+
+const failedReport = (at: number, reason: string): LocalModelsReport => Object.freeze({
   sampledAt: new Date(at).toISOString(),
   models: Object.freeze([]),
   endpointsConfigured: 0,
-  notes: Object.freeze([Object.freeze({ code: 'PROBE_FAILED', text: 'The probe of the local model servers failed. It will be tried again.' })]),
+  notes: Object.freeze([Object.freeze({ code: 'PROBE_FAILED', text: 'The probe of the local model servers failed. It will be tried again.', reason })]),
 });
 
 export function createReportCache(options: ReportCacheOptions): ReportCache {
@@ -37,8 +50,8 @@ export function createReportCache(options: ReportCacheOptions): ReportCache {
       const report = await collect();
       held = { report, at: now() };
       return report;
-    } catch {
-      return failedReport(now());
+    } catch (error) {
+      return failedReport(now(), reasonOf(error));
     }
   };
 

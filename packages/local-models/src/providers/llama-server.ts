@@ -6,6 +6,7 @@
 import { parsePrometheus } from '../prometheus.js';
 import { failureOf } from '../provider.js';
 import { baseName, clean } from '../text.js';
+import type { LocalModelRowNote, RowNotePath } from '../types.js';
 import type { BoundGet, GetResult, LocalModelProvider, ProviderProbe, ProviderResult } from '../provider.js';
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -54,6 +55,13 @@ const isOff = (result: GetResult): boolean => result.ok && (result.status === 40
 /** A read that did not work and is not a switched-off endpoint: a failure, or an answer that is neither 200 nor 404 nor 501. */
 const isLost = (result: GetResult): boolean => !result.ok || (result.status !== 200 && !isOff(result));
 
+/** A 200 answer whose body parsed to the shape asked for. A 200 that did not is a lost read, the same as a failed one. */
+const unreadable = (result: GetResult, shaped: (json: unknown) => boolean): boolean => result.ok && result.status === 200 && !shaped(jsonOf(result));
+const PROPS_KEYS = ['model_path', 'model_alias', 'total_slots', 'build_info', 'model_ftype'] as const;
+const propsShaped = (json: unknown): boolean => isObject(json) && PROPS_KEYS.some(key => key in json);
+const slotsShaped = (json: unknown): boolean => Array.isArray(json);
+const modelsShaped = (json: unknown): boolean => isObject(json) && Array.isArray(json['data']);
+
 async function probe(get: BoundGet): Promise<ProviderResult> {
   const [health, props, slots, metrics, models] = await Promise.all([get('/health'), get('/props'), get('/slots'), get('/metrics'), get('/v1/models')]);
 
@@ -98,10 +106,18 @@ async function probe(get: BoundGet): Promise<ProviderResult> {
   const build = shownText(props_['build_info']);
   if (build !== undefined) row.build = build;
 
-  if ([props, slots, models, metrics].some(isLost)) notes.push('PARTIAL_READ');
-  if (isOff(metrics)) notes.push('METRICS_OFF');
+  // Each path that failed, or answered 200 with a body that is not what it should be, is named in the PARTIAL_READ note of the row.
+  const lostPaths: RowNotePath[] = [];
+  if (isLost(props) || unreadable(props, propsShaped)) lostPaths.push('/props');
+  if (isLost(slots) || unreadable(slots, slotsShaped)) lostPaths.push('/slots');
+  if (isLost(models) || unreadable(models, modelsShaped)) lostPaths.push('/v1/models');
+  if (isLost(metrics)) lostPaths.push('/metrics');
+  const rowNotes: LocalModelRowNote[] = [];
+  if (lostPaths.length > 0) { notes.push('PARTIAL_READ'); rowNotes.push({ code: 'PARTIAL_READ', paths: lostPaths }); }
+  if (isOff(metrics)) { notes.push('METRICS_OFF'); rowNotes.push({ code: 'METRICS_OFF', paths: ['/metrics'] }); }
   else if (metrics.ok && metrics.status === 200) {
     const found = parsePrometheus(metrics.body, Object.values(METRIC));
+    if (found.size === 0) { notes.push('METRICS_UNREADABLE'); rowNotes.push({ code: 'METRICS_UNREADABLE', paths: ['/metrics'] }); }
     const peak = count(found.get(METRIC.peak));
     if (peak !== undefined) row.contextUsedPeak = peak;
     const processing = count(found.get(METRIC.processing));
@@ -113,6 +129,7 @@ async function probe(get: BoundGet): Promise<ProviderResult> {
     const generationRate = rate(found.get(METRIC.generationRate));
     if (generationRate !== undefined) row.generationTokensPerSecond = generationRate;
   }
+  if (rowNotes.length > 0) row.notes = rowNotes;
   return { ok: true, rows: [row], notes };
 }
 

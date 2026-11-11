@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('bowerloomEngine', Object.freeze(engine as unkno
 
 /** The local calls take no argument and refuse with one short code, never Electron's long sentence. The page's arguments are dropped here: main refuses a call that carries one. */
 const localRefusal = (error: unknown): Error => {
-  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT)\b/);
+  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|HOST_NOT_STARTED)\b/);
   return new Error(found === null ? 'FAILED' : found[1]);
 };
 const local: Record<string, unknown> = {};

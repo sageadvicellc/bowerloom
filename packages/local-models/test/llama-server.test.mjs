@@ -77,7 +77,7 @@ test('a refused connection is down, a timeout or a broken connection is unreacha
 test('the failure is judged on /health alone: the other paths failing does not make a healthy server down', async () => {
   const table = { '/health': ok({ status: 'ok' }), '/props': failed('TIMEOUT'), '/slots': failed('TIMEOUT'), '/metrics': failed('TIMEOUT'), '/v1/models': failed('TIMEOUT') };
   const result = await llamaServer.probe(fakeGet(table));
-  assert.deepEqual(rowOf(result), { state: 'up' });
+  assert.deepEqual(rowOf(result), { state: 'up', notes: [{ code: 'PARTIAL_READ', paths: ['/props', '/slots', '/v1/models', '/metrics'] }] });
   assert.deepEqual(result.notes, ['PARTIAL_READ']);
 });
 
@@ -98,18 +98,46 @@ test('a /metrics that is off (404 or 501) leaves the rate and request fields out
     const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/metrics': ok('metrics off', status) }));
     assert.deepEqual(result.notes, ['METRICS_OFF']);
     const row = rowOf(result);
+    assert.deepEqual(row.notes, [{ code: 'METRICS_OFF', paths: ['/metrics'] }]);
     for (const key of ['activeRequests', 'deferredRequests', 'promptTokensPerSecond', 'generationTokensPerSecond', 'contextUsedPeak']) assert.ok(!(key in row), key);
     assert.equal(row.slotsTotal, 4);
     assert.equal(row.state, 'up');
   }
 });
 
-test('a /metrics that fails or holds nothing known leaves its fields out, without the METRICS_OFF note', async () => {
-  for (const metrics of [ok('garbage\nmore garbage\n'), ok('')]) {
+test('a /metrics 200 that holds none of the wanted names leaves its fields out and says METRICS_UNREADABLE, not METRICS_OFF', async () => {
+  for (const metrics of [ok('garbage\nmore garbage\n'), ok(''), ok('# HELP x\nother_metric 1\n')]) {
     const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/metrics': metrics }));
-    assert.deepEqual(result.notes, []);
-    assert.ok(!('activeRequests' in rowOf(result)));
+    assert.deepEqual(result.notes, ['METRICS_UNREADABLE']);
+    const row = rowOf(result);
+    assert.deepEqual(row.notes, [{ code: 'METRICS_UNREADABLE', paths: ['/metrics'] }]);
+    assert.ok(!('activeRequests' in row));
   }
+});
+
+test('a /metrics that fails is a lost read, named by its path', async () => {
+  const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/metrics': failed('TIMEOUT') }));
+  assert.deepEqual(result.notes, ['PARTIAL_READ']);
+  assert.deepEqual(rowOf(result).notes, [{ code: 'PARTIAL_READ', paths: ['/metrics'] }]);
+});
+
+test('a 200 from /props, /slots or /v1/models that does not parse, or lacks its expected key, is a lost read named by its path', async () => {
+  const cases = [
+    ['/props', ok('<html>not json</html>')], ['/props', ok('{}')], ['/props', ok('[]')], ['/props', ok('null')],
+    ['/slots', ok('not json')], ['/slots', ok({ slots: [] })],
+    ['/v1/models', ok('not json')], ['/v1/models', ok({})], ['/v1/models', ok({ data: 'x' })],
+  ];
+  for (const [path, answer] of cases) {
+    const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), [path]: answer }));
+    assert.deepEqual(result.notes, ['PARTIAL_READ'], `${path} ${answer.body}`);
+    assert.deepEqual(rowOf(result).notes, [{ code: 'PARTIAL_READ', paths: [path] }], `${path} ${answer.body}`);
+  }
+});
+
+test('a path that answers well adds no note, and a body is never copied into a note', async () => {
+  const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/props': ok('SECRET_BODY') }));
+  assert.ok(!JSON.stringify(result).includes('SECRET'));
+  assert.deepEqual(rowOf(await llamaServer.probe(fakeGet(recorded('example-9b')))).notes, undefined);
 });
 
 test('a /slots that is off still leaves the slot count from /props, and the count of slots when /props is missing', async () => {
