@@ -94,3 +94,24 @@ export function folderStepLines(a: { list: ListState; usable: number; busy: bool
  * and the keeper then only reports, so the line is neutral and does not say "ready".
  */
 export const notesTone = (how: string | undefined): 'good' | 'quiet' => (how === 'report-only' || how === 'git-missing' ? 'quiet' : 'good');
+
+// ---- the empty Context tab and the link flow
+
+/** True when the Library offers "Link a notes folder": the Context tab of the person's own folders, with nothing in it and no search typed. A search that finds nothing is not the empty tab. */
+export const showLinkAction = (a: { kind: PartKind; real: boolean; shown: number; query: string }): boolean => a.kind === 'context' && a.real && a.shown === 0 && a.query.trim() === '';
+
+/**
+ * Where a linked notes folder goes. The folder main lists with the same label as the notes is the one that gets the link: `ready` when its harness loads, `needs-harness` when it holds none (or main
+ * does not list it yet, `folder` null), and `blocked` with the reason when its harness cannot take a change. A folder with no harness is never written to without the new-harness approval.
+ */
+export type LinkTarget =
+  | { readonly kind: 'ready'; readonly folder: FolderInfo }
+  | { readonly kind: 'needs-harness'; readonly folder: FolderInfo | null }
+  | { readonly kind: 'blocked'; readonly folder: FolderInfo; readonly why: string };
+export function linkTarget(folders: readonly FolderInfo[], notes: { readonly label: string }): LinkTarget {
+  const folder = folders.find(f => f.label === notes.label);
+  if (folder === undefined) return { kind: 'needs-harness', folder: null };
+  if (!folder.hasDefinition) return { kind: 'needs-harness', folder };
+  const why = whyNot(folder);
+  return why === null ? { kind: 'ready', folder } : { kind: 'blocked', folder, why };
+}

@@ -34,6 +34,8 @@ export const WORDS = deepFreeze({
     addSkillTitle: 'Add a skill', addAgentTitle: 'Add an agent', addNotesTitle: 'Add notes', whichFolder: 'Which folder gets it?', copyFromWhich: 'Copy it from which folder?',
     whichSkill: 'Which skill?', stepChoose: 'Choose', reviewChange: 'Review the change', leftOut: 'Folders left out', openSavePoints: 'Open save points', notesChosen: 'Your notes',
     theKeeper: 'The Notes keeper',
+    // Link a notes folder, from the empty Context tab.
+    linkNotes: 'Link a notes folder', linkNotesTitle: 'Link a notes folder', stepNotes: 'Notes folder', startHarness: 'Start a harness',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -55,6 +57,8 @@ export const WORDS = deepFreeze({
     // Library Add.
     harnessMeans: 'A harness is a saved list of agents and skills.', onlyWithHarness: 'Only a folder with a harness can take it.',
     noTargets: 'No folder has a harness yet. Make one first.', noSources: 'No other folder has a skill to copy.',
+    linkEmpty: 'No notes are linked yet. Link a folder to see its pages.', linkWhich: 'Which harness gets these notes?', needsHarness: 'This folder has no harness yet. Start one.', chooseAgain: 'Choose that folder again, so Bowerloom can look for its harness.',
+    linkIntro: 'Pick your notes folder. Then pick the harness that uses it.',
     skillHeld: 'This harness has the skill already.', keeperHeld: 'This harness has the Notes keeper already.', pickSkill: 'Pick the skill to copy.',
     pickNotes: 'Pick your notes folder, or start a new one.', notesReady: 'Ready. Review the change next.', readAgainNote: 'Read your folders again to see it in the Library.',
     undoNote: 'To undo, open Save points and press Go back.', noFileRead: 'This part comes from the folder\'s settings. The file was not read.',

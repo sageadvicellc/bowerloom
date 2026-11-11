@@ -266,10 +266,41 @@ function folderWalk(folder: FolderPart, maxFiles: number): WalkOptions {
 }
 
 /** How the reader walks a work or picked folder for notes pages. */
-const notesWalk = (): WalkOptions => ({
+const notesWalk = (linked = false): WalkOptions => ({
   maxDepth: REAL_LIMITS.depth, maxFiles: REAL_LIMITS.filesPerPlace, maxEntries: REAL_LIMITS.discoveryEntries, skipDirs: new Set([...SKIP_DIRS, ...ALL_PROJECT_FOLDERS.keys()]), skipHidden: true,
-  accept: rel => MARKDOWN.test(rel), boundary: hasMarker,
+  // The automatic walk stops at a work folder, which is a place of its own. A notes folder the person linked is read whole: a subfolder that holds a tool folder is still notes.
+  accept: rel => MARKDOWN.test(rel), ...(linked ? {} : { boundary: hasMarker }),
 });
+
+/** The most notes folders one harness may link. A longer list is read up to this many. */
+const LINKED_NOTES_MAX = 8;
+
+/**
+ * The notes folders the person linked to the harness of a place, by the absolute path `knowledge.json` keeps (`wiki-folder`). Nothing is searched for: a folder is read only when the person
+ * picked it. A path that is not absolute or is not a folder is left out (a missing folder is counted as unreadable). Each folder is returned once, as its real location; the place's own folder may be one.
+ */
+function linkedNotesRoots(place: PlaceInternal, budget: Budget, tally: Tally): string[] {
+  const own = place.kind === 'home' ? undefined : place.folders.find(f => f.app === 'bowerloom');
+  if (own === undefined || realFolderFollowing(own.abs) !== own.abs) return [];
+  const file = join(own.abs, 'knowledge.json');
+  if (!isThere(file)) return [];
+  const text = readText(file, own.abs, tally, budget);
+  if (text === null) return [];
+  let sources: unknown;
+  try { sources = (JSON.parse(text) as { sources?: unknown } | null)?.sources; } catch { return []; }
+  if (!Array.isArray(sources)) return [];
+  const out: string[] = [];
+  for (const source of sources.slice(0, HARNESS_LIST_MAX)) {
+    const path = (source as { kind?: unknown; path?: unknown } | null)?.path;
+    if ((source as { kind?: unknown } | null)?.kind !== 'wiki-folder' || typeof path !== 'string' || !isAbsolute(path)) continue;
+    const real = realFolderFollowing(path);
+    if (real === null) { tally.unreadable += 1; continue; }
+    if (out.includes(real)) continue;
+    out.push(real);
+    if (out.length >= LINKED_NOTES_MAX) break;
+  }
+  return out;
+}
 
 /**
  * Reads one place. `withText` false is step one: skills, agents and prompts are found by their paths and their files are not opened; only config files are opened, and only
@@ -313,7 +344,9 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     const rootReal = place.realRoot;
     if (realFolderFollowing(rootReal) !== rootReal) tally.unreadable += 1;
     else {
-      const walked = walkFiles(rootReal, rootReal, notesWalk(), budget, tally);
+      // A place whose own folder is the linked notes folder is read whole too: the person picked it as notes.
+      const linkedRoots = linkedNotesRoots(place, budget, tally);
+      const walked = walkFiles(rootReal, rootReal, notesWalk(linkedRoots.includes(rootReal)), budget, tally);
       const shown = withText ? walked.slice(0, REAL_LIMITS.pagesPerPlace) : walked;
       let added = 0;
       for (const f of shown) {
@@ -322,6 +355,21 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
         added += 1;
       }
       notesLeftOut = walked.length - added;
+      // The notes folders the person linked, under the same caps as the place's own notes.
+      const have = new Set(walked.map(f => f.abs));
+      let room = REAL_LIMITS.filesPerPlace - walked.length, pageRoom = REAL_LIMITS.pagesPerPlace - added;
+      for (const root of linkedRoots.filter(r => r !== rootReal)) {
+        if (mustStop(budget, tally)) break;
+        const more = walkFiles(root, root, { ...notesWalk(true), maxFiles: Math.max(room, 0) }, budget, tally).filter(f => !have.has(f.abs));
+        room -= more.length;
+        const take = withText ? more.slice(0, Math.max(pageRoom, 0)) : more;
+        for (const f of take) {
+          if (withText && mustStop(budget, tally)) break;
+          notes.push(noteOf(f.rel, f.size, f.mtimeMs, withText ? readHead(f.abs, root, tally, budget) : null));
+          added += 1; pageRoom -= 1;
+        }
+        notesLeftOut += more.length - take.length;
+      }
     }
   }
   const apps = [...new Set([...place.folders.map(p => p.app), ...place.files.map(p => p.app)])];
@@ -441,7 +489,12 @@ function watchLines(place: PlaceInternal, budget: Budget, tally: Tally, flags: {
   }
   if (place.kind !== 'home') {
     if (realFolderFollowing(place.realRoot) !== place.realRoot) out.push('gone|root');
-    else for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
+    else {
+      const roots = linkedNotesRoots(place, budget, tally);
+      for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(roots.includes(place.realRoot)), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
+      // A linked notes folder is read the same way, so a change in it shows as a change of the place.
+      for (const root of roots.filter(r => r !== place.realRoot)) for (const f of walkFiles(root, root, notesWalk(true), budget, tally)) out.push(`l|${hashText(root).slice(0, 8)}|${f.rel}|${f.size}|${f.mtimeMs}`);
+    }
   }
   return out;
 }
