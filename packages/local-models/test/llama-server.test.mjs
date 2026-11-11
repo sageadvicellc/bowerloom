@@ -21,7 +21,7 @@ test('the recorded idle server of the first model gives every field', async () =
   const result = await llamaServer.probe(fakeGet(recorded('example-9b')));
   assert.deepEqual(result.notes, []);
   assert.deepEqual(rowOf(result), {
-    state: 'up', modelName: 'example-9b/Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0', parameterCount: 8955900928, fileBytes: 9518764032,
+    state: 'up', modelName: 'Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0', parameterCount: 8955900928, fileBytes: 9518764032,
     contextSize: 8192, contextTrain: 262144, contextUsedPeak: 0, slotsTotal: 4, activeRequests: 0, deferredRequests: 0, promptTokensPerSecond: 0, generationTokensPerSecond: 0,
     build: 'b12110-cd959bae9',
   });
@@ -29,7 +29,7 @@ test('the recorded idle server of the first model gives every field', async () =
 
 test('the recorded idle server of the second model gives its own quantization, size and context', async () => {
   const row = rowOf(await llamaServer.probe(fakeGet(recorded('gpt-oss-20b'))));
-  assert.equal(row.modelName, 'gpt-oss-20b/gpt-oss-20b-MXFP4.gguf');
+  assert.equal(row.modelName, 'gpt-oss-20b-MXFP4.gguf');
   assert.equal(row.modelFile, 'gpt-oss-20b-MXFP4.gguf');
   assert.equal(row.quantization, 'MXFP4 MoE');
   assert.equal(row.parameterCount, 20914757184);
@@ -168,7 +168,7 @@ test('a number that is negative, not finite, fractional where a whole count is n
   table['/v1/models'] = ok({ data: [{ id: 'm', meta: { n_ctx: -1, n_ctx_train: '262144', n_params: null, size: 1.5, ftype: 7 } }] });
   table['/metrics'] = ok('llamacpp:n_tokens_max -4\nllamacpp:requests_processing NaN\nllamacpp:requests_deferred 1.5\nllamacpp:predicted_tokens_seconds 12.5\n');
   const row = rowOf(await llamaServer.probe(fakeGet(table)));
-  assert.deepEqual(row, { state: 'up', modelName: 'example-9b/Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0', generationTokensPerSecond: 12.5, build: 'b12110-cd959bae9' });
+  assert.deepEqual(row, { state: 'up', modelName: 'Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0', generationTokensPerSecond: 12.5, build: 'b12110-cd959bae9' });
 });
 
 test('a counted field must be a whole number: slots, requests and tokens', async () => {

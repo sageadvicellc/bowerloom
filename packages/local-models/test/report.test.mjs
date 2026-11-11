@@ -36,7 +36,7 @@ test('two configured servers give two up rows, in the order of the file, with th
   assert.deepEqual(report.models.map(m => m.id), ['llama-server:8091', 'llama-server:8092']);
   const [a, b] = report.models;
   assert.deepEqual({ ...a }, {
-    id: 'llama-server:8091', provider: 'llama-server', port: 8091, state: 'up', stateReason: null, modelName: 'example-9b/Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0',
+    id: 'llama-server:8091', provider: 'llama-server', port: 8091, state: 'up', stateReason: null, modelName: 'Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0',
     parameterCount: 8955900928, fileBytes: 9518764032, contextSize: 8192, contextTrain: 262144, contextUsedPeak: 0, slotsTotal: 4, activeRequests: 0, deferredRequests: 0, promptTokensPerSecond: 0,
     generationTokensPerSecond: 0, processMemoryBytes: null, uptimeSeconds: null, build: 'b12110-cd959bae9', sampledAt: '2026-11-11T10:00:00.000Z',
   });
