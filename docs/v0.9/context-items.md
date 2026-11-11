@@ -22,8 +22,12 @@ Before beta.2 the Context tab was empty for a person who had notes, for four rea
 
 ## What the Library does now
 
+- The reader of `main/real-scan.ts` is the frozen library of the base (`packages/engine-api/golden`). It stays as it is. `main/linked-notes.ts` adds the linked notes to the result the reader made, through the `keepRead` hook in `main/main.ts`. The check of the saved read looks at the linked folders too.
 - The home folder is still never scanned for notes on its own. A notes folder is read only after the person links it.
+- A link below the harness folder is part of the project and is read. A link in `~/` form is read only when the person picked that folder in main's own notes chooser. The pick is the approval: `packages/notes-source` records the real path of the folder (SHA-256, cut to 32 characters) in `<state>/linked-notes/approved.json`. A `knowledge.json` from a cloned repository can name a folder, and it is not read until the person picks it. A shortcut swapped later is another folder and needs a new pick.
+- A record that is damaged is never written over. The Library says the record is damaged, instead of "needs approval".
 - A linked folder is read whole. The stop at a subfolder with a tool folder does not apply to it. The automatic walk of a work folder keeps that stop.
 - The same caps hold for a place and its linked folders together: `filesPerPlace` files read, `pagesPerPlace` pages shown.
-- The empty Context tab shows "Link a notes folder". It opens the folder chooser. A folder with a harness takes the link after one approval. A folder with no harness starts the New harness sheet first, with its own approval. Nothing is written before an approval.
+- Each link that is not read is a problem with a reason (not found, path not read, needs approval, record damaged, list unreadable, over a limit). The Context tab shows it. An empty tab with a problem shows the problem before any action.
+- The empty Context tab shows "Link a notes folder". It opens the folder chooser. The label of a folder never picks the folder that gets the link: the person picks it from the list. A folder with no harness starts the New harness sheet, with its own approval. Nothing is written before an approval.
 - The plus of every Library tab shows the word "Add".

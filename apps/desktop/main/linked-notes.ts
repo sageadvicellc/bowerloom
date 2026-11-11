@@ -212,7 +212,7 @@ export function addLinkedNotes(result: RealResult, chosen: readonly RealPlace[],
   if (harnessPlaces === undefined || harnessPlaces.length === 0) return result;
   const limits = deps.limits ?? REAL_LIMITS, budget = makeBudget(deps.now ?? (() => Date.now())), tally = newTally();
   const approvals = approvalsOf(deps.stateRoot);
-  const byHarness = new Map(chosen.map(p => [`${HARNESS_PREFIX}${shortHash(p.id)}`, p] as const));
+  const byHarness = new Map<string, RealPlace>(chosen.map(p => [`${HARNESS_PREFIX}${shortHash(p.id)}`, p]));
   const wikiPages: WikiPage[] = [...result.world.wikiPages], slices: Slice[] = [...result.world.slices], items = [...result.world.items];
   const used = new Set(wikiPages.map(p => p.id));
   let added = 0, leftOut = 0;
