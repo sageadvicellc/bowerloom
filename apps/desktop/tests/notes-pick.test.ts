@@ -2,11 +2,13 @@
 // a damaged record is moved aside by the pick, and "Start fresh" records nothing. The Library names each failed case in its own words, with a way out only where one exists.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PICK_NOTICES, pickNotesFolder } from '../main/notes-pick.js';
+import { forgetPickFailures, pickFailureOf, recordPickFailure } from '../main/pick-failures.js';
+import type { Approved } from '../../../packages/notes-source/src/index.js';
 import type { PickNotice } from '../main/notes-pick.js';
-import { APPROVALS_LIMITS, approvalKey, approvalsFileOf, readApprovals } from '../../../packages/notes-source/src/index.js';
+import { APPROVALS_LIMITS, approvalKey, approvalKeyOf, approvalsFileOf, readApprovals } from '../../../packages/notes-source/src/index.js';
 import { addLinkedNotes } from '../main/linked-notes.js';
 import { createScanner } from '../main/real-scan.js';
 import { buildRealResult } from '../shared/real/map-world.js';
@@ -18,13 +20,15 @@ import type { TestContext } from 'node:test';
 const put = (file: string, text: string): void => { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, text); };
 const json = (v: unknown): string => `${JSON.stringify(v)}\n`;
 
-function setup(t: TestContext): { home: string; state: string; notes: string; told: string[]; warned: PickNotice[]; pick(purpose: 'use' | 'start', folder?: string | null): Promise<string | null> } {
+function setup(t: TestContext): { home: string; state: string; notes: string; told: string[]; warned: PickNotice[]; pick(purpose: 'use' | 'start', folder?: string | null, approve?: () => Approved): Promise<string | null> } {
   const home = tempDir(t, 'bowerloom-pick-'), state = join(home, '.made-up-state'), notes = join(home, 'journal');
   put(join(notes, 'one.md'), '# One\n');
   put(join(home, 'work', 'proj', '.bowerloom', 'harness.json'), json({ format: 'bowerloom/harness/v1beta1', id: 'proj', description: 'A harness.', engines: [{ id: 'claude-code' }], parts: { skills: 'skills/', subagents: 'agents/' } }));
   put(join(home, 'work', 'proj', '.bowerloom', 'knowledge.json'), json({ sources: [{ name: 'journal', kind: 'wiki-folder', path: '~/journal' }] }));
+  forgetPickFailures();
+  t.after(forgetPickFailures);
   const told: string[] = [], warned: PickNotice[] = [];
-  return { home, state, notes, told, warned, pick: (purpose, folder = notes) => pickNotesFolder({ purpose, stateRoot: state, show: async () => folder, tell: l => { told.push(l); }, warn: async n => { warned.push(n); } }) };
+  return { home, state, notes, told, warned, pick: (purpose, folder = notes, approve) => pickNotesFolder({ purpose, stateRoot: state, ...(approve === undefined ? {} : { approve }), show: async () => folder, tell: l => { told.push(l); }, warn: async n => { warned.push(n); } }) };
 }
 async function problems(home: string, state: string): Promise<string[]> {
   const scanner = createScanner({ home });
@@ -56,6 +60,8 @@ test('an unwritable folder of approvals is told at once, the folder is handed ba
   mkdirSync(s.state, { recursive: true }); writeFileSync(join(s.state, 'linked-notes'), 'x');
   assert.equal(await s.pick('use'), s.notes, 'the pick is handed back unchanged');
   assert.deepEqual(s.warned, [PICK_NOTICES.failed]);
+  assert.equal(PICK_NOTICES.failed.message, 'Bowerloom could not save approvals on this computer.');
+  assert.doesNotMatch(JSON.stringify(PICK_NOTICES), /pick it again/i, 'no notice sends the person to do what cannot work');
   assert.deepEqual(s.told, ['Bowerloom could not keep the approval of a notes folder (failed).']);
   assert.doesNotMatch(JSON.stringify(s.told), new RegExp(s.home), 'the log line holds no path');
   assert.deepEqual(await problems(s.home, s.state), ['blocked']);
@@ -88,11 +94,50 @@ test('a damaged record is moved aside by the pick, a new list starts, nothing is
   assert.deepEqual(await problems(s.home, s.state), ['page:One']);
 });
 
-test('a path in another case is another folder: a pick of Journal does not approve ~/journal', async t => {
+test('a pick that is not a folder, and a damaged record that cannot be set aside, each have their own short words, not the blocked words', async t => {
   const s = setup(t);
-  put(join(s.home, 'Journal', 'two.md'), '# Two\n');
-  await s.pick('use', join(s.home, 'Journal'));
-  assert.deepEqual(await problems(s.home, s.state), ['approval'], 'the file system keeps the case, and so does the approval');
+  put(join(s.home, 'file.md'), '# f\n');
+  assert.equal(await s.pick('use', join(s.home, 'file.md')), join(s.home, 'file.md'));
+  assert.deepEqual(s.warned, [PICK_NOTICES['not-a-folder']]);
+  assert.equal(PICK_NOTICES['not-a-folder'].message, 'That is not a folder Bowerloom can approve.');
+  await s.pick('use', s.notes, () => 'not-moved');
+  assert.deepEqual(s.warned[1], PICK_NOTICES['not-moved']);
+  assert.equal(PICK_NOTICES['not-moved'].message, 'Bowerloom could not set aside its damaged list of approvals.');
+  assert.notEqual(PICK_NOTICES['not-moved'].message, PICK_NOTICES.failed.message);
+  assert.deepEqual(s.told, ['Bowerloom could not keep the approval of a notes folder (not-a-folder).', 'Bowerloom could not keep the approval of a notes folder (not-moved).']);
+});
+
+test('a pick that failed to save is remembered in this session: the link shows the blocked words, not "link it again"; a later success clears it; nothing is written for it', async t => {
+  const s = setup(t);
+  assert.deepEqual(await problems(s.home, s.state), ['approval'], 'before any pick: needs approval');
+  await s.pick('use', s.notes, () => 'failed');
+  const key = approvalKeyOf(s.notes)!;
+  assert.equal(pickFailureOf(key), 'failed');
+  assert.deepEqual(await problems(s.home, s.state), ['blocked'], 'the record is readable and holds nothing, and the link still says the save failed');
+  assert.equal(existsSync(join(s.state, 'linked-notes')), false, 'no marker file, no record: the failure is in memory only');
+  await s.pick('use', s.notes, () => 'full');
+  assert.equal(pickFailureOf(key), 'full');
+  assert.deepEqual(await problems(s.home, s.state), ['full']);
+  await s.pick('use');
+  assert.equal(pickFailureOf(key), undefined, 'a success clears it');
+  assert.deepEqual(await problems(s.home, s.state), ['page:One']);
+  // A failure of another folder does not touch this one.
+  recordPickFailure(approvalKey('/some/other/folder'), 'failed');
+  assert.deepEqual(await problems(s.home, s.state), ['page:One']);
+});
+
+test('the key is the native real path: a marker file tells whether this volume ignores case, and the pick of one name approves the other only when it does', async t => {
+  const s = setup(t);
+  put(join(s.home, 'Journal2', 'Marker.md'), '# Marker\n');
+  const folded = existsSync(join(s.home, 'journal2', 'marker.md'));
+  const upper = approvalKeyOf(join(s.home, 'Journal2')), lower = approvalKeyOf(join(s.home, 'journal2'));
+  if (folded) assert.equal(upper, lower, 'one folder, one key');
+  else assert.equal(lower, null, 'no such folder on a volume that keeps case');
+  await s.pick('use', join(s.home, 'Journal2'));
+  const record = readApprovals(s.state);
+  assert.equal(record.status, 'ok');
+  assert.equal(record.keys.has(upper!), true);
+  assert.equal(lower === null ? false : record.keys.has(lower), folded);
 });
 
 test('a failed message box never changes the pick', async t => {

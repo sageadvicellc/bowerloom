@@ -22,6 +22,14 @@ export const approvalsFileOf = (stateRoot: string): string => path.join(stateRoo
 export const approvalKey = (realFolder: string): string => createHash('sha256').update(`bowerloom-linked-notes\u0000${realFolder}`).digest('hex').slice(0, 32);
 
 /**
+ * The key of a folder by its native real path (`realpathSync.native`): the name the file system itself gives the folder, so `~/documents/notes` and `~/Documents/Notes` are one key on a volume that
+ * ignores case, and two keys on a volume that keeps it. The write and the read both use it. Null when the folder is not there.
+ */
+export function approvalKeyOf(folder: string): string | null {
+  try { return approvalKey(fs.realpathSync.native(folder)); } catch { return null; }
+}
+
+/**
  * The record as it is on disk: none (no file), damaged (the file cannot be read as a record), blocked (the folder of the record is a link, is not owned by this user, or is writable by others,
  * so neither a read nor a write is safe), or its keys.
  */
@@ -50,18 +58,31 @@ export function readApprovals(stateRoot: string): ApprovalRecord {
 }
 
 /**
- * `kept`: the record holds the folder (a damaged record was moved aside under a dated name first). `full`: the record holds the most folders. `failed`: the folder of the record cannot be
- * made or used, the damaged record could not be moved aside, the write failed, or the pick is not a folder.
+ * `kept`: the record holds the folder (a damaged record was moved aside under a dated name first). `full`: the record holds the most folders. `not-a-folder`: the pick is not a folder.
+ * `not-moved`: the damaged record could not be set aside. `failed`: the folder of the record cannot be made or used, or the write failed.
  */
-export type Approved = 'kept' | 'full' | 'failed';
+export type Approved = 'kept' | 'full' | 'not-a-folder' | 'not-moved' | 'failed';
+
+/** Moves the damaged record to a dated name that nothing holds yet: a name that is taken is never written over, the next one is tried. There is no cap on the files set aside. */
+function setAside(dir: string, file: string): boolean {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const aside = path.join(dir, `approved.json.damaged-${stamp()}-${randomBytes(3).toString('hex')}`);
+    try { fs.lstatSync(aside); continue; } catch (error) { if ((error as { code?: string }).code !== 'ENOENT') return false; }
+    try { fs.renameSync(file, aside); return true; } catch { return false; }
+  }
+  return false;
+}
 
 const stamp = (): string => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '');
 
 /** Records the person's pick of a folder. The folder is resolved to its real path here, so a shortcut is approved as the folder it leads to. */
 export function approveFolder(stateRoot: string, picked: string): Approved {
+  let real: string;
   try {
-    const real = fs.realpathSync(picked);
-    if (!fs.statSync(real).isDirectory()) return 'failed';
+    real = fs.realpathSync.native(picked);
+    if (!fs.statSync(real).isDirectory()) return 'not-a-folder';
+  } catch { return 'not-a-folder'; }
+  try {
     const dir = path.join(stateRoot, 'linked-notes'), file = approvalsFileOf(stateRoot);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const folder = fs.lstatSync(dir);
@@ -71,7 +92,7 @@ export function approveFolder(stateRoot: string, picked: string): Approved {
     if (record.status === 'blocked') return 'failed';
     if (record.status === 'damaged') {
       // The pick is the person's consent to a new list. The damaged file is kept, under a dated name, and the new record starts empty.
-      fs.renameSync(file, path.join(dir, `approved.json.damaged-${stamp()}-${randomBytes(3).toString('hex')}`));
+      if (!setAside(dir, file)) return 'not-moved';
       record = { status: 'none' };
     }
     const keys = new Set(record.status === 'ok' ? record.keys : []);

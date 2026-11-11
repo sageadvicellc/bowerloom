@@ -11,5 +11,5 @@ export { NOTES_SUMMARY_FORMAT, SUMMARY_LIMITS, readLatestReport, readNotesSummar
 export type { NotesHistory, NotesSummary, SummaryOptions } from './summary.js';
 export { findRepository } from './repo.js';
 export type { Repository, RepositoryOptions } from './repo.js';
-export { APPROVALS_LIMITS, approvalKey, approvalsFileOf, approveFolder, readApprovals } from './approvals.js';
+export { APPROVALS_LIMITS, approvalKey, approvalKeyOf, approvalsFileOf, approveFolder, readApprovals } from './approvals.js';
 export type { Approved, ApprovalRecord } from './approvals.js';

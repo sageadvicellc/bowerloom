@@ -23,11 +23,12 @@ import type { RealHarness, RealHarnessPlace, RealPlace, RealResult } from '../sh
 import type { ContextSliceItem, Slice, WikiPage } from '../shared/world/types.js';
 import { hashText } from '../shared/world/sample.js';
 import type { LinkProblem } from '../shared/harness/types.js';
-import { APPROVALS_LIMITS, approvalKey, readApprovals } from '../../../packages/notes-source/src/index.js';
+import { APPROVALS_LIMITS, approvalKeyOf, readApprovals } from '../../../packages/notes-source/src/index.js';
 import { isThere, makeBudget, newTally, readHead, readText, realFolder, realFolderFollowing, walkFiles } from './real-fs.js';
 import type { Budget, Tally, WalkOptions, WalkedFile } from './real-fs.js';
 import { SKIP_DIRS } from './real-scan.js';
 import type { Fingerprinter } from './scan-session.js';
+import { pickFailureOf } from './pick-failures.js';
 
 /** The most notes folders one harness may link. A longer list is read up to this many, and the rest is a problem the Library says. */
 export const LINKED_NOTES_MAX = 8;
@@ -97,7 +98,14 @@ export function approvalsOf(stateRoot: string): Approvals {
   return { approved: r.status === 'ok' ? r.keys : new Set(), damaged: r.status === 'damaged', blocked: r.status === 'blocked', full: r.status === 'ok' && r.keys.size >= APPROVALS_LIMITS.keys };
 }
 /** Why a `~/` link has no approval: each case has its own words, and its own way out (the damaged record is replaced by the next pick; a blocked folder and a full record are not). */
-const whyNoApproval = (a: Approvals): LinkProblem['reason'] => (a.blocked ? 'blocked' : a.damaged ? 'damaged' : a.full ? 'full' : 'approval');
+const whyNoApproval = (a: Approvals, key: string | null): LinkProblem['reason'] => {
+  if (a.blocked) return 'blocked';
+  if (a.damaged) return 'damaged';
+  if (a.full) return 'full';
+  // A pick of this folder that could not be saved, in this session: the same words as a record that cannot be used, never "link it again".
+  const failed = key === null ? undefined : pickFailureOf(key);
+  return failed === 'full' ? 'full' : failed === 'failed' ? 'blocked' : 'approval';
+};
 
 /**
  * The folders linked by the harness folder `rootReal`, and each link that was not read, with its reason. A root inside another root is read by the outer one, and each folder is returned once.
@@ -124,7 +132,11 @@ export function linkedRootsOf(rootReal: string, home: string, approvals: Approva
     const got = resolveStored(link.path, rootReal, home);
     if (!got.ok) { problems.push({ reason: got.why, label: label(link.path) }); continue; }
     const stored = link.path as string;
-    if (stored.startsWith('~/') && !approvals.approved.has(approvalKey(got.real))) { problems.push({ reason: whyNoApproval(approvals), label: label(stored) }); continue; }
+    if (stored.startsWith('~/')) {
+      // The key is the native real path, as the write made it, so a stored path in another case finds the folder on a volume that ignores case.
+      const key = approvalKeyOf(got.real);
+      if (key === null || !approvals.approved.has(key)) { problems.push({ reason: whyNoApproval(approvals, key), label: label(stored) }); continue; }
+    }
     if (roots.some(r => r.real === got.real)) continue;
     roots.push({ real: got.real, stored });
   }

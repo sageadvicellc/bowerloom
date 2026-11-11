@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { APPROVALS_LIMITS, approvalKey, approvalsFileOf, approveFolder, readApprovals } from '../../../dist/packages/notes-source/src/index.js';
+import { APPROVALS_LIMITS, approvalKey, approvalKeyOf, approvalsFileOf, approveFolder, readApprovals } from '../../../dist/packages/notes-source/src/index.js';
 import { put, tempDir } from './fixture.mjs';
 
 const setup = t => { const base = tempDir(t); const state = path.join(base, 'state'); fs.mkdirSync(path.join(base, 'notes')); fs.mkdirSync(path.join(base, 'other')); return { base, state, notes: path.join(base, 'notes'), other: path.join(base, 'other') }; };
@@ -14,8 +14,8 @@ test('a pick is recorded by the real path of the folder, 32 hex characters, and 
   assert.equal(approveFolder(state, notes), 'kept');
   const r = readApprovals(state);
   assert.equal(r.status, 'ok');
-  assert.equal(r.keys.has(approvalKey(fs.realpathSync(notes))), true);
-  assert.equal(r.keys.has(approvalKey(fs.realpathSync(other))), false);
+  assert.equal(r.keys.has(approvalKey(fs.realpathSync.native(notes))), true);
+  assert.equal(r.keys.has(approvalKey(fs.realpathSync.native(other))), false);
   assert.match(approvalKey(notes), /^[0-9a-f]{32}$/);
   assert.equal(approveFolder(state, other), 'kept');
   assert.equal(readApprovals(state).keys.size, 2);
@@ -28,16 +28,16 @@ test('a shortcut is approved as the folder it leads to, so a swapped shortcut is
   fs.symlinkSync(notes, link);
   assert.equal(approveFolder(state, link), 'kept');
   const keys = readApprovals(state).keys;
-  assert.equal(keys.has(approvalKey(fs.realpathSync(notes))), true);
+  assert.equal(keys.has(approvalKey(fs.realpathSync.native(notes))), true);
   fs.rmSync(link); fs.symlinkSync(other, link);
-  assert.equal(keys.has(approvalKey(fs.realpathSync(link))), false);
+  assert.equal(keys.has(approvalKey(fs.realpathSync.native(link))), false);
 });
 
 test('a path that is not a folder is refused and approves nothing', t => {
   const { base, state } = setup(t);
   put(base, 'file.md');
-  assert.equal(approveFolder(state, path.join(base, 'file.md')), 'failed');
-  assert.equal(approveFolder(state, path.join(base, 'missing')), 'failed');
+  assert.equal(approveFolder(state, path.join(base, 'file.md')), 'not-a-folder');
+  assert.equal(approveFolder(state, path.join(base, 'missing')), 'not-a-folder');
   assert.deepEqual(readApprovals(state), { status: 'none' });
 });
 
@@ -62,7 +62,7 @@ test('a record that is damaged, a link, or too big is moved aside under a dated 
     assert.deepEqual(fs.lstatSync(kept).isSymbolicLink() ? fs.readlinkSync(kept) : fs.readFileSync(kept), before, `${name}: nothing was lost`);
     const r = readApprovals(state);
     assert.equal(r.status, 'ok', name);
-    assert.deepEqual([...r.keys], [approvalKey(fs.realpathSync(notes))], `${name}: a new list holds the pick only`);
+    assert.deepEqual([...r.keys], [approvalKey(fs.realpathSync.native(notes))], `${name}: a new list holds the pick only`);
   }
 });
 
@@ -71,7 +71,7 @@ test('the folder of the record is checked on a read as on a write: a link, a fol
   // A link.
   const linkedState = path.join(base, 'state-linked'), elsewhere = path.join(base, 'elsewhere');
   fs.mkdirSync(linkedState); fs.mkdirSync(elsewhere); fs.symlinkSync(elsewhere, path.join(linkedState, 'linked-notes'));
-  fs.writeFileSync(path.join(elsewhere, 'approved.json'), JSON.stringify({ version: 1, keys: [approvalKey(fs.realpathSync(notes))] }));
+  fs.writeFileSync(path.join(elsewhere, 'approved.json'), JSON.stringify({ version: 1, keys: [approvalKey(fs.realpathSync.native(notes))] }));
   assert.equal(readApprovals(linkedState).status, 'blocked', 'a record read through a link is refused');
   assert.equal(approveFolder(linkedState, notes), 'failed');
   assert.deepEqual(fs.readdirSync(elsewhere), ['approved.json'], 'nothing was written through the link');
@@ -95,12 +95,33 @@ test('a full record refuses one more folder and still accepts one it holds; a re
   assert.equal(readApprovals(full).status, 'ok');
   assert.equal(approveFolder(full, notes), 'full');
   assert.equal(readApprovals(full).keys.size, APPROVALS_LIMITS.keys, 'the record is as it was');
-  fs.writeFileSync(approvalsFileOf(full), JSON.stringify({ version: 1, keys: [...keys.slice(1), approvalKey(fs.realpathSync(notes))] }));
+  fs.writeFileSync(approvalsFileOf(full), JSON.stringify({ version: 1, keys: [...keys.slice(1), approvalKey(fs.realpathSync.native(notes))] }));
   assert.equal(approveFolder(full, notes), 'kept', 'a folder the record holds is accepted again');
   fs.writeFileSync(approvalsFileOf(full), JSON.stringify({ version: 1, keys: [...keys, approvalKey('/one/more')] }));
   assert.equal(readApprovals(full).status, 'damaged');
 });
 
-test('the key follows the path as the file system keeps it: another case is another key', () => {
-  assert.notEqual(approvalKey('/home/u/Notes'), approvalKey('/home/u/notes'));
+test('the key follows the native real path: one key on a volume that ignores case, two on a volume that keeps it; a marker file tells which this volume is', t => {
+  const { base } = setup(t);
+  fs.mkdirSync(path.join(base, 'Docs'));
+  fs.writeFileSync(path.join(base, 'Docs', 'Marker.md'), '# m\n');
+  const folded = fs.existsSync(path.join(base, 'docs', 'marker.md'));
+  const a = approvalKeyOf(path.join(base, 'Docs')), b = approvalKeyOf(path.join(base, 'docs'));
+  if (folded) assert.equal(a, b, 'this volume ignores case: the two names are one folder and one key');
+  else { assert.equal(b, null, 'this volume keeps case: the other name is no folder'); fs.mkdirSync(path.join(base, 'docs')); assert.notEqual(a, approvalKeyOf(path.join(base, 'docs')), 'two folders, two keys'); }
+  assert.equal(approvalKeyOf(path.join(base, 'missing')), null);
+  assert.match(a, /^[0-9a-f]{32}$/);
+});
+
+test('setting a damaged record aside never clobbers: five damaged records in turn leave five files, each with its own bytes', t => {
+  const { state, notes } = setup(t);
+  fs.mkdirSync(path.join(state, 'linked-notes'), { recursive: true });
+  const dir = path.join(state, 'linked-notes');
+  for (let i = 0; i < 5; i += 1) {
+    fs.writeFileSync(approvalsFileOf(state), `{ damaged ${i}`);
+    assert.equal(approveFolder(state, notes), 'kept');
+  }
+  const aside = fs.readdirSync(dir).filter(n => n.startsWith('approved.json.damaged-'));
+  assert.equal(aside.length, 5);
+  assert.deepEqual(aside.map(n => fs.readFileSync(path.join(dir, n), 'utf8')).sort(), [0, 1, 2, 3, 4].map(i => `{ damaged ${i}`));
 });
