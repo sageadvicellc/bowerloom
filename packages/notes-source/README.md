@@ -52,3 +52,7 @@ The first commit writes `.git/info/exclude` with `.*`, so hidden files, such as 
 ## Tests
 
 `npm run test:notes-source`. The tests run real git in temporary folders. If git is not installed, the git tests skip and give the reason.
+
+## Approvals of linked folders
+
+A harness links a notes folder in its `knowledge.json` in one of three stored forms: `.` (the harness folder), a plain path below it, or `~/` and a plain path below the home folder. No stored form is an absolute path. A folder in `~/` form is read only after the person picked it in the notes chooser of the app. `approveFolder` records that pick, by the native real path of the folder, in `<state root>/linked-notes/approved.json` (at most 2000 folders; the record is flushed before it is renamed into place). `readApprovals` reads it with the same folder checks as the write. A damaged record is moved aside under a dated name by the next pick, and is never written over. An approval is global for the folder: it holds for any harness that links it.

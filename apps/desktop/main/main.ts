@@ -11,7 +11,9 @@ import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
 import { registerLocalModelsIpc } from './local-models-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
-import { createScanSession } from './scan-session.js';
+import { createScanSession, fingerprintOf } from './scan-session.js';
+import { addLinkedNotes, withLinkedNotes } from './linked-notes.js';
+import { pickNotesFolder } from './notes-pick.js';
 import { createRecorder } from './engine-events.js';
 import { shippedKits } from './kit.js';
 import { NOTES_DIALOG } from './notes-dialog.js';
@@ -214,9 +216,14 @@ app.whenReady().then(async () => {
     const home = usableHome(homedir(), path => realFolderFollowing(path) !== null);
     if (home === null) throw new Error('Bowerloom needs a home folder to look in. HOME is not set to a folder that exists.');
     // The last read is kept in the private state folder, so the next launch can show it without reading a folder (main/scan-session.ts).
-    const scan = createScanSession({ home, stateRoot: engineStateRoot(home) });
+    // The notes folders a harness links are read after the reader (main/linked-notes.ts), before the result is kept and sent. The check of the kept read looks at them too.
+    const stateRoot = engineStateRoot(home);
+    const scan = createScanSession({
+      home, stateRoot,
+      fingerprint: withLinkedNotes(fingerprintOf, { stateRoot }),
+    });
     registerRealIpc({
-      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: scan.keepRead,
+      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: (chosen, read) => scan.keepRead(chosen, async () => addLinkedNotes(await read(), chosen, { home, stateRoot })),
       chooseFolder: async () => {
         const options: Electron.OpenDialogOptions = { title: 'Choose a folder to look in', buttonLabel: 'Look in this folder', properties: ['openDirectory'] };
         const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
@@ -258,12 +265,20 @@ app.whenReady().then(async () => {
           return result.canceled || result.filePath === undefined || result.filePath === '' ? null : result.filePath;
         },
         // Main's own notes chooser: its words come from main, never from the window. "Start fresh" lets the person make a new folder in it.
-        chooseNotesFolder: async purpose => {
-          const words = NOTES_DIALOG[purpose];
-          const options: Electron.OpenDialogOptions = { title: words.title, message: words.message, buttonLabel: words.button, properties: purpose === 'start' ? ['openDirectory', 'createDirectory'] : ['openDirectory'] };
-          const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
-          return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
-        },
+        chooseNotesFolder: purpose => pickNotesFolder({
+          purpose, stateRoot,
+          show: async () => {
+            const words = NOTES_DIALOG[purpose];
+            const options: Electron.OpenDialogOptions = { title: words.title, message: words.message, buttonLabel: words.button, properties: purpose === 'start' ? ['openDirectory', 'createDirectory'] : ['openDirectory'] };
+            const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
+            return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+          },
+          tell: line => console.error(line),
+          warn: async notice => {
+            const box: Electron.MessageBoxOptions = { type: 'warning', title: 'Notes folder', message: notice.message, detail: notice.detail, buttons: ['OK'], noLink: true };
+            if (window === null) await dialog.showMessageBox(box); else await dialog.showMessageBox(window, box);
+          },
+        }),
         // The ready-made kits ship read-only: from the repository in development, from the app's resources in a packaged build. A broken kit is told on
         // the console now, and every call that needs it refuses with words; it is never replaced by an empty kit.
         kitsDir: shippedKits({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }),

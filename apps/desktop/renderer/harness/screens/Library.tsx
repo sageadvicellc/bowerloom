@@ -15,14 +15,14 @@ import { useUi } from '../ui.js';
 import { SortMenu } from '../../home/kit/SortMenu.js';
 import { Sheet } from '../parts/Sheet.js';
 import { Button } from '../../home/kit/Button.js';
-import { HButton, HIconButton, StateDot } from '../parts/controls.js';
+import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon, KIND_ICON, Tile } from '../icons.js';
-import { KIND_PLURAL, WORDS, addTo, fromWords, notYetWords } from '../words.js';
+import { KIND_PLURAL, WORDS, addTo, fromWords, linkProblemWords, notYetWords } from '../words.js';
 import { PathDisclosure } from '../parts/PathDisclosure.js';
 import { fileNameOf } from '../../../shared/harness/frontmatter.js';
 import { nothingChanged } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
-import { addState, unreadableHarnesses } from '../../../shared/harness/library-add.js';
+import { addState, contextEmpty, linkProblems, unreadableHarnesses } from '../../../shared/harness/library-add.js';
 import { AddSheet } from '../sheets/AddSheet.js';
 import { useSavedScan } from '../real/saved-scan.js';
 import { REAL } from '../real/words-real.js';
@@ -118,7 +118,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   // On the person's own folders Add opens the small form of the tab, except in Tools, where it is off and says why. The sample keeps its "Not in this preview" note.
   const real = state.real !== undefined, add = addState(kind);
   const notYet = real ? add.reason : notYetWords(false);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(false), [linking, setLinking] = useState(false);
   const saved = useSavedScan(), unreadable = real ? unreadableHarnesses(state) : [];
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SortMode>('name');
@@ -126,6 +126,9 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   const counts = libraryCounts(state);
   const needle = query.trim().toLowerCase();
   const rows = sorted(state, state.parts.filter(p => p.inLibrary && p.kind === kind && (needle === '' || `${p.name} ${p.description}`.toLowerCase().includes(needle))), mode);
+  // The empty Context tab offers the one thing that fills it: link a notes folder.
+  const problems = kind === 'context' && real ? linkProblems(state) : [];
+  const empty = contextEmpty({ kind, real, shown: rows.length, query, problems: problems.length });
   const selected = rows.find(p => p.id === partId) ?? rows[0];
   const open = (next: PartKind): void => go({ name: 'library', kind: next });
   if (partId !== null && !state.parts.some(p => p.id === partId && p.inLibrary)) {
@@ -139,8 +142,8 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   return (
     <Screen slot="library" title={WORDS.label.library}
       tools={notYet === null
-        ? <HIconButton icon="plus" label={WORDS.label.add} tip={WORDS.label.add} side="below-end" data-library-add="" onClick={() => setAdding(true)} />
-        : <HIconButton icon="plus" label={WORDS.label.add} tip={notYet} side="below-end" aria-disabled="true" data-library-add="" onClick={e => { e.preventDefault(); ui.showToast(notYet); }} />}
+        ? <HButton icon="plus" size="small" data-library-add="" onClick={() => setAdding(true)}>{WORDS.label.add}</HButton>
+        : <HButton icon="plus" size="small" title={notYet} aria-disabled="true" data-library-add="" onClick={e => { e.preventDefault(); ui.showToast(notYet); }}>{WORDS.label.add}</HButton>}
       details={selected === undefined ? undefined : <Details state={state} part={selected} onAdd={() => setPicking({ open: true, part: selected })} />}>
       <div className="hx-tabs" role="group" aria-label={WORDS.label.libraryPages}>
         {PART_KINDS.map(k => <button key={k} type="button" className="hx-tab" aria-pressed={k === kind} onClick={() => open(k)}>{KIND_PLURAL[k]} <span className="hx-tab-count">{counts[k]}</span></button>)}
@@ -155,10 +158,16 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
       <ul className="hx-rows" aria-label={KIND_PLURAL[kind]}>
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
-      {rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
+      {problems.map((p, i) => <p key={`${p.place}|${p.reason}|${p.label}|${i}`} className="kit-hint hx-hint" role="status" data-link-problem={p.reason}>{linkProblemWords(p.folder, p.reason, p.label)}</p>)}
+      {empty !== 'none' ? (
+        <div className="hx-actions" data-library-link-empty={empty}>
+          <p className="kit-hint hx-hint">{empty === 'problem' ? WORDS.hint.linkProblemEmpty : WORDS.hint.linkEmpty}</p>
+          <HButton icon="plus" variant="primary" data-link-notes="" onClick={() => setLinking(true)}>{empty === 'problem' ? WORDS.label.linkAgain : WORDS.label.linkNotes}</HButton>
+        </div>
+      ) : rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
       {real && saved.changed ? <div className="hx-actions" data-library-stale=""><p className="kit-hint hx-hint" role="status">{WORDS.hint.libraryStale}</p><HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton></div> : null}
-      {unreadable.map(u => <p key={`${u.label}|${u.name}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.label}: {u.why}</p>)}
-      {real ? <AddSheet open={adding} kind={kind} onClose={() => setAdding(false)} /> : null}
+      {unreadable.map((u, i) => <p key={`${u.label}|${u.name}|${i}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.label}: {u.why}</p>)}
+      {real ? <AddSheet open={adding || linking} kind={kind} link={linking} onClose={() => { setAdding(false); setLinking(false); }} /> : null}
       <PickHarnessSheet open={picking.open} part={picking.part} onClose={() => setPicking(current => ({ ...current, open: false }))} />
     </Screen>
   );

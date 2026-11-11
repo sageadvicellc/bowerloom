@@ -3,7 +3,7 @@
  * (tests/harness-words.test.ts) holds them all to the rules: a label at most 5 words, a hint at most 12, a paragraph or a popover at most 25, and no banned word (shared/harness/words.ts).
  * Words that are built from a number or a name ("3 agents", "Install Weekly report crew") are built by the functions at the bottom, which the same test runs.
  */
-import type { PartKind } from '../../shared/harness/types.js';
+import type { LinkProblem, PartKind } from '../../shared/harness/types.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
   for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
@@ -34,6 +34,8 @@ export const WORDS = deepFreeze({
     addSkillTitle: 'Add a skill', addAgentTitle: 'Add an agent', addNotesTitle: 'Add notes', whichFolder: 'Which folder gets it?', copyFromWhich: 'Copy it from which folder?',
     whichSkill: 'Which skill?', stepChoose: 'Choose', reviewChange: 'Review the change', leftOut: 'Folders left out', openSavePoints: 'Open save points', notesChosen: 'Your notes',
     theKeeper: 'The Notes keeper',
+    // Link a notes folder, from the empty Context tab.
+    linkNotes: 'Link a notes folder', linkNotesTitle: 'Link a notes folder', stepNotes: 'Notes folder', startHarness: 'Start a harness', linkAgain: 'Link a folder again',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -55,6 +57,9 @@ export const WORDS = deepFreeze({
     // Library Add.
     harnessMeans: 'A harness is a saved list of agents and skills.', onlyWithHarness: 'Only a folder with a harness can take it.',
     noTargets: 'No folder has a harness yet. Make one first.', noSources: 'No other folder has a skill to copy.',
+    linkEmpty: 'No notes are linked yet. Link a folder to see its pages.', linkWhich: 'Which harness gets these notes?', needsHarness: 'This folder has no harness yet. Start one.', chooseAgain: 'Choose that folder again, so Bowerloom can look for its harness.',
+    linkProblemEmpty: 'A linked folder could not be read. Fix it, or link again.', noHarnessPicked: 'That folder has no harness. Start one.',
+    linkIntro: 'Pick your notes folder. Then pick the harness that uses it.',
     skillHeld: 'This harness has the skill already.', keeperHeld: 'This harness has the Notes keeper already.', pickSkill: 'Pick the skill to copy.',
     pickNotes: 'Pick your notes folder, or start a new one.', notesReady: 'Ready. Review the change next.', readAgainNote: 'Read your folders again to see it in the Library.',
     undoNote: 'To undo, open Save points and press Go back.', noFileRead: 'This part comes from the folder\'s settings. The file was not read.',
@@ -107,6 +112,14 @@ export const namedBy = (names: readonly string[]): string => `${names.join(', ')
 /** "Writer will use it." */
 export const willUse = (names: readonly string[]): string => `${names.join(', ')} will use it.`;
 /** "Add to Weekly report crew": the name of a button in the pick sheet. */
+/** The line for a linked notes folder that was not read: the folder that links it, then why. `label` is the stored path, or empty. */
+export function linkProblemWords(folder: string, reason: LinkProblem['reason'], label: string): string {
+  const what = label === '' ? '' : `: ${label}`;
+  const why = reason === 'gone' ? `Linked folder not found${what}` : reason === 'form' ? `Linked folder path not read${what}` : reason === 'approval' ? `Needs approval${what}. Link it again to approve.` : reason === 'damaged' ? `Saved approvals could not be read${what}. Pick the folder again to start a new list.` : reason === 'blocked' ? `Bowerloom could not save approvals on this computer${what}` : reason === 'not-moved' ? `Bowerloom could not set aside its damaged list of approvals${what}` : reason === 'full' ? `Bowerloom keeps at most 2000 approved folders${what}`
+    : reason === 'unreadable' ? 'The list of linked folders could not be read.' : `More folders are linked than are read${what}`;
+  return `${folder}: ${why}`;
+}
+
 export const addTo = (name: string): string => `${WORDS.label.add} to ${name}`;
 /** "4 harnesses. Pick one to see what holds." */
 export const harnessListHint = (n: number): string => `${n} ${n === 1 ? 'harness' : 'harnesses'}. ${WORDS.hint.pickToSee}`;
