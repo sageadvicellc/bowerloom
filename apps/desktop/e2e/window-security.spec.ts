@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { ENGINE_CALLS } from '../shared/engine/types.js';
 import { REAL_CALLS } from '../shared/real/types.js';
+import { LOCAL_CALLS } from '../shared/api/local.js';
 import { buildShellHome } from '../tests/fixtures-real/shell-home.js';
 import type { ShellHome } from '../tests/fixtures-real/shell-home.js';
 import { launchHarness } from './harness-page.js';
@@ -45,23 +46,24 @@ test('the sample launch: locked down, and no bridge of any kind', async () => {
   const { app, page } = await launchHarness();
   try {
     await lockedDown(app, page);
-    expect(await page.evaluate(() => [typeof (window as unknown as { bowerloomReal?: unknown }).bowerloomReal, typeof (window as unknown as { bowerloomEngine?: unknown }).bowerloomEngine])).toEqual(['undefined', 'undefined']);
+    expect(await page.evaluate(() => [typeof (window as unknown as { bowerloomReal?: unknown }).bowerloomReal, typeof (window as unknown as { bowerloomEngine?: unknown }).bowerloomEngine, typeof (window as unknown as { bowerloomLocal?: unknown }).bowerloomLocal])).toEqual(['undefined', 'undefined', 'undefined']);
     expect(page.url()).toMatch(/^app:\/\/viewer\/index\.html#sample/);
   } finally { await app.close(); }
 });
 
-test('the app on the person\'s own folders: locked down, with exactly the reader\'s three calls and the engine calls, and no other bridge', async () => {
+test('the app on the person\'s own folders: locked down, with exactly the reader\'s three calls, the engine calls and the two local calls, and no other bridge', async () => {
   test.setTimeout(240_000);
   home = buildShellHome();
   const h = await launchReal(home.home);
   try {
     await lockedDown(h.app, h.page);
     const bridges = await h.page.evaluate(() => {
-      const w = window as unknown as { bowerloomReal: object; bowerloomEngine: object };
-      return { real: Object.keys(w.bowerloomReal).sort(), engine: Object.keys(w.bowerloomEngine).sort() };
+      const w = window as unknown as { bowerloomReal: object; bowerloomEngine: object; bowerloomLocal: object };
+      return { real: Object.keys(w.bowerloomReal).sort(), engine: Object.keys(w.bowerloomEngine).sort(), local: Object.keys(w.bowerloomLocal).sort() };
     });
     expect(bridges.real).toEqual([...REAL_CALLS].sort());
     expect(bridges.engine).toEqual(['mode', ...ENGINE_CALLS].sort());
+    expect(bridges.local).toEqual([...LOCAL_CALLS].sort());
     expect(h.page.url()).toMatch(/^app:\/\/viewer\/index\.html#app/);
   } finally { await h.app.close(); }
 });
