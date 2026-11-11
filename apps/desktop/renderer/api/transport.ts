@@ -1,7 +1,9 @@
 /**
  * The transport of the page: the one file that reads `bowerloomReal` and `bowerloomEngine` from the window by name. The real-mode preload puts them there and nowhere else.
  * In the sample launch and in any other window they are missing. This file only hands back what it finds, unchecked. renderer/api/client.ts checks it.
+ * It also reads the one attribute main puts on the body of the sample launch (shared/engine/sample-switch.ts), because it is the one file that reads the page.
  */
+import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
 
 /** What the window holds under the two names, as found. */
 export interface RawBridges {
@@ -14,3 +16,6 @@ export function pageTransport(): RawBridges {
   const found = typeof window === 'undefined' ? undefined : (window as unknown as { bowerloomReal?: unknown; bowerloomEngine?: unknown });
   return { reader: found?.bowerloomReal, engine: found?.bowerloomEngine };
 }
+
+/** Whether main marked this page as the sample launch with the preview engines locked. Read once, to make the sample engine. */
+export const samplePreviewEngines = (): boolean => document.body.getAttribute(SAMPLE_PREVIEW_ATTRIBUTE) === '1';
