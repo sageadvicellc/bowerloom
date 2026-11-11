@@ -5,29 +5,11 @@
  */
 import { parsePrometheus } from '../prometheus.js';
 import { failureOf } from '../provider.js';
+import { baseName, clean, isAbsolute } from '../text.js';
 import type { BoundGet, GetResult, LocalModelProvider, ProviderProbe, ProviderResult } from '../provider.js';
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 type Json = Readonly<Record<string, unknown>>;
-
-/** The text shown for any name or build is cut at this many characters. */
-const SHOWN_MAX = 120;
-/** Control characters, format characters, invisible and look-alike spaces: replaced with a question mark, as the extension loader does. */
-const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u17b4\u17b5\ufffc\u{1d173}-\u{1d17a}\u00a0\u2000-\u200a\u2800]/gu;
-
-function clean(text: string): string {
-  const chars = [...text.replace(UNSAFE, '?')];
-  return chars.length > SHOWN_MAX ? `${chars.slice(0, SHOWN_MAX).join('')}…` : chars.join('');
-}
-
-/** The last part of a path written with / or \. */
-function baseName(path: string): string {
-  const parts = path.split(/[\\/]/).filter(part => part !== '');
-  return parts.length === 0 ? '' : (parts[parts.length - 1] as string);
-}
-
-/** An absolute path, a home path or a Windows path: it can hold a user name, so only its base name is shown. */
-const isAbsolute = (text: string): boolean => text.startsWith('/') || text.startsWith('~') || text.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(text);
 
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined);
