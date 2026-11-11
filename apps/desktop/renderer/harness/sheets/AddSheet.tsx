@@ -78,8 +78,9 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   // The folder that holds the chosen notes: it gets the link when its harness loads, and starts one when it has none.
   const target0 = linking && choice.view !== null ? linkTarget(folders, choice.view) : null;
 
-  const reset = (): void => {
-    setTarget(null); setSource(null); setSkills(null); setSkill(null); setChoice(notesRestart); setShown(null); setApproved(null); setAcked(null); setDone(null); setLastPlan(null);
+  /** A new folder clears what was chosen for the old one. The link form keeps its notes: they are chosen first, and the folder that gets them is picked after. */
+  const reset = (keepNotes = false): void => {
+    setTarget(null); setSource(null); setSkills(null); setSkill(null); if (!keepNotes) setChoice(notesRestart); setShown(null); setApproved(null); setAcked(null); setDone(null); setLastPlan(null);
     call.clear(); targetCall.clear(); sourceCall.clear();
   };
   // Opened, or opened for another tab: everything starts again, and the folders are listed anew.
@@ -112,14 +113,14 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
     const read = async (): ReturnType<typeof foldersCall> => { try { return await foldersCall(engine); } catch (error) { setList(l => listAfter(l, 'failed')); throw error; } };
     void call.plan(W.label.planning, read, got => { setFolders(got); setList(l => listAfter(l, 'ok')); const ready = targetsFor(got).usable; if (ready.length === 1) setPicked(ready[0]!.id); });
   }
-  const pick = (id: string): void => { if (busy || id === picked) return; setPicked(id); reset(); };
+  const pick = (id: string): void => { if (busy || id === picked) return; setPicked(id); reset(linking); };
   const choose = (): void => {
     if (engine === null || busy) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
       // A closed chooser changes nothing: the earlier message and Try again stay. A pick returns the whole list, so it counts as a read.
       if (got === null) return;
       setFolders(got.list); setList(l => listAfter(l, 'picked'));
-      if (targetsFor(got.list).usable.some(f => f.id === got.info.id)) { setPicked(got.info.id); reset(); }
+      if (targetsFor(got.list).usable.some(f => f.id === got.info.id)) { setPicked(got.info.id); reset(linking); }
     });
   };
   /** Next: reads the folder's harness (a plan with no edits, which writes nothing) so the form knows what it holds already. */
