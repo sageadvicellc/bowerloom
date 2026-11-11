@@ -101,14 +101,17 @@ export const notesTone = (how: string | undefined): 'good' | 'quiet' => (how ===
 export const showLinkAction = (a: { kind: PartKind; real: boolean; shown: number; query: string }): boolean => a.kind === 'context' && a.real && a.shown === 0 && a.query.trim() === '';
 
 /**
- * Where a linked notes folder goes. The folder main lists with the same label as the notes is the one that gets the link: `ready` when its harness loads, `needs-harness` when it holds none (or main
- * does not list it yet, `folder` null), and `blocked` with the reason when its harness cannot take a change. A folder with no harness is never written to without the new-harness approval.
+ * What the form can say about the folder that holds the chosen notes. The window holds no folder id or real path for the notes, and a label is not an identity (two folders can share one),
+ * so a label match is only a hint: it never picks the folder. The person picks the folder that gets the link from the list.
+ *  - `listed`: a listed folder carries the label and its harness loads. It is marked in the list, and not picked.
+ *  - `needs-harness`: a listed folder carries the label and holds no harness, or none is listed under it (`folder` null).
+ *  - `blocked`: a listed folder carries the label and cannot take a change, or several carry it.
  */
 export type LinkTarget =
-  | { readonly kind: 'ready'; readonly folder: FolderInfo }
+  | { readonly kind: 'listed'; readonly folder: FolderInfo }
   | { readonly kind: 'needs-harness'; readonly folder: FolderInfo | null }
   | { readonly kind: 'blocked'; readonly folder: FolderInfo; readonly why: string };
-/** The words when two folders carry the label of the notes: the window holds no folder id or path for the notes, so it cannot tell which one is meant, and the person picks. */
+/** The words when two folders carry the label of the notes: the person picks. */
 export const LINK_WHICH_ONE = 'Which one? Several folders share that name.';
 export function linkTarget(folders: readonly FolderInfo[], notes: { readonly label: string }): LinkTarget {
   const same = folders.filter(f => f.label === notes.label);
@@ -117,13 +120,13 @@ export function linkTarget(folders: readonly FolderInfo[], notes: { readonly lab
   if (folder === undefined) return { kind: 'needs-harness', folder: null };
   if (!folder.hasDefinition) return { kind: 'needs-harness', folder };
   const why = whyNot(folder);
-  return why === null ? { kind: 'ready', folder } : { kind: 'blocked', folder, why };
+  return why === null ? { kind: 'listed', folder } : { kind: 'blocked', folder, why };
 }
 
 /** The linked notes folders the reader could not read, one row each, with the folder that links them. They show in the Context tab, so a link that does not work is never silent. */
-export interface LinkProblemRow { readonly folder: string; readonly reason: 'gone' | 'form' | 'approval' | 'unreadable' | 'limit'; readonly label: string }
+export interface LinkProblemRow { readonly place: string; readonly folder: string; readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }
 export const linkProblems = (state: HarnessState): LinkProblemRow[] =>
-  (state.harnessPlaces ?? []).flatMap(h => (h.linkProblems ?? []).map(p => ({ folder: h.label, reason: p.reason, label: p.label })));
+  (state.harnessPlaces ?? []).flatMap(h => (h.linkProblems ?? []).map(p => ({ place: h.id, folder: h.label, reason: p.reason, label: p.label })));
 
 /** What the empty Context tab shows: nothing special, the action to link a first folder, or the problem of a link that does not work (shown before any action). */
 export const contextEmpty = (a: { kind: PartKind; real: boolean; shown: number; query: string; problems: number }): 'none' | 'link' | 'problem' =>

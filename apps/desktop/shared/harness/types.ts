@@ -183,7 +183,7 @@ export interface HarnessPlace {
   readonly parts: readonly { readonly id: string; readonly kind: PartKind; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook'; readonly contentHash?: string }[];
   readonly links: readonly Link[];
   /** The linked notes folders that were not read, each with its reason. Absent when there are none. */
-  readonly linkProblems?: readonly { readonly reason: 'gone' | 'form' | 'approval' | 'unreadable' | 'limit'; readonly label: string }[];
+  readonly linkProblems?: readonly { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }[];
 }
 
 /** What the reader of the person's own folders reports, kept beside the world (real mode only). */

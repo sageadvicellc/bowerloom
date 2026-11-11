@@ -158,7 +158,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
       <ul className="hx-rows" aria-label={KIND_PLURAL[kind]}>
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
-      {problems.map(p => <p key={`${p.folder}|${p.reason}|${p.label}`} className="kit-hint hx-hint" role="status" data-link-problem={p.reason}>{linkProblemWords(p.folder, p.reason, p.label)}</p>)}
+      {problems.map(p => <p key={`${p.place}|${p.reason}|${p.label}`} className="kit-hint hx-hint" role="status" data-link-problem={p.reason}>{linkProblemWords(p.folder, p.reason, p.label)}</p>)}
       {empty !== 'none' ? (
         <div className="hx-actions" data-library-link-empty={empty}>
           <p className="kit-hint hx-hint">{empty === 'problem' ? WORDS.hint.linkProblemEmpty : WORDS.hint.linkEmpty}</p>

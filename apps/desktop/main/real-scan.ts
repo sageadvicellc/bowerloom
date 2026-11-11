@@ -279,17 +279,23 @@ export const LINKED_NOTES_MAX = 8;
 /** What the reader needs besides the place: the approvals of this machine, and the caps (a test lowers them). */
 export interface LinkContext {
   readonly approved: ReadonlySet<string>;
+  /** True when the approval record is there and damaged: a home link then says so, and is not read. */
+  readonly damaged?: boolean;
   readonly limits?: { readonly filesPerPlace: number; readonly pagesPerPlace: number };
 }
 export const NO_LINK_CONTEXT: LinkContext = Object.freeze({ approved: new Set<string>() });
 
-/** Loads the approval record. A record that is not there, is a link, is too big or is damaged holds no approval. */
-export function loadApprovals(file: string | undefined, budget: Budget, tally: Tally): ReadonlySet<string> {
-  if (file === undefined) return new Set();
+/** Loads the approval record. No record holds no approval. A record that is a link, is not a plain file, is too big or is damaged holds none either, and is told as damaged. */
+export function loadApprovals(file: string | undefined, budget: Budget, tally: Tally): { readonly approved: ReadonlySet<string>; readonly damaged: boolean } {
+  const none = { approved: new Set<string>(), damaged: false };
+  if (file === undefined || !isThere(file)) return none;
+  const damaged = { approved: new Set<string>(), damaged: true };
   const dir = realFolder(dirname(file));
-  if (dir === null) return new Set();
+  if (dir === null) return damaged;
   const text = readText(join(dir, basename(file)), dir, tally, budget);
-  return text === null || text.length > APPROVALS_MAX_BYTES ? new Set() : parseApprovals(text);
+  if (text === null || text.length > APPROVALS_MAX_BYTES) return damaged;
+  const keys = parseApprovals(text);
+  return keys === null ? damaged : { approved: keys, damaged: false };
 }
 
 const STORED_ODD = /[\0-\x1f\x7f\\`]/;
@@ -357,7 +363,7 @@ export function linkedNotesRoots(place: PlaceInternal, home: string, ctx: LinkCo
     const got = resolveStored(link.path, place.realRoot, home);
     if (!got.ok) { problems.push({ reason: got.why === 'gone' ? 'gone' : 'form', label: label(link.path) }); continue; }
     const stored = link.path as string;
-    if (stored.startsWith('~/') && !ctx.approved.has(approvalKey(place.realRoot, stored))) { problems.push({ reason: 'approval', label: label(stored) }); continue; }
+    if (stored.startsWith('~/') && !ctx.approved.has(approvalKey(place.realRoot, stored, got.real))) { problems.push({ reason: ctx.damaged === true ? 'damaged' : 'approval', label: label(stored) }); continue; }
     if (roots.some(r => r.real === got.real)) continue;
     roots.push({ real: got.real, stored });
   }
@@ -604,15 +610,15 @@ let unfinishedCount = 0;
  * screen: spaces are collapsed, a long part is cut, a key-like part is hidden). The text then holds the clock, so it matches nothing, and the check says it could not check, never
  * "same". A `gone` line is written only for a place that was rebuilt and has lost a tool folder. Nothing is written. The caller hashes the text (main/scan-session.ts).
  */
-export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now(), budgetMs: number = REAL_LIMITS.budgetMs, approvalsFile?: string): Promise<{ readonly text: string; readonly complete: boolean }> {
+export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now(), budgetMs: number = REAL_LIMITS.budgetMs, approvalsFile?: string, limits?: LinkContext['limits']): Promise<{ readonly text: string; readonly complete: boolean }> {
   const budget = makeBudget(now, budgetMs), tally = newTally();
-  const link: LinkContext = { approved: loadApprovals(approvalsFile, budget, tally) };
+  const link: LinkContext = { ...loadApprovals(approvalsFile, budget, tally), ...(limits === undefined ? {} : { limits }) };
   let unresolved = false;
   const ambiguity = new Map<string, Map<string, number>>();
   const homePlaces = findHomePlaces(home);
   const lines: string[] = ['bowerloom-read-fingerprint-1', ...homePlaces.map(p => `roster|${p.id}`).sort()];
   // The approvals of linked home folders decide what is read, so they are part of the fingerprint. A record with none adds nothing.
-  if (link.approved.size > 0) lines.push(`approvals|${hashText([...link.approved].sort().join(','))}`);
+  if (link.approved.size > 0 || link.damaged === true) lines.push(`approvals|${link.damaged === true ? 'damaged' : hashText([...link.approved].sort().join(','))}`);
   for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     if (mustStop(budget, tally)) break;
     const dir = folderOfShown(w.path, home);
@@ -668,7 +674,7 @@ export function createScanner(deps: ScannerDeps): Scanner {
     try { return await run(); } finally { busy = false; }
   };
   const describe = async (places: readonly PlaceInternal[], budget: Budget, tally: Tally): Promise<RealPlace[]> => {
-    const out: RealPlace[] = [], link: LinkContext = { approved: loadApprovals(deps.approvalsFile, budget, tally) };
+    const out: RealPlace[] = [], link: LinkContext = loadApprovals(deps.approvalsFile, budget, tally);
     for (const p of places) {
       if (mustStop(budget, tally)) break;
       const s = summarise(p, home, budget, link);
@@ -715,7 +721,7 @@ export function createScanner(deps: ScannerDeps): Scanner {
         if (!chosen.includes(p)) chosen.push(p);
       }
       const budget = makeBudget(now), tally = newTally(), reads: PlaceRead[] = [];
-      const link: LinkContext = { approved: loadApprovals(deps.approvalsFile, budget, tally) };
+      const link: LinkContext = loadApprovals(deps.approvalsFile, budget, tally);
       for (const p of chosen) {
         if (mustStop(budget, tally)) break;
         const r = readPlace(p, home, true, budget, link);

@@ -91,10 +91,6 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
     setStep(linking ? 'notes' : 'folder'); setFolders([]); setList('unread'); setPicked(null); setUnusable(null); reset();
     readFolders();
   }, [open, kind, engine, linking]);
-  // The link form picks the folder of the chosen notes for the person once it is a folder that can take them. The form still shows it.
-  useEffect(() => {
-    if (target0 !== null && target0.kind === 'ready' && step === 'folder') setPicked(target0.folder.id);
-  }, [target0?.kind, target0?.folder?.id, step]);
   // The New harness sheet closed: the folders are read again, so a harness it made is there.
   const adoptWas = useRef(false);
   useEffect(() => {
@@ -133,8 +129,9 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   };
   /** The link form's "Start a harness": the New harness sheet for the folder of the notes, which has none. Its own approval comes before any write. */
   const startHarness = (): void => {
-    if (engine === null || busy || target0 === null || target0.kind !== 'needs-harness' || target0.folder === null) return;
-    ui.openAdopt({ folderId: target0.folder.id });
+    if (engine === null || busy || list === 'failed') return;
+    // The New harness sheet asks for its folder itself: the form never starts a harness in a folder it only guessed from a name.
+    ui.openAdopt({ folderId: null });
   };
 
   /** The skills of another folder's harness, by id, name and description. */
@@ -229,7 +226,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
               <ul className="hxi-list hxe-folders" aria-label={W.label.folders}>
                 {usable.map(f => (
                   <li key={f.id}>
-                    <button type="button" className="hxi-card" aria-pressed={f.id === picked} aria-disabled={busy ? true : undefined} data-folder={f.id} onClick={() => pick(f.id)}>
+                    <button type="button" className="hxi-card" aria-pressed={f.id === picked} aria-disabled={busy ? true : undefined} data-folder={f.id} data-suggested={target0?.kind === 'listed' && target0.folder.id === f.id ? '' : undefined} onClick={() => pick(f.id)}>
                       <Tile name="folder" />
                       <span className="hxi-card-text"><span className="hxi-card-name">{f.name}</span><span className="hxi-card-sub">{f.label}</span></span>
                     </button>
@@ -240,7 +237,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
             {lines.tryAgain ? <p className="hxe-text" data-list-failed="">{WORDS.hint.listFailed}</p> : null}
             {lines.tryAgain ? <HButton data-try-again="" onClick={readFolders}>{W.label.tryAgain}</HButton> : null}
             {unusable === null ? null : <p className="hxe-text" data-picked-unusable="">{whyNot(unusable) === null || !unusable.hasDefinition ? WORDS.hint.noHarnessPicked : whyNot(unusable)}</p>}
-            {target0 === null || target0.kind === 'ready' ? null : (
+            {target0 === null || target0.kind === 'listed' ? null : (
               <p className="hxe-text" data-link-needs-harness="">{target0.kind === 'blocked' ? target0.why : target0.folder === null ? WORDS.hint.chooseAgain : WORDS.hint.needsHarness}</p>
             )}
             {target0 === null || target0.kind !== 'needs-harness' || target0.folder === null ? null : <HButton icon="plus" variant="primary" data-link-start-harness="" disabled={busy || engine === null || list === 'failed'} onClick={startHarness}>{WORDS.label.startHarness}</HButton>}

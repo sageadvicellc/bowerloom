@@ -95,7 +95,7 @@ export interface RealHarnessPart { readonly id: string; readonly kind: 'agent' |
  * the program names. `links` join an agent to the skills it names, by part id.
  */
 /** A notes folder a harness links that was not read, and why: the folder is gone, its stored path is not a form the reader takes, it needs the person's approval on this machine, its `knowledge.json` cannot be read, or more is linked than is read. `label` is the stored path, or empty. */
-export interface LinkProblem { readonly reason: 'gone' | 'form' | 'approval' | 'unreadable' | 'limit'; readonly label: string }
+export interface LinkProblem { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }
 export interface RealHarness {
   readonly readable: boolean;
   /** The linked notes folders that were not read. Absent when there are none. */
