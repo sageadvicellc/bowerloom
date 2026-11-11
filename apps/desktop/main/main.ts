@@ -9,6 +9,7 @@ import { launchOf } from './launch.js';
 import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
+import { extensionsBundleRoot, registerLocalModelsIpc } from './local-models-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createScanSession } from './scan-session.js';
 import { createRecorder } from './engine-events.js';
@@ -277,6 +278,8 @@ app.whenReady().then(async () => {
       // Main's private copies of tidy-up reports go when the app quits. A copy left by a hard kill stays in the person's own temporary folder.
       app.once('quit', () => { try { engine.clearReportCopies(); } finally { void engine.close(); } });
     }
+    // The local models report and the list of loaded extensions: two read-only calls with no argument. The report reads only 127.0.0.1 ports (packages/local-models) and writes nothing.
+    registerLocalModelsIpc({ ipc: ipcMain, appIndexUrl: indexUrl, stateRoot: engineStateRoot(home), bundleRoot: extensionsBundleRoot({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }) });
   }
   // The extension loader reads the app bundle's own extensions folder and nothing else (main/extension-host.ts). A bad extension is skipped and never stops the start. Each skip goes to stderr
   // and, in a launch that keeps the usage log, its code is recorded there too. Limit: a launch with no usage log has stderr only, which a Finder-launched app does not show.
