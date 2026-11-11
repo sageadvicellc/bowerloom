@@ -5,7 +5,7 @@
  * It knows nothing about any one person's folders. Where to look comes from the adapter table (shared/real/adapters.ts); where to start comes from the home folder it is
  * given and from the folders the person picks. The place ids it hands out are the only ones `read` accepts.
  */
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'node:path';
 import { ADAPTERS, adapterOf, appLabel, classify, recordsOfFile, walkEnter, walkPrune } from '../shared/real/adapters.js';
 import type { ConfigKind } from '../shared/real/adapters.js';
 import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/frontmatter.js';
@@ -276,10 +276,30 @@ const notesWalk = (linked = false): WalkOptions => ({
 const LINKED_NOTES_MAX = 8;
 
 /**
- * The notes folders the person linked to the harness of a place, by the absolute path `knowledge.json` keeps (`wiki-folder`). Nothing is searched for: a folder is read only when the person
- * picked it. A path that is not absolute or is not a folder is left out (a missing folder is counted as unreadable). Each folder is returned once, as its real location; the place's own folder may be one.
+ * The folder a stored notes path names, or null. The stored forms are the ones the harness package writes: `.` for the harness folder itself, a path below it, or `~/` and a path below the home
+ * folder. An absolute path, a `..` that leaves either folder, a hidden name and an odd character are not stored forms, so they name nothing. The result must still be inside the folder it came from
+ * once its shortcuts are resolved.
  */
-function linkedNotesRoots(place: PlaceInternal, budget: Budget, tally: Tally): string[] {
+function storedNotesFolder(stored: unknown, rootReal: string, home: string): string | null {
+  if (typeof stored !== 'string' || stored === '' || stored.length > 1024 || /[\\`\u0000-\u001f]|^[A-Za-z]:/.test(stored)) return null;
+  if (stored === '.') return rootReal;
+  const homeBased = stored.startsWith('~/');
+  if (!homeBased && (stored.startsWith('~') || isAbsolute(stored))) return null;
+  const rest = normalize(homeBased ? stored.slice(2) : stored);
+  if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest) || rest.split(sep).some(part => part.startsWith('.') && part !== '.')) return null;
+  const base = homeBased ? realFolderFollowing(home) : rootReal;
+  if (base === null) return null;
+  const real = realFolderFollowing(join(base, rest));
+  if (real === null) return null;
+  const inside = relative(base, real);
+  return inside === '' || (!inside.startsWith('..') && !isAbsolute(inside)) ? real : null;
+}
+
+/**
+ * The notes folders the person linked to the harness of a place, by the stored path `knowledge.json` keeps (`wiki-folder`). Nothing is searched for: a folder is read only when the person
+ * picked it. A path that is not a stored form, and a folder that is not there, are left out. Each folder is returned once, as its real location; the place's own folder may be one.
+ */
+function linkedNotesRoots(place: PlaceInternal, home: string, budget: Budget, tally: Tally): string[] {
   const own = place.kind === 'home' ? undefined : place.folders.find(f => f.app === 'bowerloom');
   if (own === undefined || realFolderFollowing(own.abs) !== own.abs) return [];
   const file = join(own.abs, 'knowledge.json');
@@ -291,11 +311,10 @@ function linkedNotesRoots(place: PlaceInternal, budget: Budget, tally: Tally): s
   if (!Array.isArray(sources)) return [];
   const out: string[] = [];
   for (const source of sources.slice(0, HARNESS_LIST_MAX)) {
-    const path = (source as { kind?: unknown; path?: unknown } | null)?.path;
-    if ((source as { kind?: unknown } | null)?.kind !== 'wiki-folder' || typeof path !== 'string' || !isAbsolute(path)) continue;
-    const real = realFolderFollowing(path);
-    if (real === null) { tally.unreadable += 1; continue; }
-    if (out.includes(real)) continue;
+    const entry = source as { kind?: unknown; path?: unknown } | null;
+    if (entry?.kind !== 'wiki-folder' || typeof entry.path !== 'string') continue;
+    const real = storedNotesFolder(entry.path, place.realRoot, home);
+    if (real === null || out.includes(real)) continue;
     out.push(real);
     if (out.length >= LINKED_NOTES_MAX) break;
   }
@@ -345,7 +364,7 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     if (realFolderFollowing(rootReal) !== rootReal) tally.unreadable += 1;
     else {
       // A place whose own folder is the linked notes folder is read whole too: the person picked it as notes.
-      const linkedRoots = linkedNotesRoots(place, budget, tally);
+      const linkedRoots = linkedNotesRoots(place, home, budget, tally);
       const walked = walkFiles(rootReal, rootReal, notesWalk(linkedRoots.includes(rootReal)), budget, tally);
       const shown = withText ? walked.slice(0, REAL_LIMITS.pagesPerPlace) : walked;
       let added = 0;
@@ -468,7 +487,7 @@ function keptOf(app: RealApp, config: ConfigKind, name: string, abs: string, con
  * that must be read could not be. A config file that a program rewrites during any session (`~/.claude.json`, and `settings.local.json`, which holds the permissions a person approves)
  * counts by what the reader keeps from it, so a new connection or hook shows and the rest does not. The four files of a `.bowerloom` folder count by size and change time.
  */
-function watchLines(place: PlaceInternal, budget: Budget, tally: Tally, flags: { unresolved: boolean }): string[] {
+function watchLines(place: PlaceInternal, home: string, budget: Budget, tally: Tally, flags: { unresolved: boolean }): string[] {
   const out: string[] = [];
   const kept = (app: RealApp, config: ConfigKind, name: string, abs: string, contain: string): string => {
     const text = keptOf(app, config, name, abs, contain, budget, tally);
@@ -490,7 +509,7 @@ function watchLines(place: PlaceInternal, budget: Budget, tally: Tally, flags: {
   if (place.kind !== 'home') {
     if (realFolderFollowing(place.realRoot) !== place.realRoot) out.push('gone|root');
     else {
-      const roots = linkedNotesRoots(place, budget, tally);
+      const roots = linkedNotesRoots(place, home, budget, tally);
       for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(roots.includes(place.realRoot)), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
       // A linked notes folder is read the same way, so a change in it shows as a change of the place.
       for (const root of roots.filter(r => r !== place.realRoot)) for (const f of walkFiles(root, root, notesWalk(true), budget, tally)) out.push(`l|${hashText(root).slice(0, 8)}|${f.rel}|${f.size}|${f.mtimeMs}`);
@@ -530,7 +549,7 @@ export async function watchTextOf(home: string, watched: readonly WatchedPlace[]
     // A path that a neighbour shares, or that holds a link the walk cannot take, may name another folder than the one read: it cannot be checked.
     if ('place' in rebuilt && (rebuilt.unresolved || (dir !== null && pathIsAmbiguous(dir, home, ambiguity)))) unresolved = true;
     const flags = { unresolved: false };
-    lines.push(...watchLines(place, budget, tally, flags));
+    lines.push(...watchLines(place, home, budget, tally, flags));
     if (flags.unresolved) unresolved = true;
     await yieldToLoop();
   }

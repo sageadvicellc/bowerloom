@@ -210,7 +210,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
           <>
             <p className="hxi-intro" tabIndex={-1} ref={intro}>{WORDS.hint.linkIntro}</p>
             <section className="hxe-section" aria-label={WORDS.label.notesChosen} data-section="link-notes">
-              <NotesStep key={choice.gen} start={choice.view === null ? 'use' : undefined} onBusy={setNotesWriting} onDone={(view, how) => setChoice(c => notesDone(c, choice.gen, view, how))} onReset={() => setChoice(c => ({ ...c, view: null }))} />
+              <NotesStep key={choice.gen} {...(choice.view === null ? { start: 'use' as const } : {})} onBusy={setNotesWriting} onDone={(view, how) => setChoice(c => notesDone(c, choice.gen, view, how))} onReset={() => setChoice(c => ({ ...c, view: null }))} />
               {notes === null ? null : (
                 <p className="hxe-text" data-notes-chosen={notes.id}><StateDot tone={notesTone(choice.how)}>{notesTone(choice.how) === 'good' ? WORDS.hint.notesReady : WORDS.hint.notesReportOnly}</StateDot> <span className="hxe-mono">{notes.name}</span> <span className="hxe-muted">{NOTES.label.notes}</span></p>
               )}
