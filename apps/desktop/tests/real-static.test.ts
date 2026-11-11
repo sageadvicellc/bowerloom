@@ -45,7 +45,7 @@ const MAIN_POLICY: Policy = {
   modules: { 'node:fs': FS_READ, 'node:path': '*', 'node:url': ['fileURLToPath'] },
 };
 const PRELOAD_POLICY: Policy = {
-  // The bridge also names the calls of the adopt and install sheets (shared/engine/types.ts) and the two local calls (shared/api/local.ts) and the four runs calls (shared/api/runs.ts): names and channels only, no code that runs.
+  // The bridge also names the calls of the adopt and install sheets (shared/engine/types.ts) and the two local calls (shared/api/local.ts) and the five runs calls (shared/api/runs.ts): names and channels only, no code that runs.
   allowFile: rel => SHARED_REAL(rel) || /^preload\/real-[\w-]+\.ts$/.test(rel) || rel === 'shared/engine/types.ts' || rel === 'shared/api/local.ts' || rel === 'shared/api/runs.ts',
   deadOk: {},
   modules: { electron: ['contextBridge', 'ipcRenderer'] },

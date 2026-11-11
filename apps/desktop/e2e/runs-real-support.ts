@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { claudeFolderName } from '../main/run-logs.js';
 import { isoToLocalInput } from '../renderer/harness/clock.js';
 import type { RealHarness } from './harness-real-page.js';
+import { RUN_CHANNELS } from '../shared/api/runs.js';
+import type { RunCall } from '../shared/api/runs.js';
 
 /** Text that is in every made-up log, as if it were a prompt or a reply. It must never reach the window, the saved file or the log of the app. */
 export const MARK = 'SECRET-CHAT-TEXT-9f3a';
@@ -57,8 +59,9 @@ export async function registerFolder(h: RealHarness, dir: string): Promise<void>
 export const goTo = async (p: Page, hash: string): Promise<void> => { await p.evaluate(to => { location.hash = to; }, hash); };
 
 export interface AddRun { readonly engine: string; readonly instruction: string; readonly startMs: number }
-/** Opens "Add a run", fills it and saves it. The folder is the first one in the list. Returns the sheet's locator once it has closed. */
-export async function addRun(p: Page, run: AddRun): Promise<void> {
+
+/** Opens "Add a run" and fills it, without saving. Returns the sheet. The folder is the first one in the list. */
+export async function fillAddRun(p: Page, run: AddRun): Promise<Locator> {
   await goTo(p, '#app/runs');
   await p.locator('[data-add-run]').click();
   const sheet: Locator = p.locator('[data-slot="add-run"]');
@@ -69,6 +72,32 @@ export async function addRun(p: Page, run: AddRun): Promise<void> {
   await sheet.locator('#har-instruction').fill(run.instruction);
   await sheet.locator('#har-when').fill(isoToLocalInput(run.startMs));
   await expect(sheet.locator('[data-save-run]')).toBeEnabled();
+  return sheet;
+}
+
+/** Opens "Add a run", fills it and saves it. */
+export async function addRun(p: Page, run: AddRun): Promise<void> {
+  const sheet = await fillAddRun(p, run);
   await sheet.locator('[data-save-run]').click();
   await expect(sheet).toHaveCount(0);
 }
+
+/**
+ * Holds the answers of one runs call in main until the test lets them go, and counts the calls that reached main. The handler main registered is wrapped, so the call still runs the real code when it is let go.
+ * (Electron keeps its handlers in a map that the test reaches through the main process only.)
+ */
+export async function gateCall(h: RealHarness, call: RunCall, hold = true): Promise<void> {
+  await h.app.evaluate(({ ipcMain }, [channel, held]) => {
+    const g = globalThis as unknown as { __gates?: Record<string, { calls: number; open: boolean; waiters: (() => void)[] }> };
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (e: unknown, ...a: unknown[]) => unknown> })._invokeHandlers;
+    const old = handlers.get(channel!);
+    if (old === undefined) throw new Error(`no handler on ${channel}`);
+    g.__gates ??= {};
+    const st = { calls: 0, open: !held, waiters: [] as (() => void)[] };
+    g.__gates[channel!] = st;
+    ipcMain.removeHandler(channel!);
+    ipcMain.handle(channel!, async (e, ...a) => { st.calls += 1; if (!st.open) await new Promise<void>(r => st.waiters.push(r)); return old(e, ...a); });
+  }, [RUN_CHANNELS[call], hold] as const);
+}
+export const gateCalls = (h: RealHarness, call: RunCall): Promise<number> => h.app.evaluate((_e, channel) => (globalThis as unknown as { __gates: Record<string, { calls: number }> }).__gates[channel]!.calls, RUN_CHANNELS[call]);
+export const gateRelease = (h: RealHarness, call: RunCall): Promise<void> => h.app.evaluate((_e, channel) => { const st = (globalThis as unknown as { __gates: Record<string, { open: boolean; waiters: (() => void)[] }> }).__gates[channel]!; st.open = true; for (const w of st.waiters.splice(0)) w(); }, RUN_CHANNELS[call]);

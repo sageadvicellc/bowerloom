@@ -16,7 +16,7 @@ import { teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
-import { MARK, addRun, claudeLog, codexLog, goTo, registerFolder, startedMs } from './runs-real-support.js';
+import { MARK, addRun, claudeLog, codexLog, gateCall, gateCalls, gateRelease, goTo, registerFolder, startedMs } from './runs-real-support.js';
 
 let h: RealHarness, home: string;
 const page = (): Page => h.page;
@@ -134,4 +134,89 @@ test('a group with one run says a second engine is needed, and a group that is n
   await expect(p.getByText('That group of runs is not here.')).toBeVisible();
   await p.getByRole('button', { name: 'Close compare', exact: true }).click();
   await expect(p.getByRole('heading', { level: 1, name: 'Runs', exact: true })).toBeVisible();
+});
+
+async function openCompare(): Promise<void> {
+  const p = page();
+  await recordTwoAndOne();
+  await goTo(p, '#app/runs');
+  await p.locator('.hr-group').getByRole('button', { name: 'Open compare', exact: true }).click();
+  await expect(p.locator('.hc-col')).toHaveCount(2);
+}
+
+test('Save does nothing and says nothing when no run has a draft, and sends only the runs that have one', async () => {
+  const p = page();
+  await openCompare();
+  await gateCall(h, 'updateRun', false);
+  await p.locator('[data-save-compare]').click();
+  await p.waitForTimeout(500);
+  expect(await gateCalls(h, 'updateRun'), 'nothing was sent').toBe(0);
+  await expect(p.getByText('Saved rating and notes.')).toHaveCount(0);
+  await p.locator('.hc-col').filter({ hasText: 'Claude Code' }).locator('textarea').fill('Only here.');
+  await p.locator('[data-save-compare]').click();
+  await expect(p.getByText('Saved rating and notes.')).toBeVisible();
+  expect(await gateCalls(h, 'updateRun'), 'one run had a draft, so one call was made').toBe(1);
+  // A draft that was typed and then put back to what was saved is no draft.
+  await p.locator('.hc-col').filter({ hasText: 'Codex' }).locator('textarea').fill('x');
+  await p.locator('.hc-col').filter({ hasText: 'Codex' }).locator('textarea').fill('');
+  await p.locator('[data-save-compare]').click();
+  await p.waitForTimeout(300);
+  expect(await gateCalls(h, 'updateRun')).toBe(1);
+});
+
+test('text typed while a save runs is kept, and the draft is dropped only where it still equals what was sent', async () => {
+  const p = page();
+  await openCompare();
+  const box = p.locator('.hc-col').filter({ hasText: 'Claude Code' }).locator('textarea');
+  await box.fill('first');
+  await gateCall(h, 'updateRun');
+  await p.locator('[data-save-compare]').click();
+  await expect.poll(() => gateCalls(h, 'updateRun')).toBe(1);
+  await box.fill('first and more');
+  await gateRelease(h, 'updateRun');
+  await expect(p.getByText('Saved rating and notes.')).toBeVisible();
+  await expect(box, 'what was typed during the save stays').toHaveValue('first and more');
+  await gateCall(h, 'updateRun', false);
+  await p.locator('[data-save-compare]').click();
+  await expect.poll(() => gateCalls(h, 'updateRun')).toBe(1);
+  const saved = JSON.parse(readFileSync(join(h.state, 'bowerloom', 'runs', 'runs.json'), 'utf8')) as { runs: { engine: string; notes: string }[] };
+  expect(saved.runs.find(r => r.engine === 'claude-code' && r.notes !== '')?.notes).toBe('first and more');
+});
+
+test('leaving Compare with unsaved ratings or notes asks first, for Close and for a tab, and keeping goes on editing', async () => {
+  const p = page();
+  await openCompare();
+  // No draft: Close goes straight to Runs.
+  await p.getByRole('button', { name: 'Close compare', exact: true }).last().click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Runs', exact: true })).toBeVisible();
+  await p.locator('.hr-group').getByRole('button', { name: 'Open compare', exact: true }).click();
+  const box = p.locator('.hc-col').filter({ hasText: 'Claude Code' }).locator('textarea');
+  await box.fill('Unsaved words.');
+  const ask = p.locator('[data-slot="leave-compare"]');
+  await p.getByRole('button', { name: 'Close compare', exact: true }).last().click();
+  await expect(ask).toContainText('You have unsaved ratings or notes. Leave without saving?');
+  await ask.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(box).toHaveValue('Unsaved words.');
+  await p.locator('nav [data-nav-key="harnesses"]').click();
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(p.locator('[data-screen="compare"]')).toBeVisible();
+  await p.locator('[data-save-compare]').click();
+  await expect(p.getByText('Saved rating and notes.')).toBeVisible();
+  // Saved: nothing to ask about.
+  await p.locator('nav [data-nav-key="harnesses"]').click();
+  await expect(ask).toHaveCount(0);
+  await expect(p.getByRole('heading', { level: 1, name: 'Harnesses', exact: true })).toBeVisible();
+});
+
+test('Leave drops the drafts and goes on to the move that was asked for', async () => {
+  const p = page();
+  await openCompare();
+  await p.locator('.hc-col').filter({ hasText: 'Claude Code' }).locator('textarea').fill('Will be left.');
+  await p.getByRole('button', { name: 'Close compare', exact: true }).last().click();
+  await p.locator('[data-slot="leave-compare"]').getByRole('button', { name: 'Leave', exact: true }).click();
+  await expect(p.getByRole('heading', { level: 1, name: 'Runs', exact: true })).toBeVisible();
+  const saved = JSON.parse(readFileSync(join(h.state, 'bowerloom', 'runs', 'runs.json'), 'utf8')) as { runs: { notes: string }[] };
+  expect(saved.runs.every(r => r.notes === ''), 'nothing was saved').toBe(true);
 });

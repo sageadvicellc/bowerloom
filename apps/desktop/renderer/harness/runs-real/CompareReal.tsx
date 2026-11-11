@@ -3,14 +3,15 @@
  * engine's own session log, a box for notes and a rating (Better, Same or Worse). The rating unlocks when the run is marked done. "Save rating and notes" saves in main's own file of runs.
  * It compares one task across engines: it does not compare versions of a harness. A figure the log did not hold is "Not read", never a zero.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { RUN_NOTES_LIMIT } from '../../../shared/api/runs.js';
-import type { RunRating, RunView } from '../../../shared/api/runs.js';
+import type { RunPatch, RunRating, RunView } from '../../../shared/api/runs.js';
 import { REAL_RATINGS, canRateReal, engineName, realGroupById, realRateQuestion, realStatusWords, runsRefusalWords, saveReportWords } from '../../../shared/harness/runs-real.js';
 import { ratingWords, sameInstructionWords } from '../../../shared/harness/runs.js';
 import { Screen } from '../Screen.js';
-import { go } from '../router.js';
+import { go, setLeaveGuard } from '../router.js';
+import { Sheet } from '../parts/Sheet.js';
 import { startedAtWords } from '../clock.js';
 import { useUi } from '../ui.js';
 import { HButton, HIconButton, StateDot } from '../parts/controls.js';
@@ -30,7 +31,7 @@ interface Shown { readonly rating: RunRating | null; readonly notes: string }
 interface ColumnProps { run: RunView; draft: Shown; control: RunListControl; onRating(rating: RunRating): void; onNotes(notes: string): void; onFailed(code: string): void; onSynced(id: string, scope: 'rating' | 'all'): void }
 
 function Column({ run, draft, control, onRating, onNotes, onFailed, onSynced }: ColumnProps): ReactElement {
-  const figures = useFigures(useRuns(), run.id);
+  const figures = useFigures(useRuns(), run.id, run.status);
   const name = engineName(run), open = canRateReal(run);
   const noteId = `hc-notes-${run.id}`, askId = `hc-ask-${run.id}`;
   const toggle = (): void => { void control.change(run.id, { status: run.status === 'done' ? 'recorded' : 'done' }).then(code => { if (code !== null) onFailed(code); else onSynced(run.id, 'rating'); }); };
@@ -43,7 +44,7 @@ function Column({ run, draft, control, onRating, onNotes, onFailed, onSynced }: 
       </header>
       <p className="hx-text">{run.projectName}</p>
       <p className="hx-text hc-muted">{`${RUNS_REAL.label.started} ${startedAtWords(run.startedAt)}.`}</p>
-      <FigureRows view={figures} label={run.projectLabel} />
+      <FigureRows figures={figures} label={run.projectLabel} />
       <div className="hc-bring"><HButton data-toggle-done={run.id} onClick={toggle}>{run.status === 'done' ? RUNS_REAL.label.markNotDone : RUNS_REAL.label.markDone}</HButton></div>
       <label className="hc-label" htmlFor={noteId}>{RUNS_REAL.label.yourNotes}</label>
       <textarea id={noteId} className="hc-notes" maxLength={RUN_NOTES_LIMIT} value={draft.notes} onChange={e => onNotes(e.target.value)} rows={4} />
@@ -63,6 +64,28 @@ export function CompareReal({ group }: { group: string }): ReactElement {
   const control = useRunList(bridge);
   const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({});
   const [saved, setSaved] = useState(false);
+  /** The move that waits for "Leave without saving?", or null. */
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  /** The part of a run's draft that differs from what main holds: what Save would send. Null when there is nothing to send. A rating is sent only for a run that is done. */
+  const patchOf = (run: RunView): RunPatch | null => {
+    const d = drafts[run.id];
+    if (d === undefined) return null;
+    const out: { rating?: RunRating | null; notes?: string } = {};
+    if (d.notes !== undefined && d.notes !== run.notes) out.notes = d.notes;
+    if (d.rating !== undefined && canRateReal(run) && d.rating !== run.rating) out.rating = d.rating;
+    return Object.keys(out).length === 0 ? null : out;
+  };
+  const allRuns = control.list.kind === 'ready' ? control.list.runs : [];
+  const unsaved = allRuns.some(run => patchOf(run) !== null);
+  // Leaving the screen with ratings or notes that are not saved asks first (Close, a tab, any move of the app). The same group is not leaving.
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    return setLeaveGuard((next, proceed) => {
+      if (next.name === 'compare' && next.group === group) return false;
+      setLeaving(() => proceed);
+      return true;
+    });
+  }, [unsaved, group]);
   const close = (): void => go({ name: 'runs' });
   const closeTool = <HIconButton icon="close" label={RUN_WORDS.label.close} tip={RUN_WORDS.label.closeCompare} side="below-end" onClick={close} />;
   if (bridge === null) return <Screen slot="compare" title={RUN_WORDS.label.compare} tools={closeTool}><p className="kit-hint hx-hint" data-compare-state="no-bridge">{RUNS_REAL.hint.noBridge}</p></Screen>;
@@ -93,12 +116,22 @@ export function CompareReal({ group }: { group: string }): ReactElement {
     if (scope === 'rating') { const { rating: _gone, ...rest } = old; return { ...current, [id]: rest }; }
     const { [id]: _all, ...others } = current; return others;
   });
+  /** A saved draft is dropped only where it still equals what was sent, so text typed while the save ran stays. */
+  const dropSent = (id: string, sent: RunPatch): void => setDrafts(current => {
+    const d = current[id];
+    if (d === undefined) return current;
+    const { rating, notes, ...rest } = d;
+    const keep: Draft = { ...rest, ...(sent.rating !== undefined && rating === sent.rating ? {} : rating === undefined ? {} : { rating }), ...(sent.notes !== undefined && notes === sent.notes ? {} : notes === undefined ? {} : { notes }) };
+    const { [id]: _gone, ...others } = current;
+    return Object.keys(keep).length === 0 ? others : { ...others, [id]: keep };
+  });
   const save = (): void => {
-    // A run that is not done keeps its notes only; a run that is done saves its rating and notes. Each run is reported on its own.
-    const jobs = runs.map(run => { const d = draftOf(run); return control.change(run.id, canRateReal(run) ? { rating: d.rating, notes: d.notes } : { notes: d.notes }); });
-    void Promise.all(jobs).then(codes => {
-      const report = runs.map((run, at) => ({ name: engineName(run), code: codes[at] ?? null }));
-      for (const [at, run] of runs.entries()) if (codes[at] === null) synced(run.id, 'all');
+    // Only a run with something to save is sent. With nothing to save, Save does nothing and says nothing.
+    const sent = runs.map(run => ({ run, patch: patchOf(run) })).filter((x): x is { run: RunView; patch: RunPatch } => x.patch !== null);
+    if (sent.length === 0) return;
+    void Promise.all(sent.map(x => control.change(x.run.id, x.patch))).then(codes => {
+      const report = sent.map((x, at) => ({ name: engineName(x.run), code: codes[at] ?? null }));
+      for (const [at, x] of sent.entries()) if (codes[at] === null) dropSent(x.run.id, x.patch);
       const ok = report.every(r => r.code === null);
       setSaved(ok);
       ui.showToast(ok ? RUNS_REAL.hint.savedToast : saveReportWords(report));
@@ -124,6 +157,10 @@ export function CompareReal({ group }: { group: string }): ReactElement {
           <HButton icon="save-clock" variant="primary" data-save-compare="" onClick={save}>{RUN_WORDS.label.saveRating}</HButton>
         </div>
       </div>
+      <Sheet open={leaving !== null} title={RUNS_REAL.label.unsavedTitle} onClose={() => setLeaving(null)} width={480} dataSlot="leave-compare"
+        actions={<><HButton onClick={() => setLeaving(null)}>{RUNS_REAL.label.keepEditing}</HButton><HButton variant="primary" data-leave="" onClick={() => { const go2 = leaving; setLeaving(null); setDrafts({}); go2?.(); }}>{RUNS_REAL.label.leave}</HButton></>}>
+        <p className="hx-text">{RUNS_REAL.hint.leaveAsk}</p>
+      </Sheet>
     </Screen>
   );
 }

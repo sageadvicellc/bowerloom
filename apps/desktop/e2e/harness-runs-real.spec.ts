@@ -17,7 +17,7 @@ import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
 import type { RealHarness } from './harness-real-page.js';
 import { removeTempDirs, tempDir } from './temp-dirs.js';
-import { MARK, addRun, claudeLog, garbageClaudeLog, goTo, registerFolder, startedMs } from './runs-real-support.js';
+import { MARK, addRun, claudeLog, codexLog, fillAddRun, garbageClaudeLog, gateCall, gateCalls, gateRelease, goTo, registerFolder, startedMs } from './runs-real-support.js';
 import { shot } from './harness-page.js';
 
 let h: RealHarness, home: string;
@@ -232,4 +232,63 @@ test('a damaged saved file is shown as damaged, a record is refused and nothing 
   expect(readFileSync(join(h.state, 'bowerloom', 'runs', asides[0]!), 'utf8')).toBe('not json at all');
   await expect(p.getByText('No runs yet. Record one after you start an engine.')).toBeVisible();
   expect(await p.locator('body').innerText()).not.toContain(home);
+});
+
+test('a close while a save is in flight is refused: Cancel is off, Escape and the scrim do nothing, and the run is recorded once the answer comes', async () => {
+  const p = page(), dir = teamFolder(home);
+  await registerFolder(h, dir);
+  const sheet = await fillAddRun(p, { engine: 'Codex', instruction: 'Held save.', startMs: startedMs() });
+  await gateCall(h, 'recordRun');
+  await sheet.locator('[data-save-run]').click();
+  await expect(sheet.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  await p.keyboard.press('Escape');
+  await p.mouse.click(4, 4);
+  await expect(sheet, 'Escape and the scrim do nothing while the save runs').toBeVisible();
+  await gateRelease(h, 'recordRun');
+  await expect(sheet).toHaveCount(0);
+  await expect(p.getByText('Recorded. Find it in Runs.')).toBeVisible();
+  await expect(p.locator('[data-run="run-1"]')).toBeVisible();
+  expect(await gateCalls(h, 'recordRun')).toBe(1);
+});
+
+test('a save that answers after the screen was left drops its result: no move to Runs and no Recorded note', async () => {
+  const p = page(), dir = teamFolder(home);
+  await registerFolder(h, dir);
+  const sheet = await fillAddRun(p, { engine: 'Codex', instruction: 'Left behind.', startMs: startedMs() });
+  await gateCall(h, 'recordRun');
+  await sheet.locator('[data-save-run]').click();
+  await expect(sheet.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  await goTo(p, '#app/harnesses');
+  await expect(sheet).toHaveCount(0);
+  await gateRelease(h, 'recordRun');
+  await expect.poll(async () => (JSON.parse(readFileSync(stateFile(), 'utf8')) as { runs: unknown[] }).runs.length).toBe(1);
+  await p.waitForTimeout(600);
+  expect(await p.evaluate(() => location.hash), 'the page was not moved to Runs').toBe('#app/harnesses');
+  await expect(p.getByText('Recorded. Find it in Runs.')).toHaveCount(0);
+});
+
+test('figures are read again when a run becomes done and when the person presses Read again, and never while a read is in flight', async () => {
+  const p = page(), dir = teamFolder(home), start = startedMs();
+  await registerFolder(h, dir);
+  await addRun(p, { engine: 'Claude Code', instruction: 'Late log.', startMs: start });
+  await expect(p.locator('[data-figures-why]')).toContainText('No session log found');
+  claudeLog(home, dir, start);
+  await p.locator('[data-reread]').click();
+  await expect(p.locator('[data-figure="duration"] dd')).toHaveText('4 minutes');
+  // A run becomes done: its figures are read again with no press.
+  await addRun(p, { engine: 'Codex', instruction: 'Codex late log.', startMs: start });
+  await expect(p.locator('[data-figures-why]')).toContainText('No session log found');
+  codexLog(home, dir, start);
+  await p.locator('[data-toggle-done]').click();
+  await expect(p.locator('[data-figure="duration"] dd')).toHaveText('6 minutes');
+  // Never while a read is in flight.
+  await gateCall(h, 'readRunFigures');
+  await p.locator('[data-reread]').click();
+  await expect(p.locator('[data-reread]')).toHaveText('Reading the log');
+  await p.locator('[data-reread]').click({ force: true });
+  await p.locator('[data-reread]').click({ force: true });
+  await p.waitForTimeout(400);
+  expect(await gateCalls(h, 'readRunFigures'), 'one read reached main').toBe(1);
+  await gateRelease(h, 'readRunFigures');
+  await expect(p.locator('[data-reread]')).toHaveText('Read again');
 });

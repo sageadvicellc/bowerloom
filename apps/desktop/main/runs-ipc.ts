@@ -1,5 +1,5 @@
 /**
- * The four calls of the `bowerloomRuns` bridge, answered in the main process (shared/api/runs.ts names them). Registered for the default launch only.
+ * The five calls of the `bowerloomRuns` bridge, answered in the main process (shared/api/runs.ts names them). Registered for the default launch only.
  * Each call:
  *  - is answered only for the app's own page, in its main frame, before anything else happens;
  *  - takes exactly its number of arguments, and each argument is checked for its shape (shared/api/runs.ts) before main acts on it;
@@ -66,7 +66,7 @@ export const viewOf = (r: StoredRun): RunView => Object.freeze({
 
 const OUTCOMES: readonly RunOutcome[] = ['finished', 'stopped', 'unknown'];
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,79}$/;
-const count = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 1e12 ? v : null);
+const count = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 1e12 && !Object.is(v, -0) ? v : null);
 const iso = (v: unknown): string | null => (typeof v === 'string' && v.length <= 40 && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(v) && Number.isFinite(Date.parse(v)) ? v : null);
 
 /** Whatever a reader answered, cut to the figures: each field is copied by name and checked, so nothing else it held (a message, a path, a line of a chat) can reach the page. */

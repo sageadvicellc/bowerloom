@@ -125,3 +125,8 @@ test('no word of the screens says a run is running, or that Bowerloom starts or 
   assert.doesNotMatch(all, /\brunning\b|\bwatch|\blaunch/i);
   assert.match(RUNS_REAL.paragraph.chatNote, /never reads the chat/i);
 });
+
+test('the words of the leave question, the buttons and the figures re-read are as decided', () => {
+  assert.equal(RUNS_REAL.hint.leaveAsk, 'You have unsaved ratings or notes. Leave without saving?');
+  assert.deepEqual([RUNS_REAL.label.keepEditing, RUNS_REAL.label.leave, RUNS_REAL.label.readAgain], ['Keep editing', 'Leave', 'Read again']);
+});

@@ -88,6 +88,9 @@ function parse(textOfFile: string): Saved {
   if (!isObject(value) || value.format !== FORMAT || !Array.isArray(value.runs) || !Number.isSafeInteger(value.next) || !Number.isSafeInteger(value.groups)) throw new RunStoreError('damaged');
   const runs = value.runs as unknown[];
   if (runs.length > RUN_RECORD_LIMIT || !runs.every(isStoredRun) || new Set((runs as StoredRun[]).map(r => r.id)).size !== runs.length) throw new RunStoreError('damaged');
+  // The counters must be ahead of every stored number, or a new record could take an id or a group that is in use: a file that says otherwise is not ours.
+  const maxOf = (pick: (r: StoredRun) => string): number => Math.max(0, ...(runs as StoredRun[]).map(r => Number(pick(r).replace(/^\D+/, ''))));
+  if ((value.next as number) <= maxOf(r => r.id) || (value.groups as number) <= maxOf(r => r.groupId)) throw new RunStoreError('damaged');
   return { next: value.next as number, groups: value.groups as number, runs: runs as StoredRun[] };
 }
 

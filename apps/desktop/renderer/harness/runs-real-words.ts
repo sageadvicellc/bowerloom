@@ -13,7 +13,7 @@ export const RUNS_REAL = deepFreeze({
     addRun: 'Add a run', recordRun: 'Record this run', openRuns: 'Open Runs', saveRun: 'Save the run', cancel: 'Cancel', close: 'Close',
     project: 'Project', engine: 'Engine', instruction: 'Instruction', whenStarted: 'When it started', started: 'Started', status: 'Status',
     markDone: 'Mark as done', markNotDone: 'Mark as not done', figures: 'From the engine log', yourNotes: 'Your notes', saveRating: 'Save rating and notes',
-    recording: 'Recording', saving: 'Saving', reading: 'Reading the log', tryAgain: 'Try again', startNewList: 'Start a new list',
+    recording: 'Recording', saving: 'Saving', reading: 'Reading the log', tryAgain: 'Try again', startNewList: 'Start a new list', readAgain: 'Read again', keepEditing: 'Keep editing', leave: 'Leave', unsavedTitle: 'Unsaved changes',
   },
   hint: {
     recordedToast: 'Recorded. Find it in Runs.',
@@ -21,6 +21,7 @@ export const RUNS_REAL = deepFreeze({
     needInstruction: 'Write the instruction you gave.', needProject: 'Choose a project.', needTime: 'Give the time it started.',
     figuresLoading: 'Reading the engine log.', listLoading: 'Reading your saved runs.',
     listFailed: 'Could not read your saved runs.', damaged: 'Your saved runs file is damaged. Start a new list.',
+    leaveAsk: 'You have unsaved ratings or notes. Leave without saving?',
     foldersFailed: 'Could not read your projects.', saveFailed: 'Could not save. Try again.', recordFailed: 'Could not record the run. Try again.',
     savedToast: 'Saved rating and notes.', doneToast: 'Marked as done.', notDoneToast: 'Marked as not done.',
     noBridge: 'This window cannot reach Bowerloom. Close it and open the app again.',

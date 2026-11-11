@@ -1,5 +1,5 @@
 /**
- * The bridge of the real-setup reader: three named calls, the calls of the adopt and install sheets (shared/engine/types.ts), the two read-only calls of the local models report and the extension list (shared/api/local.ts), and the four calls of the run record (shared/api/runs.ts), which the main
+ * The bridge of the real-setup reader: three named calls, the calls of the adopt and install sheets (shared/engine/types.ts), the two read-only calls of the local models report and the extension list (shared/api/local.ts), and the five calls of the run record (shared/api/runs.ts), which the main
  * process answers only for the harness-first window on the person's own folders (the default launch). It is the only preload the real mode loads (the normal bridge is not loaded in the
  * preview). It exposes all four objects or none: main loads this file only for the plan whose `preload` is 'real', and for that plan it registers the reader, the engine calls, the local calls and the runs calls together
  * (main/launch.ts; tests/launch.test.ts holds that every plan has them all on or all off), so a window never holds a call that main does not answer. Each call sends one message on its own channel. The page gets no Node, no path, no generic send, and no way to listen.

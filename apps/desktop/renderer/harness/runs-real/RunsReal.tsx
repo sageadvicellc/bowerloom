@@ -58,7 +58,7 @@ function Group({ group, selectedId }: { group: RealGroup; selectedId: string | n
 }
 
 function Details({ run, runs, control, ui }: { run: RunView; runs: readonly RunView[]; control: RunListControl; ui: Ui }): ReactElement {
-  const figures = useFigures(useRuns(), run.id);
+  const figures = useFigures(useRuns(), run.id, run.status);
   const group = realCompareGroupOf(runs, run);
   const [busy, setBusy] = useState(false);
   const toggle = (): void => {
@@ -90,7 +90,7 @@ function Details({ run, runs, control, ui }: { run: RunView; runs: readonly RunV
       </section>
       <section className="hx-block" aria-labelledby="hr-d-figures">
         <h3 className="hx-h3" id="hr-d-figures">{RUNS_REAL.label.figures}</h3>
-        <FigureRows view={figures} label={run.projectLabel} />
+        <FigureRows figures={figures} label={run.projectLabel} />
       </section>
       <div className="hx-actions">
         <HButton variant="primary" disabled={busy} onClick={toggle} data-toggle-done="">{run.status === 'done' ? RUNS_REAL.label.markNotDone : RUNS_REAL.label.markDone}</HButton>

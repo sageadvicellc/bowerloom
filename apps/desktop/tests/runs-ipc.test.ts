@@ -1,4 +1,4 @@
-// The four calls of the bowerloomRuns bridge, answered in main (main/runs-ipc.ts): the channels, the sender check, the argument count and shape, the folder lookup, the answers, and the rule
+// The five calls of the bowerloomRuns bridge, answered in main (main/runs-ipc.ts): the channels, the sender check, the argument count and shape, the folder lookup, the answers, and the rule
 // that no full path and no chat text reaches the page. No real log and no real home: the store and the reader of figures are real over a made-up state folder, or faked.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { NO_FIGURES, RUN_CALLS, RUN_CHANNELS } from '../shared/api/runs.js';
 import type { RunFigures } from '../shared/api/runs.js';
 import { createRunStore, runsDir, runsFile } from '../main/run-store.js';
-import { registerRunsIpc } from '../main/runs-ipc.js';
+import { cleanFigures, registerRunsIpc } from '../main/runs-ipc.js';
 import type { FolderRef } from '../main/runs-ipc.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
@@ -160,4 +160,20 @@ test('the limit of runs is RUN_LIMIT, and a failed write is FAILED with the reas
     store: createRunStore({ stateRoot: state, rename: () => { throw Object.assign(new Error('disk full /Users/someone/x'), { code: 'ENOSPC' }); } }) });
   assert.equal(await code(Promise.resolve((handlers.get(RUN_CHANNELS.recordRun) as Handler)(GOOD, input))), 'FAILED');
   assert.match(told[0]!, /recordRun/); assert.match(told[0]!, /write-failed, ENOSPC/); assert.equal(/Users|disk full/.test(told[0]!), false);
+});
+
+test('cleanFigures cuts odd numbers and names to null: NaN, Infinity, 1e13, a negative zero, a prototype key and a name that is not a plain token', () => {
+  const base = { state: 'found', reason: null, startedAt: '2026-11-11T10:31:00.000Z', endedAt: '2026-11-11T10:35:00.000Z', durationMs: 5, inputTokens: 1, outputTokens: 2, model: 'm-1', outcome: 'finished' };
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 1e13, -0, -1, 1.5, '7', null, [], {}]) {
+    const f = cleanFigures({ ...base, inputTokens: bad, outputTokens: bad, durationMs: bad });
+    assert.deepEqual([f.inputTokens, f.outputTokens, f.durationMs], [null, null, null], String(Object.is(bad, -0) ? '-0' : bad));
+  }
+  const zero = cleanFigures({ ...base, inputTokens: 0 });
+  assert.equal(zero.inputTokens, 0, 'a real zero stays');
+  const proto = cleanFigures(JSON.parse('{"state":"found","__proto__":{"polluted":1},"model":"__proto__","inputTokens":1}'));
+  assert.equal(proto.model, null);
+  assert.equal((proto as unknown as Record<string, unknown>).polluted, undefined);
+  assert.equal(({} as Record<string, unknown>).polluted, undefined, 'the prototype of objects is untouched');
+  assert.deepEqual(Object.keys(proto).sort(), ['durationMs', 'endedAt', 'inputTokens', 'model', 'outcome', 'outputTokens', 'reason', 'startedAt', 'state']);
+  for (const model of ['__proto__', '', ' x', 'x y', 'a'.repeat(81), -0, Number.NaN]) assert.equal(cleanFigures({ ...base, model }).model, null, String(model));
 });

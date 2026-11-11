@@ -5,10 +5,12 @@
  */
 import type { ReactElement } from 'react';
 import { figureRows, figuresStateWords, runsRefusalWords } from '../../../shared/harness/runs-real.js';
-import type { FiguresView } from './runs-session.js';
+import { HButton } from '../parts/controls.js';
+import type { FiguresControl } from './runs-session.js';
 import { RUNS_REAL } from '../runs-real-words.js';
 
-export function FigureRows({ view, label }: { view: FiguresView; label: string }): ReactElement {
+export function FigureRows({ figures: control, label }: { figures: FiguresControl; label: string }): ReactElement {
+  const view = control.view;
   const figures = view.kind === 'ready' ? view.figures : null;
   const why = view.kind === 'refused' ? runsRefusalWords(view.code) : figures === null ? null : figuresStateWords(figures.state, figures.reason, label);
   return (
@@ -16,6 +18,7 @@ export function FigureRows({ view, label }: { view: FiguresView; label: string }
       {view.kind === 'loading' ? <p className="hx-text hx-muted" role="status">{RUNS_REAL.hint.figuresLoading}</p> : null}
       {why === null ? null : <p className="hx-text" role="status" data-figures-why="">{why}</p>}
       {view.kind === 'loading' ? null : (
+        <>
         <dl className="hrr-rows">
           {figureRows(figures).map(row => (
             <div key={row.key} className="hrr-row" data-figure={row.key}>
@@ -23,6 +26,8 @@ export function FigureRows({ view, label }: { view: FiguresView; label: string }
             </div>
           ))}
         </dl>
+        <HButton size="small" data-reread="" aria-disabled={control.busy ? true : undefined} onClick={control.reread}>{control.busy ? RUNS_REAL.label.reading : RUNS_REAL.label.readAgain}</HButton>
+        </>
       )}
     </div>
   );

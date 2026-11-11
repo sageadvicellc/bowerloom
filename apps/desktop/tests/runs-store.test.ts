@@ -185,3 +185,18 @@ test('the store writes only inside <state>/runs: a sibling folder and the parent
   assert.equal(made.every(p => p === 'state/' || p === 'state/runs/' || /^state\/runs\/(runs\.json|runs\.damaged-[0-9TZ-]+\.json)$/.test(p)), true, made.join(', '));
   assert.deepEqual(readdirSync(sibling), ['keep.txt']);
 });
+
+test('the counters of the file must be ahead of every stored id and group number, or the file is damaged and nothing is used', t => {
+  const state = tempDir(t); mkdirSync(runsDir(state), { recursive: true, mode: 0o700 });
+  const run = { id: 'run-5', engine: 'claude-code', instruction: 'x', projectPath: '/a', projectName: 'a', projectLabel: '~/a', startedAt: '2026-11-11T10:30:00.000Z', status: 'recorded', groupId: 'group-3', rating: null, notes: '' };
+  const make = (next: number, groups: number): string => JSON.stringify({ format: 'bowerloom/runs/v1', next, groups, runs: [run] });
+  for (const [next, groups] of [[5, 4], [4, 4], [1, 4], [6, 3], [6, 1], [0, 0]] as const) {
+    writeFileSync(runsFile(state), make(next, groups));
+    assert.equal(kind(() => createRunStore({ stateRoot: state }).list()), 'damaged', `next ${next}, groups ${groups}`);
+    assert.equal(kind(() => createRunStore({ stateRoot: state }).add(folder())), 'damaged', 'a record never takes an id that is in use');
+  }
+  writeFileSync(runsFile(state), make(6, 4));
+  const s = createRunStore({ stateRoot: state });
+  assert.equal(s.list().length, 1);
+  assert.equal(s.add(folder({ instruction: 'new' })).id, 'run-6');
+});

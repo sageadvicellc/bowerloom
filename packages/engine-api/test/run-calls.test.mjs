@@ -68,8 +68,17 @@ test('the runs golden file is not a base golden file, and the base and local gol
   assert.deepEqual(names.filter(f => /^base-[0-9a-f]{8}\.json$/.test(f)), ['base-d4c8a478.json']);
 });
 
-test('a drifted golden file would fail the comparison', () => {
-  const drifted = JSON.parse(JSON.stringify(golden));
-  drifted.runCalls[1].arity = 2;
-  assert.notDeepEqual(drifted.runCalls, plain(RUN_CALLS));
+test('a drifted golden file fails the comparison with the code, for every field of every call and for the refusal codes', () => {
+  const same = (g) => JSON.stringify(g.runCalls) === JSON.stringify(plain(RUN_CALLS)) && JSON.stringify(g.runCallRefusals) === JSON.stringify([...RUN_CALL_REFUSAL_CODES]);
+  assert.equal(same(golden), true, 'the real golden file matches');
+  for (let i = 0; i < golden.runCalls.length; i += 1) {
+    for (const [field, change] of [['name', 'x'], ['arity', 9], ['optionalArgs', 1], ['channel', 'bowerloom-runs:x'], ['returns', 'list']]) {
+      const drifted = JSON.parse(JSON.stringify(golden)); drifted.runCalls[i][field] = change;
+      assert.equal(same(drifted), false, `${golden.runCalls[i].name}.${field}`);
+    }
+  }
+  const fewer = JSON.parse(JSON.stringify(golden)); fewer.runCalls.pop();
+  assert.equal(same(fewer), false, 'a call missing from the golden file');
+  const codes = JSON.parse(JSON.stringify(golden)); codes.runCallRefusals.pop();
+  assert.equal(same(codes), false, 'a refusal code missing from the golden file');
 });

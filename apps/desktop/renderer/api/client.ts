@@ -1,5 +1,5 @@
 /**
- * The client of the page: the reader calls, the engine calls, the two local calls and the four runs calls, each side given only when it is whole. The reader side needs its three functions. The engine side needs mode 'real' and
+ * The client of the page: the reader calls, the engine calls, the two local calls and the five runs calls, each side given only when it is whole. The reader side needs its three functions. The engine side needs mode 'real' and
  * a function for each of the 39 engine calls. A missing or partial side is null, and the page then says so in plain words (renderer/harness/real/Nothing.tsx).
  * Nothing here reads the window: renderer/api/transport.ts does.
  */
@@ -25,7 +25,7 @@ export interface ApiClient {
   readonly engine: EngineBridge | null;
   /** The two read-only calls of the local models report and the extension list, or null when this window has none or a partial set. */
   readonly local: LocalBridge | null;
-  /** The four calls of the run record and the figures of a session log, or null when this window has none or a partial set. */
+  /** The five calls of the run record and the figures of a session log, or null when this window has none or a partial set. */
   readonly runs: RunsBridge | null;
 }
 

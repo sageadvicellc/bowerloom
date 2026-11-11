@@ -55,7 +55,7 @@ export const claudeFolderName = (projectDir: string): string => projectDir.norma
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
-const tokens = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= TOKEN_MAX ? v : null);
+const tokens = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= TOKEN_MAX && !Object.is(v, -0) ? v : null);
 const modelOf = (v: unknown): string | null => (typeof v === 'string' && MODEL.test(v) ? v : null);
 const timeOf = (v: unknown): number | null => {
   if (typeof v !== 'string' || v.length > 40 || !/^\d{4}-\d{2}-\d{2}T/.test(v)) return null;

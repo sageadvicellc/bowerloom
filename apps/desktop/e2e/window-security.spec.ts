@@ -52,7 +52,7 @@ test('the sample launch: locked down, and no bridge of any kind', async () => {
   } finally { await app.close(); }
 });
 
-test('the app on the person\'s own folders: locked down, with exactly the reader\'s three calls, the engine calls, the two local calls and the four runs calls, and no other bridge', async () => {
+test('the app on the person\'s own folders: locked down, with exactly the reader\'s three calls, the engine calls, the two local calls and the five runs calls, and no other bridge', async () => {
   test.setTimeout(240_000);
   home = buildShellHome();
   const h = await launchReal(home.home);
