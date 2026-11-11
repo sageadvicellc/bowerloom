@@ -7,7 +7,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { chmodSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -133,5 +133,76 @@ test.describe('Link a notes folder', () => {
     await expect(p.getByRole('dialog', { name: 'New harness from a folder', exact: true })).toBeVisible();
     expect(await h.asked(), 'no write was asked').toEqual([]);
     expect(filesOf(dir), 'nothing is written before the approval').toEqual(before);
+  });
+
+  /** Links `notes` (a folder in the home folder) to the team harness through the sheet, approves the review, and ends on the Done step. */
+  async function linkHomeNotes(notes: string, team: string): Promise<Locator> {
+    const p = page(), before = filesOf(team);
+    await h.pick(notes);
+    await p.locator('[data-link-notes]').click();
+    const s = linkSheet(p);
+    await expect(s.locator('[data-notes-chosen]')).toContainText('field-notes');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await h.pick(team);
+    await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    await s.locator('[data-folder]', { hasText: 'team' }).click();
+    await s.getByRole('button', { name: 'Review the change', exact: true }).click();
+    const review = s.locator('[data-save-review="save"]');
+    await expect(review.locator('[data-approves]')).toContainText('~/Documents/field-notes');
+    expect(filesOf(team), 'nothing is written while the person reads').toEqual(before);
+    await review.locator('[data-approve-plan] input').check();
+    await s.getByRole('button', { name: /^Save \d+ files?$/ }).click();
+    await expect(s.locator('[data-version-kept]')).toBeVisible();
+    return s;
+  }
+  /** The read after a write: Read again, add the Projects folder, tick it as it is, and read it. */
+  async function readAgain(s: Locator): Promise<void> {
+    const p = page();
+    await s.locator('[data-add-read-again]').click();
+    await h.pick(join(home, 'Projects'));
+    await p.getByRole('button', { name: 'Add a folder', exact: true }).click();
+    await expect(p.locator('.hxf-card').filter({ hasText: 'team' }).first()).toBeVisible();
+    await p.getByRole('button', { name: 'Looks right', exact: true }).click();
+    await p.getByRole('button', { name: 'Yes, read them', exact: true }).click();
+    await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
+    await p.evaluate(() => { location.hash = '#app/library/context'; });
+  }
+
+  test('a notes folder in the home folder: the review also approves reading it, and its pages show after a read', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const p = page(), team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
+    await readAgain(await linkHomeNotes(notes, team));
+    await expect(p.locator('[data-part]', { hasText: 'team notes' })).toHaveCount(1);
+    await expect(p.locator('[data-link-problem]')).toHaveCount(0);
+  });
+
+  test('a linked folder that is removed before the read is a problem the Library names, not silence', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const p = page(), team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
+    const s = await linkHomeNotes(notes, team);
+    rmSync(notes, { recursive: true, force: true });
+    await readAgain(s);
+    await expect(p.locator('[data-link-problem="gone"]')).toContainText('Linked folder not found: ~/Documents/field-notes');
+  });
+
+  test('a notes folder outside the home folder and the harness folder is refused at the review, with a clear message, and nothing is written', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const p = page(), team = teamFolder(home), outside = wiki(join(tempDir('bowerloom-ctxlink-outside-'), 'far-notes'));
+    const before = filesOf(team);
+    await h.pick(outside);
+    await p.locator('[data-link-notes]').click();
+    const s = linkSheet(p);
+    await expect(s.locator('[data-notes-chosen]')).toContainText('far-notes');
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await h.pick(team);
+    await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    await s.locator('[data-folder]', { hasText: 'team' }).click();
+    await s.getByRole('button', { name: 'Review the change', exact: true }).click();
+    await expect(s.locator('[data-next-step]')).toHaveText('Move the notes into your home folder, then choose them again.');
+    await expect(s.locator('[data-save-review="save"]')).toHaveCount(0);
+    expect(filesOf(team), 'nothing was written').toEqual(before);
   });
 });

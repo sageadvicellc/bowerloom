@@ -1,7 +1,7 @@
 // Library Add (issue 148), variant C: the pure rules of the small Add form in each Library tab. No screen, no engine.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NOTES_READY, folderStepLines, listAfter, notesTone, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS, showLinkAction, linkTarget } from '../shared/harness/library-add.js';
+import { NOTES_READY, folderStepLines, listAfter, notesTone, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS, showLinkAction, linkTarget, LINK_WHICH_ONE } from '../shared/harness/library-add.js';
 import { firstSaved, savedReduce } from '../renderer/harness/real/saved-scan.js';
 import { WORDS } from '../renderer/harness/words.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
@@ -170,9 +170,15 @@ test('a notes folder goes to the folder of the same label: ready with a harness,
 });
 
 test('the new words of the link flow are short plain lines', () => {
-  const lines = [WORDS.label.linkNotes, WORDS.label.startHarness, WORDS.label.stepNotes, WORDS.label.linkNotesTitle];
+  const lines = [WORDS.label.linkNotes, WORDS.label.startHarness, WORDS.label.stepNotes, WORDS.label.linkNotesTitle, WORDS.label.linkAgain, WORDS.label.approveLink];
   for (const line of lines) { assert.ok(countWords(line) <= LIMITS.label, line); assert.equal(bannedHere(line), null, line); }
-  const hints = [WORDS.hint.linkEmpty, WORDS.hint.linkWhich, WORDS.hint.needsHarness, WORDS.hint.chooseAgain, WORDS.hint.linkIntro];
+  const hints = [WORDS.hint.linkEmpty, WORDS.hint.linkWhich, WORDS.hint.needsHarness, WORDS.hint.chooseAgain, WORDS.hint.linkIntro, WORDS.hint.linkProblemEmpty, WORDS.hint.noHarnessPicked, LINK_WHICH_ONE];
   for (const line of hints) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
   assert.equal(WORDS.label.linkNotes, 'Link a notes folder');
+});
+
+test('two folders with the label of the notes are not guessed between: the person is asked which one', () => {
+  const list = [folder('a', { label: '~/Documents/notes' }), folder('b', { label: '~/Work/notes' }), folder('c', { label: '~/Documents/notes' })];
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/notes' }), { kind: 'blocked', folder: list[0], why: 'Which one? Several folders share that name.' });
+  assert.deepEqual(linkTarget(list, { label: '~/Work/notes' }), { kind: 'ready', folder: list[1] }, 'one match is still one match');
 });
