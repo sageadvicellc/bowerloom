@@ -115,7 +115,8 @@ test.describe('Link a notes folder', () => {
     await expect(p.getByRole('heading', { level: 1, name: /^Read \d+ sources?\. Make a harness from each\.$/ })).toBeVisible({ timeout: 20_000 });
     await p.evaluate(() => { location.hash = '#app/library/context'; });
     await expect(p.locator('[data-library-link-empty]')).toHaveCount(0);
-    await expect(p.locator('[data-part]', { hasText: 'wiki notes' })).toHaveCount(1);
+    // The pages below the subfolder with a tool folder are the linked pages: they have a set of their own.
+    await expect(p.locator('[data-part]', { hasText: 'wiki linked notes' })).toHaveCount(1);
   });
 
   test('a folder with no harness starts the New harness sheet, and nothing is written before its own approval', async () => {
