@@ -7,7 +7,7 @@ import { readFileSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { claudeFolderName, readFigures } from '../main/run-logs.js';
-import { tempDir } from './support.js';
+import { DESKTOP, tempDir } from './support.js';
 
 const MARK = 'SECRET-CHAT-TEXT-9f3a';
 const START = '2026-11-11T10:30:00.000Z';
