@@ -119,12 +119,13 @@ for (const first of ['startup', 'manager']) for (const method of ['apply', 'reco
   const setupPlan = await planStartup(setup); await applyStartup(setup, setupPlan.revision);
   const revised = { targetDir: f.projectDir, brief: { ...setup.brief, goal: 'Keep revised governance safe' } }, revision = await planStartupRevision(revised);
   if (method === 'recover') await applyStartupRevision(revised, revision.fromRevision, revision.revision);
-  const manager = await planObservedManagedSkill(f.input), create = net.createServer; let unblock, acquired; const gate = new Promise(r => { unblock = r; }), ready = new Promise(r => { acquired = r; }); let number = 0;
-  t.mock.method(net, 'createServer', (...args) => { const server = create(...args); if (++number === 1) { const listen = server.listen.bind(server); server.listen = (opts, cb) => listen(opts, () => { acquired(); gate.then(cb); }); } return server; }); syncBuiltinESMExports();
+  const manager = await planObservedManagedSkill(f.input), create = net.createServer; let unblock, acquired; const gate = new Promise(r => { unblock = r; }), ready = new Promise(r => { acquired = r; }); let gated = false;
+  // The gate holds the first listener that binds. It is not the first listener made: a bind that meets a port held by another test file or program is refused and the owner binds again with a new listener, and a gate on the refused one would never open.
+  t.mock.method(net, 'createServer', (...args) => { const server = create(...args), listen = server.listen.bind(server); server.listen = (opts, cb) => listen(opts, () => { if (gated) return cb(); gated = true; acquired(); gate.then(cb); }); return server; }); syncBuiltinESMExports();
   const startup = () => method === 'apply' ? applyStartupRevision(revised, revision.fromRevision, revision.revision) : recoverStartupRevision(f.projectDir, revision.revision, 'resume');
   const manage = () => applyObservedManagedSkill(f.input, manager.revision, null);
   let owner;
-  try { owner = first === 'startup' ? startup() : manage(); const observer = owner.catch(() => {}); await ready; await assert.rejects(first === 'startup' ? manage() : startup()); unblock(); await owner; await observer; }
+  try { owner = first === 'startup' ? startup() : manage(); const observer = owner.catch(() => {}); await Promise.race([ready, new Promise((_, stop) => owner.then(() => stop(new Error('the owner finished before it held the lock')), stop))]); await assert.rejects(first === 'startup' ? manage() : startup()); unblock(); await owner; await observer; }
   finally { unblock(); t.mock.restoreAll(); syncBuiltinESMExports(); }
   assert.equal((await inspectStartup(f.projectDir)).specReady, true);
 });
