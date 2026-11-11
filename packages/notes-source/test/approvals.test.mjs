@@ -125,3 +125,20 @@ test('setting a damaged record aside never clobbers: five damaged records in tur
   assert.equal(aside.length, 5);
   assert.deepEqual(aside.map(n => fs.readFileSync(path.join(dir, n), 'utf8')).sort(), [0, 1, 2, 3, 4].map(i => `{ damaged ${i}`));
 });
+
+test('a taken name is never clobbered: the first name tried holds a file already, the damaged record goes to the next name, and the file that was there is as it was', t => {
+  const { state, notes } = setup(t);
+  const dir = path.join(state, 'linked-notes');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'approved.json.damaged-taken'), 'an earlier file');
+  fs.writeFileSync(approvalsFileOf(state), '{ damaged now');
+  const names = ['approved.json.damaged-taken', 'approved.json.damaged-free'];
+  assert.equal(approveFolder(state, notes, () => names.shift()), 'kept');
+  assert.equal(fs.readFileSync(path.join(dir, 'approved.json.damaged-taken'), 'utf8'), 'an earlier file');
+  assert.equal(fs.readFileSync(path.join(dir, 'approved.json.damaged-free'), 'utf8'), '{ damaged now');
+  assert.equal(readApprovals(state).status, 'ok');
+  // Every name taken: the record is not set aside and nothing is written.
+  fs.writeFileSync(approvalsFileOf(state), '{ damaged again');
+  assert.equal(approveFolder(state, notes, () => 'approved.json.damaged-taken'), 'not-moved');
+  assert.equal(fs.readFileSync(approvalsFileOf(state), 'utf8'), '{ damaged again');
+});

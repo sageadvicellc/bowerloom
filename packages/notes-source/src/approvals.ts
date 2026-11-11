@@ -64,9 +64,9 @@ export function readApprovals(stateRoot: string): ApprovalRecord {
 export type Approved = 'kept' | 'full' | 'not-a-folder' | 'not-moved' | 'failed';
 
 /** Moves the damaged record to a dated name that nothing holds yet: a name that is taken is never written over, the next one is tried. There is no cap on the files set aside. */
-function setAside(dir: string, file: string): boolean {
+function setAside(dir: string, file: string, nameOf: () => string): boolean {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const aside = path.join(dir, `approved.json.damaged-${stamp()}-${randomBytes(3).toString('hex')}`);
+    const aside = path.join(dir, nameOf());
     try { fs.lstatSync(aside); continue; } catch (error) { if ((error as { code?: string }).code !== 'ENOENT') return false; }
     try { fs.renameSync(file, aside); return true; } catch { return false; }
   }
@@ -76,7 +76,8 @@ function setAside(dir: string, file: string): boolean {
 const stamp = (): string => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '');
 
 /** Records the person's pick of a folder. The folder is resolved to its real path here, so a shortcut is approved as the folder it leads to. */
-export function approveFolder(stateRoot: string, picked: string): Approved {
+/** `nameOf` is for a test: the names tried for a damaged record, in turn. */
+export function approveFolder(stateRoot: string, picked: string, nameOf: () => string = () => `approved.json.damaged-${stamp()}-${randomBytes(3).toString('hex')}`): Approved {
   let real: string;
   try {
     real = fs.realpathSync.native(picked);
@@ -92,7 +93,7 @@ export function approveFolder(stateRoot: string, picked: string): Approved {
     if (record.status === 'blocked') return 'failed';
     if (record.status === 'damaged') {
       // The pick is the person's consent to a new list. The damaged file is kept, under a dated name, and the new record starts empty.
-      if (!setAside(dir, file)) return 'not-moved';
+      if (!setAside(dir, file, nameOf)) return 'not-moved';
       record = { status: 'none' };
     }
     const keys = new Set(record.status === 'ok' ? record.keys : []);

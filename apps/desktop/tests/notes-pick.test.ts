@@ -140,6 +140,27 @@ test('the key is the native real path: a marker file tells whether this volume i
   assert.equal(lower === null ? false : record.keys.has(lower), folded);
 });
 
+test('a not-moved pick on a damaged record gives the blocked state of its own, not the damaged words; a pick that is not a folder gives the blocked words', async t => {
+  const s = setup(t);
+  mkdirSync(join(s.state, 'linked-notes'), { recursive: true });
+  writeFileSync(approvalsFileOf(s.state), '{ damaged');
+  assert.deepEqual(await problems(s.home, s.state), ['damaged'], 'before the pick: the record is damaged');
+  await s.pick('use', s.notes, () => 'not-moved');
+  assert.equal(pickFailureOf(approvalKeyOf(s.notes)!), 'not-moved');
+  assert.deepEqual(await problems(s.home, s.state), ['not-moved'], 'the pick that failed to set the record aside no longer sends the person to pick again');
+  assert.equal(linkProblemWords('x', 'not-moved', ''), 'x: Bowerloom could not set aside its damaged list of approvals');
+  assert.doesNotMatch(linkProblemWords('x', 'not-moved', '~/journal'), /again/i);
+  await s.pick('use', s.notes);
+  assert.deepEqual(await problems(s.home, s.state), ['page:One'], 'a pick that works moves the damaged record aside and clears the failure');
+  const t2 = setup(t);
+  await t2.pick('use', t2.notes, () => 'not-a-folder');
+  assert.deepEqual(await problems(t2.home, t2.state), ['blocked']);
+});
+
+test('every message box has a detail line, so no blank line shows', () => {
+  for (const notice of Object.values(PICK_NOTICES)) assert.ok(notice.detail.length > 0, notice.message);
+});
+
 test('a failed message box never changes the pick', async t => {
   const s = setup(t);
   mkdirSync(s.state, { recursive: true }); writeFileSync(join(s.state, 'linked-notes'), 'x');

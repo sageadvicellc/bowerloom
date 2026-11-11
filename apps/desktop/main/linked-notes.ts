@@ -99,12 +99,15 @@ export function approvalsOf(stateRoot: string): Approvals {
 }
 /** Why a `~/` link has no approval: each case has its own words, and its own way out (the damaged record is replaced by the next pick; a blocked folder and a full record are not). */
 const whyNoApproval = (a: Approvals, key: string | null): LinkProblem['reason'] => {
+  // A pick of this folder that could not be saved, in this session, comes first: the damaged words send the person to pick again, and that pick has just failed. Never "link it again" for these.
+  const failed = key === null ? undefined : pickFailureOf(key);
+  if (failed === 'not-moved') return 'not-moved';
+  if (failed === 'full') return 'full';
+  if (failed === 'failed' || failed === 'not-a-folder') return 'blocked';
   if (a.blocked) return 'blocked';
   if (a.damaged) return 'damaged';
   if (a.full) return 'full';
-  // A pick of this folder that could not be saved, in this session: the same words as a record that cannot be used, never "link it again".
-  const failed = key === null ? undefined : pickFailureOf(key);
-  return failed === 'full' ? 'full' : failed === 'failed' ? 'blocked' : 'approval';
+  return 'approval';
 };
 
 /**

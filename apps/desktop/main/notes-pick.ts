@@ -14,9 +14,9 @@ import { clearPickFailure, recordPickFailure } from './pick-failures.js';
 export interface PickNotice { readonly message: string; readonly detail: string }
 export const PICK_NOTICES: Readonly<Record<Exclude<Approved, 'kept'>, PickNotice>> = Object.freeze({
   full: { message: 'Bowerloom keeps at most 2000 approved folders.', detail: 'It will not read this folder.' },
-  failed: { message: 'Bowerloom could not save approvals on this computer.', detail: '' },
-  'not-a-folder': { message: 'That is not a folder Bowerloom can approve.', detail: '' },
-  'not-moved': { message: 'Bowerloom could not set aside its damaged list of approvals.', detail: '' },
+  failed: { message: 'Bowerloom could not save approvals on this computer.', detail: 'It will not read this folder until approvals can be saved.' },
+  'not-a-folder': { message: 'That is not a folder Bowerloom can approve.', detail: 'Choose a folder.' },
+  'not-moved': { message: 'Bowerloom could not set aside its damaged list of approvals.', detail: 'It will not read this folder until the list can be replaced.' },
 });
 
 export interface PickDeps {
@@ -38,7 +38,7 @@ export async function pickNotesFolder(d: PickDeps): Promise<string | null> {
   const kept = (d.approve ?? approveFolder)(d.stateRoot, picked);
   // The last failure of this folder is kept in memory, so the Library says "could not save" for a link to it and not "link it again" (main/pick-failures.ts). A success clears it.
   const key = approvalKeyOf(picked);
-  if (key !== null) { if (kept === 'kept') clearPickFailure(key); else recordPickFailure(key, kept === 'full' ? 'full' : 'failed'); }
+  if (key !== null) { if (kept === 'kept') clearPickFailure(key); else recordPickFailure(key, kept); }
   if (kept !== 'kept') {
     d.tell(`Bowerloom could not keep the approval of a notes folder (${kept}).`);
     try { await d.warn(PICK_NOTICES[kept]); } catch { /* the box failed; the line above is the record */ }
