@@ -12,7 +12,9 @@ import { registerEngineIpc } from './engine-ipc.js';
 import { registerLocalModelsIpc } from './local-models-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createScanSession } from './scan-session.js';
-import { approvalsFileOf } from './linked-approvals.js';
+import { addLinkedNotes, withLinkedNotes } from './linked-notes.js';
+import { approveFolder } from '../../../packages/notes-source/src/index.js';
+import { fingerprintOf } from './scan-session.js';
 import { createRecorder } from './engine-events.js';
 import { shippedKits } from './kit.js';
 import { NOTES_DIALOG } from './notes-dialog.js';
@@ -215,9 +217,14 @@ app.whenReady().then(async () => {
     const home = usableHome(homedir(), path => realFolderFollowing(path) !== null);
     if (home === null) throw new Error('Bowerloom needs a home folder to look in. HOME is not set to a folder that exists.');
     // The last read is kept in the private state folder, so the next launch can show it without reading a folder (main/scan-session.ts).
-    const scan = createScanSession({ home, stateRoot: engineStateRoot(home) });
+    // The notes folders a harness links are read after the reader (main/linked-notes.ts), before the result is kept and sent. The check of the kept read looks at them too.
+    const stateRoot = engineStateRoot(home);
+    const scan = createScanSession({
+      home, stateRoot,
+      fingerprint: withLinkedNotes(fingerprintOf, { stateRoot }),
+    });
     registerRealIpc({
-      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: scan.keepRead, approvalsFile: approvalsFileOf(engineStateRoot(home)),
+      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: (chosen, read) => scan.keepRead(chosen, async () => addLinkedNotes(await read(), chosen, { home, stateRoot })),
       chooseFolder: async () => {
         const options: Electron.OpenDialogOptions = { title: 'Choose a folder to look in', buttonLabel: 'Look in this folder', properties: ['openDirectory'] };
         const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
@@ -263,7 +270,11 @@ app.whenReady().then(async () => {
           const words = NOTES_DIALOG[purpose];
           const options: Electron.OpenDialogOptions = { title: words.title, message: words.message, buttonLabel: words.button, properties: purpose === 'start' ? ['openDirectory', 'createDirectory'] : ['openDirectory'] };
           const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
-          return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+          const picked = result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+          // The pick is the person's approval to read that folder when a harness links it in `~/` form (packages/notes-source/src/approvals.ts). A record that cannot be kept is told here by one fixed line,
+          // and the Library names the link as one that needs approval, or the record as damaged.
+          if (picked !== null) { const kept = approveFolder(stateRoot, picked); if (kept !== 'kept') console.error(`Bowerloom could not keep the approval of a notes folder (${kept}).`); }
+          return picked;
         },
         // The ready-made kits ship read-only: from the repository in development, from the app's resources in a packaged build. A broken kit is told on
         // the console now, and every call that needs it refuses with words; it is never replaced by an empty kit.

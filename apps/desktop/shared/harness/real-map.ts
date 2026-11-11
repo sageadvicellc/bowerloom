@@ -19,7 +19,7 @@ import { cleanLine, cut, scrubText } from '../real/redact.js';
 import type { RealPlace, RealResult } from '../real/types.js';
 import { createSampleWorld } from './sample.js';
 import { INTERFACE_IDS } from './types.js';
-import type { HarnessPlace, HarnessState, Interface, InterfaceId, Link, Part, PartKind, Project, ScanSource } from './types.js';
+import type { HarnessPlace, HarnessState, Interface, InterfaceId, Link, LinkProblem, Part, PartKind, Project, ScanSource } from './types.js';
 
 /** The most lines of a file that go into `Part.fileText`. */
 export const FILE_LINES = 60;
@@ -301,11 +301,19 @@ export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
   return id;
 }
 
+/** The linked notes folders that were not read, which main adds to a harness place (main/linked-notes.ts). The reader's own type does not name the field, so it is read by shape and checked. */
+function linkProblemsOf(harness: object): { linkProblems?: LinkProblem[] } {
+  const list = (harness as { linkProblems?: unknown }).linkProblems;
+  if (!Array.isArray(list)) return {};
+  const out = list.filter((p): p is LinkProblem => typeof p === 'object' && p !== null && typeof (p as LinkProblem).label === 'string' && ['gone', 'form', 'approval', 'damaged', 'unreadable', 'limit'].includes((p as LinkProblem).reason)).map(p => ({ reason: p.reason, label: plain(p.label) }));
+  return out.length === 0 ? {} : { linkProblems: out };
+}
+
 /** The folders that hold a harness, for the Overview: the folder in `~` form, the program names and the parts the loader read. */
 function harnessPlacesOf(result: RealResult): HarnessPlace[] {
   return (result.harnessPlaces ?? []).map(h => ({
     id: h.id, name: `${cut(plain(h.name), NAME_CHARS)} (Bowerloom)`, label: folderLabelOf(h.path), readable: h.harness.readable, engines: h.harness.engines, parts: h.harness.parts, links: h.harness.links,
-    ...(h.harness.linkProblems === undefined || h.harness.linkProblems.length === 0 ? {} : { linkProblems: h.harness.linkProblems.map(p => ({ reason: p.reason, label: plain(p.label) })) }),
+    ...linkProblemsOf(h.harness),
   }));
 }
 

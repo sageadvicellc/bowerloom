@@ -9,7 +9,7 @@
 import type { DefinitionView, FolderInfo, NotesView, SaveEdit } from '../engine/types.js';
 import { KEEPER_AGENT, KEEPER_KIT } from './save-draft.js';
 import { HARNESS_UNREADABLE } from './overview.js';
-import type { HarnessState, PartKind } from './types.js';
+import type { HarnessState, LinkProblem, PartKind } from './types.js';
 
 /** Why Add is off for tools. */
 export const TOOLS_NOT_YET = 'Not yet: tools cannot be added from the app.';
@@ -124,7 +124,7 @@ export function linkTarget(folders: readonly FolderInfo[], notes: { readonly lab
 }
 
 /** The linked notes folders the reader could not read, one row each, with the folder that links them. They show in the Context tab, so a link that does not work is never silent. */
-export interface LinkProblemRow { readonly place: string; readonly folder: string; readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }
+export interface LinkProblemRow { readonly place: string; readonly folder: string; readonly reason: LinkProblem['reason']; readonly label: string }
 export const linkProblems = (state: HarnessState): LinkProblemRow[] =>
   (state.harnessPlaces ?? []).flatMap(h => (h.linkProblems ?? []).map(p => ({ place: h.id, folder: h.label, reason: p.reason, label: p.label })));
 

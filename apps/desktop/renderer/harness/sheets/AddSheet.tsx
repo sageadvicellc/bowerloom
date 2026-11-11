@@ -180,7 +180,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   else if (step === 'choose') actions = <><HButton disabled={busy || held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-add-review="" disabled={!canReview} onClick={planReview}>{WORDS.label.reviewChange}</HButton></>;
   else if (step === 'review') {
     const n = shown?.view.changes.length ?? 0, noop = shown?.view.noop ?? true;
-    const words = shown === null ? W.label.saved : noop ? W.label.nothingToChange : n === 0 && (shown.view.approves?.length ?? 0) > 0 ? WORDS.label.approveLink : saveFilesWords(n);
+    const words = shown === null ? W.label.saved : noop ? W.label.nothingToChange : saveFilesWords(n);
     actions = <><HButton disabled={held} onClick={() => back(linking ? 'folder' : 'choose')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || !writable} onClick={write}>{words}</HButton></>;
   } else {
     const wrote = done !== null && done.written.length > 0;

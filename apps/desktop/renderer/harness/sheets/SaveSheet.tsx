@@ -347,7 +347,6 @@ export function SaveReview({ shown, approved, held, onApprove, acknowledged = fa
           </ul>
         )}
       </Section>
-      {v.approves === undefined || v.approves.length === 0 ? null : <p className="hxe-text" data-approves="">{W.hint.approvesLinks} <span className="hxe-mono">{v.approves.join(', ')}</span></p>}
       {removed.length === 0 ? null : (
         <Section title={NOTES.label.stoppedNotes} count={String(removed.length)} slot="save-stopped-notes">
           <ul className="hxe-places">

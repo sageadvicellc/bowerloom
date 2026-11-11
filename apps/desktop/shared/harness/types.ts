@@ -171,6 +171,9 @@ export interface ScanSource {
   readonly harnessPlaceId?: string;
 }
 
+/** A notes folder a harness links that was not read, and why: the folder is gone, its stored path is not a form the reader takes, it needs the person's approval on this computer, the record of approvals is damaged, its `knowledge.json` cannot be read, or more is linked than is read. `label` is the stored path, or empty. */
+export interface LinkProblem { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }
+
 /** A folder that holds a harness, read through the harness loader (real mode). The Overview shows it as a place; no screen of the read lists it. `label` is the folder in `~` form. */
 export interface HarnessPlace {
   readonly id: string;
@@ -183,7 +186,7 @@ export interface HarnessPlace {
   readonly parts: readonly { readonly id: string; readonly kind: PartKind; readonly name: string; readonly summary: string; readonly toolKind?: 'mcp' | 'hook'; readonly contentHash?: string }[];
   readonly links: readonly Link[];
   /** The linked notes folders that were not read, each with its reason. Absent when there are none. */
-  readonly linkProblems?: readonly { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }[];
+  readonly linkProblems?: readonly LinkProblem[];
 }
 
 /** What the reader of the person's own folders reports, kept beside the world (real mode only). */

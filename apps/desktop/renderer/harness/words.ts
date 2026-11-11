@@ -3,7 +3,7 @@
  * (tests/harness-words.test.ts) holds them all to the rules: a label at most 5 words, a hint at most 12, a paragraph or a popover at most 25, and no banned word (shared/harness/words.ts).
  * Words that are built from a number or a name ("3 agents", "Install Weekly report crew") are built by the functions at the bottom, which the same test runs.
  */
-import type { PartKind } from '../../shared/harness/types.js';
+import type { LinkProblem, PartKind } from '../../shared/harness/types.js';
 
 const deepFreeze = <T extends object>(value: T): T => {
   for (const inner of Object.values(value)) if (typeof inner === 'object' && inner !== null) deepFreeze(inner);
@@ -35,7 +35,7 @@ export const WORDS = deepFreeze({
     whichSkill: 'Which skill?', stepChoose: 'Choose', reviewChange: 'Review the change', leftOut: 'Folders left out', openSavePoints: 'Open save points', notesChosen: 'Your notes',
     theKeeper: 'The Notes keeper',
     // Link a notes folder, from the empty Context tab.
-    linkNotes: 'Link a notes folder', linkNotesTitle: 'Link a notes folder', stepNotes: 'Notes folder', startHarness: 'Start a harness', linkAgain: 'Link a folder again', approveLink: 'Approve and link',
+    linkNotes: 'Link a notes folder', linkNotesTitle: 'Link a notes folder', stepNotes: 'Notes folder', startHarness: 'Start a harness', linkAgain: 'Link a folder again',
   },
   /** Short lines: at most 12 words each. */
   hint: {
@@ -113,9 +113,9 @@ export const namedBy = (names: readonly string[]): string => `${names.join(', ')
 export const willUse = (names: readonly string[]): string => `${names.join(', ')} will use it.`;
 /** "Add to Weekly report crew": the name of a button in the pick sheet. */
 /** The line for a linked notes folder that was not read: the folder that links it, then why. `label` is the stored path, or empty. */
-export function linkProblemWords(folder: string, reason: 'gone' | 'form' | 'approval' | 'unreadable' | 'limit', label: string): string {
+export function linkProblemWords(folder: string, reason: LinkProblem['reason'], label: string): string {
   const what = label === '' ? '' : `: ${label}`;
-  const why = reason === 'gone' ? `Linked folder not found${what}` : reason === 'form' ? `Linked folder path not read${what}` : reason === 'approval' ? `Needs approval${what}. Link it again to approve.`
+  const why = reason === 'gone' ? `Linked folder not found${what}` : reason === 'form' ? `Linked folder path not read${what}` : reason === 'approval' ? `Needs approval${what}. Link it again to approve.` : reason === 'damaged' ? `Saved approvals could not be read${what}`
     : reason === 'unreadable' ? 'The list of linked folders could not be read.' : `More folders are linked than are read${what}`;
   return `${folder}: ${why}`;
 }
