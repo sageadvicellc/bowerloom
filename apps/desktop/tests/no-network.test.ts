@@ -17,6 +17,9 @@ const ALLOWED_NETWORK_MODULES: Record<string, string[]> = {
   '../../packages/skill-sources/src/public-address.ts': ['net'],
   '../../packages/skill-sources/src/git.ts': ['dns/promises', 'https', 'net'],
   '../../packages/managed-skills/src/v2-transaction.ts': ['net'],
+  // The local models report reads model servers on this computer: one GET helper, to 127.0.0.1 and a port, no redirect, a time limit and a size cap on every read
+  // (packages/local-models/src/http.ts). The page never calls it: the window has no way to name a host or a port, and its policy still holds connect-src 'none'.
+  '../../packages/local-models/src/http.ts': ['http'],
 };
 
 /**
@@ -29,7 +32,8 @@ const ALLOWED_NETWORK_MODULES: Record<string, string[]> = {
  *  - export and import start one worker thread (journey 4): the host in main/engine-bundle-host.ts starts `bundle-worker.mjs`, a file the build makes from
  *    main/engine-bundle-worker.ts, with a timeout and a refusal when it dies. It is a thread of this process, not a program: it runs only the code of
  *    packages/harness-bundle and the save packages, on bytes main gives it, so a bundle is decoded off the main thread. It starts nothing else.
- * Nothing else of the bundle starts a process.
+ * Nothing else of the bundle starts a process. The local models report reads no process: its memory and uptime figures come in a later version, and when they do, one
+ * listed exception will be argued for here.
  */
 const ALLOWED_PROCESS_MODULES: Record<string, string[]> = {
   '../../packages/diagnostics/src/report.ts': ['child_process'], '../../packages/notes-source/src/git.ts': ['child_process'], 'main/engine-bundle-host.ts': ['worker_threads'],
@@ -116,4 +120,16 @@ test('the reader of the person\'s setup, run on a made-up home folder with every
   const out = JSON.parse(r.stdout) as { places: number; counts: { agents: number; skills: number; tools: number } };
   assert.ok(out.places >= 3 && out.counts.skills > 0 && out.counts.agents > 0, `the reader really read the folders: ${r.stdout}`);
   assert.equal(existsSync(log), false, 'no process was started and no connection was made');
+});
+
+test('the one new network use, the local models reader, is a single GET helper that can only reach 127.0.0.1, and it starts no process', () => {
+  const http = readFileSync(join(DESKTOP, '..', '..', 'packages', 'local-models', 'src', 'http.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(http, /import \{ Agent, request \} from 'node:http';/, 'it imports the http module and nothing else of the network');
+  assert.equal([...http.matchAll(/(?<![.\w])request\s*\(/g)].length, 1, 'one place opens a connection');
+  assert.match(http, /host:\s*LOOPBACK_HOST\b/, 'the host is the constant of the guard');
+  assert.doesNotMatch(http, /createServer|\.listen\(|child_process|worker_threads|(?<![.\w])(?:spawn|exec|execFile|fork)\s*\(/, 'it starts no server and no process');
+  const { byModule } = bundledImports();
+  const users = [...byModule].filter(([module]) => module.includes('packages/local-models/')).map(([module, imports]) => [module, [...imports].filter(i => NETWORK.test(i) || WORKERS.test(i)).sort()] as const).filter(([, imports]) => imports.length > 0);
+  assert.deepEqual(users, [['../../packages/local-models/src/http.ts', ['http']]], 'no other file of the package loads a network or process module');
+  assert.equal(Object.keys(ALLOWED_PROCESS_MODULES).some(module => module.includes('local-models')), false, 'no process reader: memory and uptime are not read in this version');
 });
