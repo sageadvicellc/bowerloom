@@ -33,8 +33,7 @@ import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { FolderDraftProvider } from './folder-draft.js';
 import { useCloseGuard } from './close-guard.js';
-import { createSampleEngine } from '../../shared/engine/sample.js';
-import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
+import { fallbackEngine } from '../api/client.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 
 function Overlays(): ReactElement {
@@ -69,8 +68,8 @@ export function HarnessApp({ store: given, real = null, realMode = real !== null
   // On the person's own folders it starts empty, and the first read replaces it.
   const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
   useEffect(() => () => store.dispose(), [store]);
-  // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so).
-  const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : realMode ? null : createSampleEngine({ previewEngines: document.body.getAttribute(SAMPLE_PREVIEW_ATTRIBUTE) === '1' })));
+  // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so). Both come from the API client.
+  const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : fallbackEngine(realMode)));
   // The registry is the only route table. It holds the six default extensions unless a caller (a test) gives its own.
   const [registry] = useState(() => givenRegistry ?? createScreenRegistry());
   return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></EngineProvider></HarnessProvider>;
