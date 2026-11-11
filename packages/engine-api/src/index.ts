@@ -6,8 +6,8 @@
  * `golden/base-d4c8a478.json` records the same facts as the base source gave them, and `scripts/make-golden.mjs` makes it. See docs/v0.9/engine-api-library.md.
  */
 export type { Answer, CallSpec, Refusal, ReturnKind } from './types.js';
-export { ENGINE_API_CALLS, READER_API_CALLS, callSpec } from './calls.js';
+export { ENGINE_API_CALLS, LOCAL_CALLS, READER_API_CALLS, callSpec, localCallSpec } from './calls.js';
 export {
-  CANCELLED, ENGINE_CALL_REFUSAL_CODES, ENGINE_CODE_FORMAT, ENGINE_MAIN_ANSWER_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, ENGINE_REFUSAL_STEPS, NAMED_OUTCOMES, NOT_THE_PLAN_SHOWN, READER_GATE_REFUSAL_CODES, READER_REFUSAL_CODES,
+  CANCELLED, ENGINE_CALL_REFUSAL_CODES, ENGINE_CODE_FORMAT, ENGINE_MAIN_ANSWER_REFUSAL_CODES, ENGINE_MAIN_REFUSAL_CODES, ENGINE_REFUSAL_STEPS, LOCAL_CALL_REFUSAL_CODES, NAMED_OUTCOMES, NOT_THE_PLAN_SHOWN, READER_GATE_REFUSAL_CODES, READER_REFUSAL_CODES,
   engineRefusalCodes, readerRefusalCodes,
 } from './refusals.js';
