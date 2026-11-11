@@ -52,9 +52,12 @@ export function buildFixture(): Fixture {
   put(join(claude, 'skills', 'odd name ‮evil', 'SKILL.md'), '---\nname: Odd name\ndescription: A folder name with a direction mark.\n---\n');
   symlinkSync(join(outside, 'outside-skill'), join(claude, 'skills', 'linked-out'));
   symlinkSync(join(claude, 'skills'), join(claude, 'skills', 'loop'));
-  mkdirSync(join(claude, 'skills', 'locked'), { recursive: true });
-  put(join(claude, 'skills', 'locked', 'SKILL.md'), '---\nname: Locked\n---\n');
-  chmodSync(join(claude, 'skills', 'locked'), 0o000);
+  // Root opens a folder at mode 000, so for root this folder is left out. The reader then sees what it sees for a person who is not root, and only the count of what could not be read differs.
+  if (process.getuid?.() !== 0) {
+    mkdirSync(join(claude, 'skills', 'locked'), { recursive: true });
+    put(join(claude, 'skills', 'locked', 'SKILL.md'), '---\nname: Locked\n---\n');
+    chmodSync(join(claude, 'skills', 'locked'), 0o000);
+  }
   put(join(claude, 'agents', 'reviewer.md'), '---\nname: reviewer\ndescription: Reads a change and says what is risky.\nmodel: sonnet\nskills: [write-reply, check-totals]\ntools: Read, Grep, mcp__tracker__search\n---\nYou review changes.\n');
   put(join(claude, 'agents', 'tidier.md'), '---\nname: tidier\ndescription: Does small jobs.\n---\nHelp.\n');
   symlinkSync(join(outside, 'outside-agent.md'), join(claude, 'agents', 'outside-agent.md'));

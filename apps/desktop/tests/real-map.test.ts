@@ -12,7 +12,6 @@ import { buildRealResult } from '../shared/real/map-world.js';
 import type { RealResult } from '../shared/real/types.js';
 import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from './fixtures-real/build.js';
 import type { Fixture } from './fixtures-real/build.js';
-import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 /** How many different texts an item holds across every place it was found. */
 const distinctTexts = (item: HarnessItem): number => new Set(item.foundAt.map(f => f.contentHash)).size;
@@ -38,7 +37,7 @@ test('the world is valid: no repeated id, no missing reference, hashes that matc
   assert.equal(r.readOnly, true);
 });
 
-test('what was found is counted, merged across programs, and split by scope', { skip: skipAsRoot('the fixture holds a folder at mode 000 that must not open') }, async t => {
+test('what was found is counted, merged across programs, and split by scope', async t => {
   const r = await readAll(fixture(t)), w = r.world;
   assert.deepEqual(r.counts, { agents: 5, skills: 6, tools: 6, hooks: 1, notes: 6 });
   assert.deepEqual(w.scopes.map(s => [s.kind, s.name]), [['global', 'Your home folder'], ['project', 'work'], ['project', 'alpha']]);

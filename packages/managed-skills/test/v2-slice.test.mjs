@@ -320,10 +320,10 @@ test('S2. a registered root that the managed path rule rejects is a SLICE_ROOT_U
   assert.deepEqual([r.index, r.hold?.code], [null, 'SLICE_ROOT_UNSAFE']);
   assert.throws(() => requestV2(registeredRequest(f, root, { source: { kind: 'slice', name: 'wiki', root: { kind: 'registered', name: 'kb', dir: bad, identity: idOf(bad) } } })));
 });
-test('S6. the catalog root carries the id of the root folder: a folder replaced at the same path is another root', { skip: skipOnReusedFolderIdentity('a replaced wiki folder from the one it replaced') }, async t => {
+test('S6. the catalog root carries the id of the root folder: a folder replaced at the same path is another root', async t => {
   const { f, root } = registeredWiki(t), first = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id;
   const again = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id; assert.equal(again, first);
-  const copy = path.join(f.base, 'wiki-copy'); fs.cpSync(path.join(root, 'wiki'), copy, { recursive: true }); fs.rmSync(path.join(root, 'wiki'), { recursive: true }); fs.cpSync(copy, path.join(root, 'wiki'), { recursive: true });
+  const copy = path.join(f.base, 'wiki-copy'); fs.cpSync(path.join(root, 'wiki'), copy, { recursive: true }); fs.renameSync(path.join(root, 'wiki'), path.join(f.base, 'wiki-old')); fs.cpSync(copy, path.join(root, 'wiki'), { recursive: true }); // the old folder stays, so its inode cannot be reused
   const next = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id; assert.match(next, /^[a-f0-9]{32}$/); assert.notEqual(next, first);
 });
 test('S1b. the lookup is asked for the summary kind of the slice (decision 5, option B)', t => {

@@ -46,6 +46,10 @@ test('the Start sheet opens on the first project that holds the harness, with tw
 
 test('unticking an engine drops the notice and changes the count; an empty instruction or no tick disables Start', async () => {
   const s = await openStart();
+  // The sheet sets its ticks in an effect after it opens. Wait until both are ticked and the notice shows, so the untick below is not undone by that reset.
+  await expect(s.getByRole('checkbox', { name: /Claude Code/ })).toBeChecked();
+  await expect(s.getByRole('checkbox', { name: /Codex/ })).toBeChecked();
+  await expect(s.getByRole('status')).toHaveCount(1);
   await s.getByRole('checkbox', { name: /Codex/ }).uncheck();
   await expect(s.getByRole('status')).toHaveCount(0);
   await expect(s.getByRole('button', { name: 'Review and start 1 run', exact: true })).toBeEnabled();

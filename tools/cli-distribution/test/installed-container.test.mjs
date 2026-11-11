@@ -58,7 +58,7 @@ test('real node --test subprocess permits only its exact child-v8 bookkeeping me
  const probeFile=join(f.root,'env-probe.test.mjs');writeFileSync(probeFile,`import test from 'node:test';test('env',()=>{console.log('KEYS:'+Object.keys(process.env).join(','));});`);
  const probe=cp.spawnSync(process.execPath,['--test',probeFile],{cwd:f.proofRoot,env:{},encoding:'utf8',timeout:10000,maxBuffer:65536});
  const extra=(/KEYS:(\S*)/.exec(probe.stdout)?.[1]??'').split(',').filter(k=>/^NODE_/i.test(k)&&k!=='NODE_TEST_CONTEXT');
- if(extra.length>0){t.skip(`this Node gives a node --test child ${extra.join(', ')} besides NODE_TEST_CONTEXT, and the proof guard refuses any other NODE_ variable`);return;}
+ if(extra.length>0){t.skip(`this Node gives a node --test child ${extra.join(', ')} besides NODE_TEST_CONTEXT, and the proof guard refuses any other NODE_ variable.`);return;}
  writeFileSync(script,`import test from 'node:test';import assert from 'node:assert/strict';import {verifyInstalledContainerProof} from ${JSON.stringify(guard)};test('verified before any service contact',()=>{assert.equal(process.env.NODE_TEST_CONTEXT,'child-v8');assert.equal(verifyInstalledContainerProof(${JSON.stringify(f.configPath)}).inventoryCount,${3+CONTAINER_RUNTIME_FILES.length});});`);
  const result=cp.spawnSync(process.execPath,['--test',script],{cwd:f.proofRoot,env:{},encoding:'utf8',timeout:10000,maxBuffer:65536});assert.equal(result.status,0,result.stderr+result.stdout);assert.match(result.stdout,/verified before any service contact/);
 });

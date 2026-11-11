@@ -67,7 +67,8 @@ test('a guarded repeat after 1000 padding headers refuses, including when Node d
   // At 1000 padding headers the Node this test was written for still keeps every pair; the 128-pair cap refuses the list.
   // Node 24.21.0 already stops at 1000 pairs, so the repeat at the end of 1004 pairs is dropped before the guard sees it. That is Node, not this code, so the test says so and skips.
   const kept = await served(t, 1000);
-  if (kept.length < 2 * 1004) { t.skip(`this Node keeps ${kept.length / 2} of the 1004 header pairs sent (the Node this test was written for keeps all of them), so the repeat never reaches the guard at 1000 padding headers`); return; }
+  // Only the cap of 1000 pairs skips. A list shorter than that is a fault of the helper or the server, and it fails below.
+  if (kept.length >= 2 * 1000 && kept.length < 2 * 1004) { t.skip(`this Node keeps ${kept.length / 2} of the 1004 header pairs sent (the Node this test was written for keeps all of them), so the repeat never reaches the guard at 1000 padding headers`); return; }
   assert.equal(kept.length, 2 * 1004); assert.equal(contentTypes(kept), 2);
   assert.equal(guardedResponseHeaders(kept), null);
 });

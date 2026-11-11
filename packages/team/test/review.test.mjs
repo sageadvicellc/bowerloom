@@ -293,17 +293,23 @@ test('T16: apply returns a problem, not an exception, when the target parent goe
 
 // ---- T14: folder errors say what happened --------------------------------------------------------------------------------
 
-test('T14: a missing team folder, an unreadable folder, and a link are told apart', { skip: skipAsRoot('a folder at mode 000 cannot be listed') }, t => {
+test('T14: a missing team folder is told apart', () => {
   assert.ok(codes(loadTeam(path.join(tempDir(), 'demo-team'))).includes('TEAM_FILE_MISSING'));
+});
+// Split from the test above and from the one below: root lists a folder at mode 000, so the unreadable checks need a user who is not root. Their steps are the same.
+test('T14: an unreadable team folder is told apart', { skip: skipAsRoot('a folder at mode 000 cannot be listed') }, t => {
   const { folder } = makeTeam({ 'team.json': json(teamFile()), 'prompts/lead.md': 'x\n' });
   fs.chmodSync(path.join(folder, 'prompts'), 0o000);
   t.after(() => fs.chmodSync(path.join(folder, 'prompts'), 0o755));
   assert.ok(codes(loadTeam(folder)).includes('TEAM_FILE_UNREADABLE'));
 });
 
-test('T14: a member folder that is missing, unreadable, or a link is told apart', { skip: skipAsRoot('a folder at mode 000 cannot be listed') }, t => {
+test('T14: a member folder that is missing is told apart', () => {
   const { project, team } = setup(solo('codex', { folder: 'wt/maker' }));
   assert.ok(startCodes(team, input(project)).includes('TEAM_START_FOLDER'));
+});
+test('T14: a member folder that is unreadable is told apart', { skip: skipAsRoot('a folder at mode 000 cannot be listed') }, t => {
+  const { project, team } = setup(solo('codex', { folder: 'wt/maker' }));
   fs.mkdirSync(path.join(project, 'wt', 'maker'), { recursive: true });
   fs.chmodSync(path.join(project, 'wt'), 0o000);
   t.after(() => fs.chmodSync(path.join(project, 'wt'), 0o755));

@@ -18,7 +18,7 @@ import { harnessStateDirs } from '../packages/project-sync/src/index.js';
 import { NotesRefusal, readNotesSummary } from '../packages/notes-source/src/index.js';
 import { BUNDLE_CODES, BUNDLE_FORMAT, EMPTY_HARNESS_DESCRIPTION, isEmptyHarness, BUNDLE_MESSAGES, EXPORT_PLAN_FORMAT, IMPORT_PLAN_FORMAT } from '../packages/harness-bundle/src/index.js';
 import { computeRevision, loadDefinition } from '../packages/harness-definition/src/index.js';
-import { skipAsRoot } from './support/machine-skips.js';
+import { isRoot } from './support/machine-skips.js';
 
 const sha = (b: Uint8Array | string): string => createHash('sha256').update(b).digest('hex');
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -578,7 +578,7 @@ test('notes names are left out by default; --link links one with its stored path
 
 // ---- every refusal code, with its exact words ----------------------------------------------------------------------------
 
-test('every refusal code of the bundle is reachable from the command line with its exact words', { skip: skipAsRoot('a write into a folder at mode 555 cannot fail, and this test must reach BUNDLE_FILE_FAILED') }, t => {
+test('every refusal code of the bundle is reachable from the command line with its exact words', t => {
   const w = world(t);
   put(w.src, richFiles());
   exportOut(w);
@@ -620,15 +620,19 @@ test('every refusal code of the bundle is reachable from the command line with i
   writeFileSync(existing, 'in the way\n');
   check('BUNDLE_EXISTS', bl(w, ['export', '--output', existing], w.src), w.home, snapshot(w.home));
   // A folder that cannot be written: the plan is made, and the write fails with the plain-words code of a failed file.
-  const locked = join(w.home, 'locked');
-  mkdirSync(locked);
-  const lockedPlan = parse<ExportBody>(bl(w, ['export', '--output', join(locked, 'x.json'), '--json'], w.src).stdout);
-  chmodSync(locked, 0o555);
-  t.after(() => { try { chmodSync(locked, 0o755); } catch { /* gone */ } });
-  const failed = bl(w, ['export', '--output', join(locked, 'x.json'), '--approve', lockedPlan.revision], w.src);
-  check('BUNDLE_FILE_FAILED', failed, locked, {});
-  assert.match(parse<{ error: { message: string } }>(failed.stderr).error.message, /permission/);
-  chmodSync(locked, 0o755);
+  // Root writes into a folder at mode 555, so for root this one code is not reached, and the end of the test expects every code but this one.
+  if (isRoot()) t.diagnostic('BUNDLE_FILE_FAILED not tried: root can write into a folder at mode 555');
+  else {
+    const locked = join(w.home, 'locked');
+    mkdirSync(locked);
+    const lockedPlan = parse<ExportBody>(bl(w, ['export', '--output', join(locked, 'x.json'), '--json'], w.src).stdout);
+    chmodSync(locked, 0o555);
+    t.after(() => { try { chmodSync(locked, 0o755); } catch { /* gone */ } });
+    const failed = bl(w, ['export', '--output', join(locked, 'x.json'), '--approve', lockedPlan.revision], w.src);
+    check('BUNDLE_FILE_FAILED', failed, locked, {});
+    assert.match(parse<{ error: { message: string } }>(failed.stderr).error.message, /permission/);
+    chmodSync(locked, 0o755);
+  }
   check('IMPORT_FOLDER_HAS_HARNESS', bl(w, ['import', w.out], w.src), w.src, snapshot(w.src));
   // IMPORT_NEEDS_ACKNOWLEDGEMENT and EXPORT_NEEDS_ACKNOWLEDGEMENT have their own tests above. Reach them here again, so this one test names every code.
   const plan = parse<ImportBody>(bl(w, ['import', w.out, '--json'], w.dst).stdout);
@@ -637,7 +641,7 @@ test('every refusal code of the bundle is reachable from the command line with i
   const xp = parse<ExportBody>(bl(w, ['export', '--output', join(w.home, 'x.json'), '--json'], w.src).stdout);
   check('EXPORT_NEEDS_ACKNOWLEDGEMENT', bl(w, ['export', '--output', join(w.home, 'x.json'), '--approve', xp.revision], w.src), w.home, snapshot(w.home));
 
-  assert.deepEqual([...reached].sort(), [...BUNDLE_CODES].sort());
+  assert.deepEqual([...reached].sort(), [...BUNDLE_CODES].filter(code => !(isRoot() && code === 'BUNDLE_FILE_FAILED')).sort());
 });
 
 test('the terminal words of every bundle code are the sentences of the package, with a next step, and the style of the other refusals', () => {

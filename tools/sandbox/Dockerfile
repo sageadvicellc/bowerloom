@@ -1,6 +1,8 @@
 # Test tooling, never shipped. The image that runs every gate of the repository away from the host (docs/v0.9/sandbox-tests.md).
 # The source is copied in. Nothing from the host is mounted at run time. The image runs as root on purpose, so that the
-# machine-dependent tests (root owner, case-sensitive disk, long path) run and do not skip.
+# four machine-dependent tests (root owner, case-sensitive disk, long path, alias) run and do not skip on a Mac.
+# Root has a cost: the tests that need a file mode to refuse a user skip as root (docs/v0.9/sandbox-tests.md, "Skips for root"),
+# so a green run does not cover them.
 # The tag and the digest were checked on Docker Hub on 2026-11-10. The digest holds the exact image if the tag moves.
 FROM node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0
 

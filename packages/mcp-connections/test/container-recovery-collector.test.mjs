@@ -74,7 +74,7 @@ test('Docker errors, wrong IDs, invalid text, flood and timeout never mean absen
 test('missing operation directory and missing journal yield held reports and no read commands',{skip:needsMacOS},async t=>{
  for(const level of ['directory','file'])await t.test(level,async t=>{const f=await setup(t);await rm(level==='directory'?f.directory:f.path,{recursive:true});const r=await f.collect();assert.equal(r.journal.status,'missing');assert.equal(r.observations.container.state,'not-queried');assert.equal(f.calls.length,0);assert.equal(f.transactions,2);});
 });
-test('symlink files, hardlinks, symlink operation ancestors and unsafe modes refuse before subprocesses',async t=>{
+test('symlink files, hardlinks, symlink operation ancestors and unsafe modes refuse before subprocesses',{skip:needsMacOS},async t=>{
  for(const mode of ['symlink','hardlink','ancestor','dangling-ancestor','file-mode','special-mode','root-mode','directory-mode','oversize'])await t.test(mode,async t=>{
   const f=await setup(t);
   if(mode==='symlink'){await renameForLink(f);await symlink(f.path+'-saved',f.path);}if(mode==='hardlink')await link(f.path,f.path+'-linked');
@@ -84,7 +84,7 @@ test('symlink files, hardlinks, symlink operation ancestors and unsafe modes ref
  });
 });
 async function renameForLink(f){renameSync(f.path,f.path+'-saved');}
-test('journal tampering and exact authority/launch mismatch refuse before Docker contact',async t=>{
+test('journal tampering and exact authority/launch mismatch refuse before Docker contact',{skip:needsMacOS},async t=>{
  for(const mutate of [j=>j.operationKey='sha256:'+'e'.repeat(64),j=>j.launchRevision='sha256:'+'e'.repeat(64),j=>j.cid='short',j=>j.deadlineMs++,j=>j.extra='PRIVATE'])await t.test(String(mutate),async t=>{const f=await setup(t);mutate(f.j);await writeFile(f.path,canonicalJson(f.j));await assert.rejects(f.collect(),refused);assert.equal(f.calls.length,0);});
 });
 test('file content, file identity, and ancestor replacement during observations invalidate the report',{skip:needsMacOS},async t=>{
@@ -93,17 +93,17 @@ test('file content, file identity, and ancestor replacement during observations 
   await assert.rejects(f.collect(),refused);assert.equal(f.transactions,1);
  });
 });
-test('new journal appearance after an initial missing observation invalidates the report',async t=>{
+test('new journal appearance after an initial missing observation invalidates the report',{skip:needsMacOS},async t=>{
  const f=await setup(t);await rm(f.path);f.hooks.beforeTransaction=n=>{if(n===2)writeFileSync(f.path,canonicalJson(f.j),{mode:0o600});};await assert.rejects(f.collect(),refused);
 });
-test('final full-authority comparison detects concurrent changes and DB failure without clearing holds',async t=>{
+test('final full-authority comparison detects concurrent changes and DB failure without clearing holds',{skip:needsMacOS},async t=>{
  for(const mode of ['revocation','first-error','final-error','lost-ack'])await t.test(mode,async t=>{
   const f=await setup(t);f.hooks.beforeTransaction=(n,state)=>{if(mode==='first-error'&&n===1||mode==='final-error'&&n===2)throw Error('PRIVATE_DB');if(mode==='revocation'&&n===2)state.grant.revoked=true;};
   if(mode==='lost-ack'){const original=f.store.transaction.bind(f.store);f.store.transaction=async(...args)=>{const result=await original(...args);if(f.transactions===2)throw Error('PRIVATE_ACK');return result;};}
   await assert.rejects(f.collect(),refused);assert.equal(f.state.status,'NEEDS_RECONCILIATION');if(mode==='first-error')assert.equal(f.calls.length,0);
  });
 });
-test('active durable authority and external observation overrides are rejected',async t=>{
+test('active durable authority and external observation overrides are rejected',{skip:needsMacOS},async t=>{
  const f=await setup(t);f.state.status='IN_FLIGHT';f.state.reason=null;await assert.rejects(f.collect(),refused);assert.equal(f.calls.length,0);
  f.state.status='NEEDS_RECONCILIATION';f.state.reason='SESSION_UNCERTAIN';
  for(const extra of [{observations:{}},{now:()=>1},{executable:'/bin/echo'},{env:{DOCKER_HOST:'PRIVATE'}}])await assert.rejects(collectMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true,...extra},f.state.scope),refused);
@@ -121,7 +121,7 @@ test('collector-owned persistence takes only fresh observations and retains unce
  const r=await collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope);assert.equal(writes,1);assert.equal(r.persistence,'commit-acknowledged');assert.equal(r.receipt.collection.revision,r.collection.revision);assert.equal(r.receipt.hostSession,'unknown');assert.equal(r.receipt.executionAuthorized,false);
  await assert.rejects(collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true,report:r.collection},f.state.scope),refused);assert.equal(writes,1);
 });
-test('collector persistence error, corrupt acknowledgement or post-commit journal change returns uncertainty',async t=>{
+test('collector persistence error, corrupt acknowledgement or post-commit journal change returns uncertainty',{skip:needsMacOS},async t=>{
  for(const mode of ['error','corrupt','journal-change'])await t.test(mode,async t=>{const f=await setup(t);f.store.recordRecoveryReceipt=async(expected,collection,check)=>{check();if(mode==='error')throw Error('PRIVATE_ACK');const r=createMcpContainerRecoveryReceipt(expected,collection);if(mode==='corrupt')r.hostSession='trusted';if(mode==='journal-change')writeFileSync(f.path,canonicalJson({...f.j,reason:'CHANGED'}));return r;};await assert.rejects(collectAndPersistMcpContainerRecovery({store:f.store,stateRoot:f.root,trustedDockerDesktop:true},f.state.scope),refused);assert.equal(f.state.status,'NEEDS_RECONCILIATION');});
 });
 test('collector timeout cannot turn a late persistence completion into success',{timeout:18000,skip:needsMacOS},async t=>{

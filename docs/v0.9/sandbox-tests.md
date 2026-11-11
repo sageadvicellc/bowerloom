@@ -116,7 +116,7 @@ Every skip of this work is listed in "Every skip this work added". They run on a
 ### What a green sandbox run does not cover
 
 - **The root-skipped tests.** A green run does not cover the tests in "Skips for root". Each one checks a refusal that needs a file mode, and root ignores modes. They run on a Mac. A second pass of the same tests as a non-root user in the container is a follow-up. In this work, a non-root pass was used by hand to sort causes, and it is not part of the command.
-- **A known limit of the file time and folder identity skips.** These tests skip: B5 of the context guard, tests 23 and 36 of the registered folders, B10 and S6 of the managed skills, S6 of the registered slices, the parent-change tests of `skills-cli`, the three `scan-cache` ordering tests, and S2 of the store. On a file system that reuses folder identity or has coarse file times, a replaced folder or a quick change can look unchanged to Bowerloom. The tests cannot show that Bowerloom tells them apart there. This work records that limit. It does not fix it.
+- **A known limit of the file time and folder identity skips.** These tests skip: B5 of the context guard, tests 23 and 36 of the registered folders, B10 of the managed skills, the parent-change tests of `skills-cli`, the three `scan-cache` ordering tests, and S2 of the store. On a file system that reuses folder identity or has coarse file times, a replaced folder or a quick change can look unchanged to Bowerloom. The tests cannot show that Bowerloom tells them apart there. This work records that limit. It does not fix it.
 - **The identity probe also answers true when the birth time is missing.** The probe compares device, inode and birth time. A file system that reports no birth time gives the same value twice, so a reused inode reads as the same identity.
 
 ## First full run
@@ -138,8 +138,8 @@ Each failing test was sorted by cause. Two checks told root causes from the rest
 | Cause | Root | Desktop | End-to-end | What was done |
 |---|---|---|---|---|
 | Code that is macOS only: the boot session of the container guardian, its supervisor and collector, and the Codex startup guardian | 102 | 0 | 0 | The tests skip off macOS, with a reason. No Linux boot-session reader was added (see the decisions below). |
-| Root ignores file modes | 30 | 13 | 0 | The tests skip as root, with a reason. |
-| The file system has coarse file times or reuses a folder identity | 5 | 3 | 0 | The tests skip when a probe finds the file system too coarse, with a reason. The probe never answers true on macOS. |
+| Root ignores file modes | 30 | 13 | 0 | A test that needs a mode throughout skips as root, with a reason. A test that needs one in only one part is split, or built without the part, so the rest runs as root. |
+| The file system has coarse file times or reuses a folder identity | 5 | 3 | 0 | The tests skip when a probe finds the file system too coarse, with a reason. The probe never answers true on macOS. The run prints the answers (see "The probes"). |
 | Node 24.21.0 differs from the Node the tests were written for | 2 | 0 | 0 | One test skips while it runs. The other half of the other test still runs. |
 | A fixture that depended on the machine | 1 | 1 | 0 | Fixed. A preload now waits for its output to drain. A test input is now really long. |
 | The sandbox renamed Electron's binary, so every app counted as packaged | 0 | 0 | 4 | Fixed in the Dockerfile. |
@@ -160,9 +160,13 @@ The totals are 140, 17 and 15. Nothing was deleted. No assertion changed to make
 
 Each row is one skipped test. A skipped test with subtests skips all of them. The helpers are in `tests/support/machine-skips.ts`.
 
-### Skips off macOS (64 tests)
+The tables hold 136 different tests. One test, "an aside entry that cannot be removed does not stop the sweep of the older ones" in `apps/desktop/tests/scan-cache.test.ts`, is in two tables, because it needs a mode and fine file times. So the root and file time tables hold 41 + 9 rows, which are 49 different tests.
 
-Each test skips when the platform is not macOS, because the code it checks refuses every other platform. The reason text is "macOS only: the container guardian reads the macOS boot session and refuses every other platform (MCP_GUARDIAN_BOOT_UNKNOWN)" for the tests of the container guardian, and a reason of its own for the two codex-adapter startup and protocol tests, written in the test file. The two files are `packages/mcp-connections/test/support/macos-only.mjs` and `packages/codex-adapter/test`.
+### Skips off macOS (74 tests)
+
+Each test skips when the platform is not macOS, because the code it checks refuses every other platform. The reason text is "macOS only: the container guardian reads the macOS boot session and refuses every other platform (MCP_GUARDIAN_BOOT_UNKNOWN)" for the tests of the container guardian. The codex-adapter startup and protocol tests carry a reason of their own, written in the test file. The protocol test skips off macOS arm64: Linux and Intel macOS both skip. The helper is `needsMacOS` in `packages/mcp-connections/test/support/macos-only.mjs`.
+
+Ten of these tests, three in `container-guardian.test.mjs`, six in `container-recovery-collector.test.mjs` and one in `container-guardian-provenance.test.mjs`, passed on Linux before only because the platform refusal fired first and the test expected a refusal. They skip now, so a pass here means the real code ran.
 
 | File | Test |
 |---|---|
@@ -186,6 +190,7 @@ Each test skips when the platform is not macOS, because the code it checks refus
 | `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | different boot and unknown attach process remain held despite valid signature |
 | `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | legacy and missing journal/binding never receive retroactive provenance |
 | `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | authority/binding drift, file change, cross scope and database failure refuse |
+| `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | boot command is fixed and failed/ambiguous output cannot establish boot identity |
 | `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | binding uses full authority lock, immutable exact identity and explicit schema without authority update |
 | `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | binding refuses unavailable schema, live callback drift/async/mutation, corruption and lost commit acknowledgement |
 | `packages/mcp-connections/test/container-guardian-provenance.test.mjs` | even signed malformed body shapes do not pass the verifier |
@@ -193,6 +198,7 @@ Each test skips when the platform is not macOS, because the code it checks refus
 | `packages/mcp-connections/test/container-guardian.test.mjs` | corrupt persisted journal prevents rewriting ownership and prevents cleanup by guessed identity |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | mismatched inspected container identity never starts or removes that container |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | existing name collision is never adopted or removed, even when public labels can match |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | existing operation directory never resumes or retries creation |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | journal replaced by symlink is refused without touching its target |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | IPC forwarding checks absolute deadline even before the scheduled timer runs |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | monotonic lease is checked at IPC forwarding before a delayed expiry timer can run |
@@ -200,7 +206,9 @@ Each test skips when the platform is not macOS, because the code it checks refus
 | `packages/mcp-connections/test/container-guardian.test.mjs` | replayed and wrong-session renewal frames fail closed without extending authority |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | missing or delayed initial authority creates no container |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | repeated valid renewals cannot extend the original absolute deadline |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | queued renewal after its challenge expired is rejected before the expiry timer can run |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | real child-generated journal signature binds exact operation and independent public key |
+| `packages/mcp-connections/test/container-guardian.test.mjs` | missing or wrong binding acknowledgement permits no Docker command |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | stop during CREATING fsync drains the write, seals CANCELLED and never requests create |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | missing, stopped and late checkpoint acknowledgements cannot create or resume |
 | `packages/mcp-connections/test/container-guardian.test.mjs` | stop or lease expiry while STARTED checkpoint awaits acknowledgement cleans up without forwarding |
@@ -209,9 +217,15 @@ Each test skips when the platform is not macOS, because the code it checks refus
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | present or failed process observations remain distinct and non-authorizing |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | Docker errors, wrong IDs, invalid text, flood and timeout never mean absence |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | missing operation directory and missing journal yield held reports and no read commands |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | symlink files, hardlinks, symlink operation ancestors and unsafe modes refuse before subprocesses |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | journal tampering and exact authority/launch mismatch refuse before Docker contact |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | file content, file identity, and ancestor replacement during observations invalidate the report |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | new journal appearance after an initial missing observation invalidates the report |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | final full-authority comparison detects concurrent changes and DB failure without clearing holds |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | active durable authority and external observation overrides are rejected |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | unresponsive trusted store has a bounded collection deadline and cannot resume host reads later |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | collector-owned persistence takes only fresh observations and retains uncertainty |
+| `packages/mcp-connections/test/container-recovery-collector.test.mjs` | collector persistence error, corrupt acknowledgement or post-commit journal change returns uncertainty |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | collector timeout cannot turn a late persistence completion into success |
 | `packages/mcp-connections/test/container-recovery-collector.test.mjs` | v2 envelope normalization does not promote signature-shaped bytes into origin or host trust |
 | `packages/mcp-connections/test/container.test.mjs` | container factory pins exact launch and deadline while exposing discovery only |
@@ -231,9 +245,9 @@ Each test skips when the platform is not macOS, because the code it checks refus
 | `packages/mcp-connections/test/container.test.mjs` | terminal received with pending normal callback uses last acknowledged head and does not rebase |
 | `packages/mcp-connections/test/container.test.mjs` | checkpoint callback getters are inert before guardian fork |
 
-### Skips for root (43 tests)
+### Skips for root (41 tests)
 
-Each test skips when the user is root. The reason text is "root ignores file modes, so this cannot refuse as the test expects:" followed by the last column. The helper is `skipAsRoot` in `tests/support/machine-skips.ts`.
+Each test skips when the user is root. The reason text is "root ignores file modes, so this cannot refuse as the test expects:" followed by the last column. The helper is `skipAsRoot` in `tests/support/machine-skips.ts`. A test that needed a mode for only one part was split, so the rest runs as root; the new parts are in the rows below.
 
 | File | Test | What the test needs |
 |---|---|---|
@@ -243,9 +257,7 @@ Each test skips when the user is root. The reason text is "root ignores file mod
 | `apps/desktop/tests/engine-save-review.test.ts` | a save whose files are all written is taken back, not finished, when a file outside it changed since, so the recovery can never refuse for good | a state folder at mode 500 cannot lose its journal file |
 | `apps/desktop/tests/engine-save-review.test.ts` | the mode of a save recovery is part of the plan shown: when a file outside the save changes after the plan, the run is refused as not the shown plan, and nothing changes | a state folder at mode 500 cannot lose its journal file |
 | `apps/desktop/tests/engine-save-review.test.ts` | a finished save whose emptied folder came back with a .DS_Store is taken back, so the recovery never refuses for good, and no journal is left | a state folder at mode 500 cannot lose its journal file |
-| `apps/desktop/tests/real-map.test.ts` | what was found is counted, merged across programs, and split by scope | the fixture holds a folder at mode 000 that must not open |
-| `apps/desktop/tests/real-scan.test.ts` | step one finds one place for each program under the home folder, and counts by structure | the fixture holds a folder at mode 000 that must not open |
-| `apps/desktop/tests/real-scan.test.ts` | step two reads text only for the places that were chosen, and hides what looks like a key | the fixture holds a folder at mode 000 that must not open |
+| `apps/desktop/tests/real-scan.test.ts` | step one counts what it could not read | a folder at mode 000 cannot be opened |
 | `apps/desktop/tests/real-tool-home.test.ts` | rootDirs: only the named top-level folders are entered (any case), top-level files still count, and a folder left out is neither listed nor flagged | a folder at mode 000 cannot be opened |
 | `apps/desktop/tests/real-tool-home.test.ts` | a link that leads outside, a folder that will not open, a file over 2 MB and a file that is not text are named too; five names at most, each one plain line of at most 80 characters | a folder at mode 000 cannot be opened |
 | `apps/desktop/tests/scan-cache.test.ts` | a file that is a folder, or cannot be opened, is damaged and never throws | a cache file at mode 000 cannot be opened |
@@ -271,12 +283,12 @@ Each test skips when the user is root. The reason text is "root ignores file mod
 | `packages/skill-sources/test/remove-cache.test.mjs` | 14. a leftover whose name holds a control character gets guidance, not a command | a folder at mode 500 cannot be deleted |
 | `packages/skill-sources/test/remove-cache.test.mjs` | a cache entry holding a bidi-named folder that cannot be deleted names it on one line | a folder at mode 500 cannot be deleted |
 | `packages/team/test/review.test.mjs` | T12: a file that cleanup cannot remove is reported with its path, and no success is claimed | a folder at mode 555 cannot lose a file |
-| `packages/team/test/review.test.mjs` | T14: a missing team folder, an unreadable folder, and a link are told apart | a folder at mode 000 cannot be listed |
-| `packages/team/test/review.test.mjs` | T14: a member folder that is missing, unreadable, or a link is told apart | a folder at mode 000 cannot be listed |
+| `packages/team/test/review.test.mjs` | T14: an unreadable team folder is told apart | a folder at mode 000 cannot be listed |
+| `packages/team/test/review.test.mjs` | T14: a member folder that is unreadable is told apart | a folder at mode 000 cannot be listed |
 | `tests/cache-cli.test.ts` | L-1 (round 5). a delete-step refusal gives a bare command as next and fix; run in a shell, it changes only the leftover | a leftover folder at mode 500 cannot be deleted |
-| `tests/harness-bundle-cli.test.ts` | every refusal code of the bundle is reachable from the command line with its exact words | a write into a folder at mode 555 cannot fail, and this test must reach BUNDLE_FILE_FAILED |
 | `tests/harness-review-fixes-cli.test.ts` | item 7: a draft that cannot be cleared after a good install is a warning in the result, not a failure | a drafts file in a folder at mode 500 cannot be kept |
-| `tests/item-sources-cli.test.ts` | round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence | a skill file at mode 000 cannot be read |
+| `tests/item-sources-cli.test.ts` | round 2. a store item file this user cannot read refuses lock update with its own Next: line | a file at mode 000 cannot be read |
+| `tests/item-sources-cli.test.ts` | round 4. store migrate: an unreadable item has its own sentence | a skill file at mode 000 cannot be read |
 | `tests/store-foundation-cli.test.ts` | 16. store status with the home folder at mode 0 prints Store: refused (STORE_UNREADABLE) and exits 0 | a home folder at mode 0 cannot be read |
 | `tests/store-write-cli.test.ts` | 29. F6: a seed that fails after the pin is written says so in plain words for the store | a folder at mode 500 cannot take a write |
 | `tests/store-write-cli.test.ts` | 34. F5: a store team folder that cannot be read is not "not found" | a team folder at mode 000 cannot be listed |
@@ -291,24 +303,24 @@ Each test skips when a probe of the temporary folder finds that two quick change
 | `apps/desktop/tests/scan-cache.test.ts` | an aside entry that vanishes between the listing and the look does not stop the sweep of the others | which of several folders was made last |
 | `apps/desktop/tests/scan-cache.test.ts` | an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path | a folder at mode 500 cannot be deleted |
 | `packages/managed-skills/test/v2-slice.test.mjs` | 14. readSliceTree throws MANAGED_SKILL_STALE_APPROVAL when a file changes during the read | a folder change when a file is added, or a file change when it is appended to |
-| `packages/project-context/test/store.test.mjs` | S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json | store.json change when it is rewritten in place |
+| `packages/project-context/test/store.test.mjs` | S2: verifyStorePins re-checks the change time of store.json | store.json change when it is rewritten in place |
 | `tests/skills-cli.test.ts` | a parent folder that changes once during the first read is read again once, then the command dispatches | the parent folder change when a file is added |
 | `tests/skills-cli.test.ts` | a parent folder that changes during the check before dispatch is read again once, and the same value dispatches | the parent folder change when a file is added |
 | `tests/skills-cli.test.ts` | a parent folder that keeps changing still refuses SKILLS_CHANGED after exactly one more read, with no dispatch | the parent folder change when a file is added |
 | `tests/skills-cli.test.ts` | the record file changing during the first read refuses at once: only a parent change is read again | the record file change when it is rewritten |
 
-### Skips for reused folder identity (6 tests)
+### Skips for reused folder identity (4 tests)
 
 Each test skips when a probe finds that a folder removed and made again at one path can come back with the same device, inode and birth time. The probe never answers true on macOS. The helper is `skipOnReusedFolderIdentity`. The reason text is "this file system gives a replaced folder the same inode and birth time, so the test cannot tell" followed by the last column.
 
 | File | Test | What the test needs |
 |---|---|---|
 | `packages/managed-skills/test/v2-slice.test.mjs` | B10. planning refuses when the folder was replaced between the request and the read | a replaced wiki folder from the one it replaced |
-| `packages/managed-skills/test/v2-slice.test.mjs` | S6. the catalog root carries the id of the root folder: a folder replaced at the same path is another root | a replaced wiki folder from the one it replaced |
 | `packages/project-context/test/registered-folders.test.mjs` | 23. folder add refuses STALE_APPROVAL, and writes nothing, when the folder was replaced after the plan | a replaced folder from the one it replaced |
 | `packages/project-context/test/registered-folders.test.mjs` | 36. folder allow refuses an unknown name, a folder that is gone or unsafe, and a stale plan | a replaced folder from the one it replaced |
-| `packages/project-sync/test/slices-registered.test.mjs` | S6. a folder replaced at the same path plans root changed, with the same members | a replaced registered folder from the one it replaced |
 | `tests/context-guard-cli.test.ts` | B5. a registered folder replaced by a new folder at the same path denies every call with GUARD_ROOT_MISSING | a registered folder replaced by a new folder from the one it replaced |
+
+Both S6 tests (the catalog root of the managed skills, and the registered slices) no longer skip. A run in the container showed the new folder getting the id of the deleted one, although the probe said "not reused". Each test now renames the old folder aside instead of deleting it, so both folders exist at once and cannot share an inode. The assertions are unchanged. Nothing is deleted: the old folder is removed with the test fixture.
 
 ### End-to-end skips off macOS (4 tests)
 
@@ -321,9 +333,9 @@ Each spec skips through `test.skip(process.platform !== 'darwin', reason)`. The 
 | `apps/desktop/e2e/harness-close-guard.spec.ts` | Quit from the application menu (Cmd+Q) with a change asks, and no quit happens while the window refuses to close |
 | `apps/desktop/e2e/harness-close-guard.spec.ts` | Quit from the application menu (Cmd+Q) with no change quits at once and asks nothing |
 
-### Skips on macOS only (3 tests)
+### Skips for one direction (3 tests)
 
-These tests check that other platforms refuse. The two boot-session tests skip on macOS in the direction their names say: the refusal test skips on macOS, and the UUID test skips elsewhere. The protocol test skips on macOS arm64 only, because it expects `UNSUPPORTED_PLATFORM`, and that platform passes the check. On macOS the real code runs, and the existing tests cover it.
+These tests check that other platforms refuse. The refusal test of `darwin-boot-session` skips on macOS. Its UUID test skips elsewhere. The protocol test skips on macOS arm64 only, because that platform passes the check it expects to fail.
 
 | File | Test |
 |---|---|
@@ -338,15 +350,43 @@ These tests check that other platforms refuse. The two boot-session tests skip o
 | `packages/skill-sources/test/response-headers.test.mjs` | a guarded repeat after 1000 padding headers refuses, including when Node dropped the repeat | Node 24.21.0 keeps only 1000 header pairs, so the repeat at the end of 1004 pairs never reaches the guard. The test is split in two, with its assertions unchanged. The 1100-header half runs on every Node. |
 | `tools/cli-distribution/test/installed-container.test.mjs` | real node --test subprocess permits only its exact child-v8 bookkeeping metadata | The child of `node --test` gets `NODE_TEST_WORKER_ID` too. The test probes the child first and skips with that reason. |
 
-One row of one test is left out for root and told with `t.diagnostic`: the row "a file this user cannot read" of "round 2. each fault of a store item refuses lock update with its own Next: line" in `tests/item-sources-cli.test.ts`. The rest of that test needs no mode, so it runs.
+Tests that need a mode in one part only were narrowed, so that the rest runs as root. No assertion changed.
+
+- `tests/item-sources-cli.test.ts`: the row "a file this user cannot read" of the round 2 test, and the unreadable half of the round 4 migrate test, are tests of their own that skip for root.
+- `packages/team/test/review.test.mjs`: the two T14 tests are split into a missing part, which runs, and an unreadable part, which skips for root.
+- `packages/project-context/test/store.test.mjs`: S2 is split. The mode, owner and size checks run. The check of a file rewritten in place skips on a coarse file system.
+- `tests/harness-bundle-cli.test.ts`: only the step that reaches `BUNDLE_FILE_FAILED` needs a mode. For root the test skips that step, says so with `t.diagnostic`, and expects every other code.
+- `apps/desktop/tests/real-scan.test.ts` and `real-map.test.ts`: the fixture leaves out its folder at mode 000 for root, so the redaction and counting checks run. The one assertion that counts that folder (`couldNotRead`) is a test of its own that skips for root.
+- `tests/skills-cli.test.ts`: the parent change tests were not split. Every assertion in them needs a changed file time, and none needs root alone.
 
 ## Still failing, and what did not run
 
 - **One end-to-end spec failed by chance, and its cause is not known.** `harness-compare.spec.ts`, "unticking an engine drops the notice and changes the count; an empty instruction or no tick disables Start". A `status` element stayed on the page. The spec passed four times in a row when run alone in the container. This work did not find out why it failed once in the full run.
 - **One root test can fail by chance.** The lock race test in `packages/project-context/test/lock.test.mjs` asserts that four processes never meet a lock slot collision. It met one in 600 tries in one full run, and it did not in the next two runs. The test uses `node:test` directly, and not the retry wrapper that the other lock tests use, so it was not changed.
-- **A tree of this size has more tests like the ones skipped.** Tests that replace a folder and expect a new identity pass or fail by chance on this file system. Repeated runs of 16 test files that do this found one more (S6 of the registered slices). Other files were not repeated. A later run can find another.
+- **A tree of this size has more tests like the ones skipped.** Tests that replace a folder and expect a new identity pass or fail by chance on this file system. Repeated runs of 16 test files that do this found one more (S6 of the registered slices, now fixed by renaming the old folder aside). Other files were not repeated. A later run can find another.
 - **The macOS half of this work did not run.** Nothing ran on a Mac, by design. The skips for root, file times, folder identity and the macOS-only code evaluate to false on macOS. The two Node-version skips do not: they fire on any system that runs Node 24.21.0. The macOS branch of `darwin-boot-session.test.mjs` has not run anywhere.
 - **No second full run.** After the last two skips, the second run through the script stopped at the image build with an input and output error, because the disk of the host was full. The evidence for those two skips is the two root runs above.
+
+## Skip ceilings
+
+A skipped test is not a passed test, and the run cannot see a skip that a later change adds. So each suite has a ceiling, in `tools/sandbox/skip-ceilings.json`. The run exits 1 when a suite skips more tests than its ceiling.
+
+| Suite | Ceiling | Why this number |
+|---|---|---|
+| `root-test` | 222 | 212 skipped in the last full run, 10 more for the guardian tests that passed only by refusal, and 1 for the item-sources test split off for root, less 1 for the bundle test that now runs as root. |
+| `desktop-test` | 18 | 20 skipped in the last full run, less 1 for `real-map` and 1 for `real-scan`, which now run as root. |
+| `desktop-e2e` | 27 | 27 skipped in the last full run. |
+
+These ceilings were worked out from the counts, and they have not been measured in a run. If the first full run reports more, check why, and raise the number only when the extra skips are right.
+
+To raise a ceiling, change the number in `skip-ceilings.json` and the count in this doc in the same pull request, and say why in the pull request. To lower one, do the same when tests stop skipping.
+
+## The probes
+
+Two probes in `tests/support/machine-skips.ts` decide which tests skip for the file system. The run prints their answers just before the end-to-end step, and writes them to `logs/probes.log`:
+
+- The file time probe answers "coarse" when two quick changes can share one timestamp.
+- The folder identity probe answers "reused" when a folder removed and made again can come back with the same device, inode and birth time. It also answers "reused" when the file system gives no birth time, because a missing birth time reads the same twice. The report prints whether the birth time was missing.
 
 ## If the build hangs
 

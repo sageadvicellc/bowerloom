@@ -29,7 +29,7 @@ test('an empty home folder has no places, and a home that is not there is refuse
   assert.deepEqual([d.places, d.stoppedEarly, d.couldNotRead, d.readOnly], [[], false, 0, true]);
 });
 
-test('step one finds one place for each program under the home folder, and counts by structure', { skip: skipAsRoot('the fixture holds a folder at mode 000 that must not open') }, async t => {
+test('step one finds one place for each program under the home folder, and counts by structure', async t => {
   const f = fixture(t), scanner = createScanner({ home: f.home });
   const d = await scanner.discover();
   assert.deepEqual(d.places.map(p => p.label), ['Claude Code at home', 'Codex at home', 'OpenCode at home', 'Hermes at home']);
@@ -39,12 +39,18 @@ test('step one finds one place for each program under the home folder, and count
   assert.deepEqual(byLabel(d, 'Codex at home').counts, { agents: 1, skills: 1, tools: 3, hooks: 0, notes: 0 });
   assert.deepEqual(byLabel(d, 'OpenCode at home').counts, { agents: 2, skills: 1, tools: 1, hooks: 0, notes: 0 });
   assert.deepEqual(byLabel(d, 'Hermes at home').counts, { agents: 1, skills: 1, tools: 1, hooks: 0, notes: 1 });
-  assert.ok(d.couldNotRead >= 3, 'a shortcut that leads out, a name with a direction mark and a folder that will not open are counted');
   const claude = byLabel(d, 'Claude Code at home');
   assert.equal(claude.details.path, '~');
   assert.deepEqual(claude.details.folders, ['.claude', '.claude.json']);
   assert.ok(claude.details.notes.some(n => /shortcut/.test(n)), claude.details.notes.join(' | '));
   assert.equal(claude.appLabel, 'Claude Code');
+});
+
+// Split from the test above: the count of what could not be read includes the folder at mode 000, which root opens. The assertion is the same.
+test('step one counts what it could not read', { skip: skipAsRoot('a folder at mode 000 cannot be opened') }, async t => {
+  const f = fixture(t), scanner = createScanner({ home: f.home });
+  const d = await scanner.discover();
+  assert.ok(d.couldNotRead >= 3, 'a shortcut that leads out, a name with a direction mark and a folder that will not open are counted');
 });
 
 test('step one gives no file name, no text and no key value; the only paths are in the details field', async t => {
@@ -74,7 +80,7 @@ test('a picked folder that is the home folder does not take the home tool folder
   assert.ok(d.places.some(p => p.label === 'alpha'));
 });
 
-test('step two reads text only for the places that were chosen, and hides what looks like a key', { skip: skipAsRoot('the fixture holds a folder at mode 000 that must not open') }, async t => {
+test('step two reads text only for the places that were chosen, and hides what looks like a key', async t => {
   const f = fixture(t), scanner = createScanner({ home: f.home });
   const home = await scanner.discover();
   const picked = await scanner.addFolder(f.work);

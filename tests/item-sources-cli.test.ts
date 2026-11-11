@@ -74,7 +74,8 @@ test('M3. a .DS_Store in a store item refuses use, lock update, plain apply, and
 
 // Round 2 of the reviews of PR 101, item 2: each fault of a store item has a Next: line of its own, with its path, and
 // "delete" is never the first advice for a file that can be real work.
-test('round 2. each fault of a store item refuses lock update with its own Next: line, naming the file or folder', t => {
+const UNREADABLE_ROW = 'a file this user cannot read';
+function eachFault(t: TestContext, runs: (label: string) => boolean, tail: boolean): void {
   const { w, dir } = sharedWithSkill(t);
   const item = join(w.store, 'skills', 'house-style'), deny = network(w);
   const cases: [string, (() => void), (() => void), 'file' | 'size', string][] = [
@@ -101,7 +102,7 @@ test('round 2. each fault of a store item refuses lock update with its own Next:
       `${ITEM}/pipe.md is not a plain file or folder. Move it out of the item. ${AGAIN}`],
     ['a group-writable folder', () => { mkdirSync(join(item, 'refs'), { mode: 0o755 }); writeFileSync(join(item, 'refs', 'a.md'), 'a\n'); chmodSync(join(item, 'refs'), 0o775); }, () => shell(item, 'rm -r refs', w), 'file',
       `Bowerloom could not read the folder ${ITEM}/refs safely. It must be a real folder that you own, closed to other users. Run ls -ld ${ITEM}/refs. If it was made under umask 002, run chmod -R go-w ~/.bowerloom. ${AGAIN}`],
-    ['a file this user cannot read', () => { writeFileSync(join(item, 'secret.md'), 's\n'); chmodSync(join(item, 'secret.md'), 0o000); }, () => shell(item, 'chmod 600 secret.md && rm secret.md', w), 'file',
+    [UNREADABLE_ROW, () => { writeFileSync(join(item, 'secret.md'), 's\n'); chmodSync(join(item, 'secret.md'), 0o000); }, () => shell(item, 'chmod 600 secret.md && rm secret.md', w), 'file',
       `Bowerloom could not read ${ITEM}/secret.md. Run ls -la ${ITEM}/secret.md. Give yourself read access to what it shows. ${AGAIN}`],
     ['a name with a control character', () => writeFileSync(join(item, 'a\u0001.md'), 'a\n'), () => shell(item, "rm a$(printf '\\001').md", w), 'file',
       `${ITEM} holds two names that differ only in case or Unicode form, or a name with a backslash, a control or format character, or more than 255 characters. Rename them. ${AGAIN}`],
@@ -123,10 +124,7 @@ test('round 2. each fault of a store item refuses lock update with its own Next:
     ['too many bytes', () => { mkdirSync(join(item, 'big'), { mode: 0o755 }); for (let i = 0; i < 33; i++) writeFileSync(join(item, 'big', `f${i}.md`), `${i}`.padEnd(65000, 'a')); }, () => shell(item, 'rm -r big', w), 'size',
       `${ITEM} holds more than 2 MiB, the most a lock records for one item. Make it smaller. ${AGAIN}`],
   ];
-  // Root reads a file at mode 000, so that one row cannot refuse as it expects. It runs for every other user.
-  const rootCannot = skipAsRoot('a file at mode 000 cannot be read');
-  if (rootCannot) t.diagnostic(`row "a file this user cannot read" skipped: ${rootCannot}`);
-  for (const [label, make, undo, cause, next] of cases.filter(([label]) => !(rootCannot && label === 'a file this user cannot read'))) {
+  for (const [label, make, undo, cause, next] of cases.filter(([label]) => runs(label))) {
     make();
     const r = run(dir, ['lock', 'update', '--json'], deny.env, NETWORK);
     assert.equal(errorCode(r.stderr), 'STORE_ITEM_NOT_SHAREABLE', `${label}: ${r.stderr}${r.stdout}`);
@@ -136,11 +134,15 @@ test('round 2. each fault of a store item refuses lock update with its own Next:
     undo();
   }
   assert.deepEqual(requestsIn(deny.log), [], 'no fault made a network call');
+  if (!tail) return;
   // Seven levels of folders are fine: the next step is the proof, which needs the network.
   mkdirSync(join(item, 'a/b/c/d/e/f/g'), { recursive: true, mode: 0o755 }); writeFileSync(join(item, 'a/b/c/d/e/f/g/x.md'), 'x\n');
   const seven = run(dir, ['lock', 'update', '--json'], offline(w).env, NETWORK);
   assert.equal(errorCode(seven.stderr), 'SKILLS_OFFLINE', seven.stderr);
-});
+}
+test('round 2. each fault of a store item refuses lock update with its own Next: line, naming the file or folder', t => eachFault(t, label => label !== UNREADABLE_ROW, true));
+// Split from the test above: root reads a file at mode 000, so this one row needs a user who is not root.
+test('round 2. a store item file this user cannot read refuses lock update with its own Next: line', { skip: skipAsRoot('a file at mode 000 cannot be read') }, t => eachFault(t, label => label === UNREADABLE_ROW, false));
 
 test('round 2. every cause of STORE_ITEM_NOT_SHAREABLE has a true Next: line, and only a plain path is named', () => {
   const adopt = 'Or adopt a team into this project with bowerloom team adopt.';
@@ -415,7 +417,7 @@ test('round 4. a group-writable item folder, or ~/.bowerloom/skills, prints the 
 });
 
 // Round 4, item 5: a step under the .bowerloom of a project says where to run it, and store migrate names an unreadable item.
-test('round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence', { skip: skipAsRoot('a skill file at mode 000 cannot be read') }, t => {
+test('round 4. store migrate from a subfolder says to run the command in the project folder', t => {
   const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
   mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
   chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o755);
@@ -423,6 +425,13 @@ test('round 4. store migrate from a subfolder says to run the command in the pro
   const named = run(sub, ['store', 'migrate', '--skill', 'local-tool', '--json'], w.env);
   assert.equal(errorCode(named.stderr), 'MIGRATE_ITEM_UNSUPPORTED', named.stderr);
   assert.equal(nextOf(named.stderr), `In the project folder, run chmod a-x .bowerloom/skills/local-tool/SKILL.md. A lock records no file with an execute bit. ${AGAIN}`);
+});
+
+// Split from the test above: root reads a file at mode 000, so only the second half needs a user who is not root. Its steps are the same.
+test('round 4. store migrate: an unreadable item has its own sentence', { skip: skipAsRoot('a skill file at mode 000 cannot be read') }, t => {
+  const w = world(t), dir = project(w, 'app', EMPTY_CONFIG);
+  mustApprove(dir, ['skill', 'create', 'local-tool'], w.env);
+  const sub = join(dir, 'docs'); mkdirSync(sub, { mode: 0o755 });
   chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o000);
   const all = run(sub, ['store', 'migrate', '--all'], w.env);
   chmodSync(join(dir, '.bowerloom', 'skills', 'local-tool', 'SKILL.md'), 0o644);

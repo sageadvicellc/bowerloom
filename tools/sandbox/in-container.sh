@@ -23,6 +23,10 @@ cp .trellis/gates/*.log "$OUT/logs/" || echo "warning: could not copy the gates 
 # shellcheck disable=SC2086
 node tools/sandbox/summarize-gates.mjs $files || failed=1
 
+echo "== file system probes (they decide which tests skip)"
+node tools/sandbox/probe-report.mjs > "$OUT/logs/probes.log" 2>&1 || { echo "FAILED: the probe report is not available, so the log cannot say why tests skipped"; failed=1; }
+cat "$OUT/logs/probes.log"
+
 echo "== desktop e2e, on a virtual screen"
 pw=1
 if (cd apps/desktop && timeout -k 30 1800 npm run bundle > "$OUT/logs/desktop-e2e-bundle.log" 2>&1); then

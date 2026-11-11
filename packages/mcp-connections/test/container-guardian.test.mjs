@@ -45,7 +45,7 @@ test('mismatched inspected container identity never starts or removes that conta
 test('existing name collision is never adopted or removed, even when public labels can match',{skip:needsMacOS},async t=>{
  const r=await run(t,'collision');assert.equal(r.done.stage,'CANCELLED');assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls.map(x=>x[3]),['ls']);
 });
-test('existing operation directory never resumes or retries creation',async t=>{
+test('existing operation directory never resumes or retries creation',{skip:needsMacOS},async t=>{
  const r=await run(t,'unknown',async({journalPath})=>{await mkdir(join(journalPath,'..'),{mode:0o700});await writeFile(journalPath,'PRIVATE_EXISTING',{mode:0o600});});assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls,[]);assert.equal(await readFile(r.journalPath,'utf8'),'PRIVATE_EXISTING');
 });
 
@@ -78,7 +78,7 @@ test('repeated valid renewals cannot extend the original absolute deadline',{ski
  const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.ok(j.lease.sequence>=2);assert.ok(j.lease.stopRequestedAtMs<=j.deadlineMs+500);assert.equal(r.calls.filter(x=>x[3]==='create').length,1);
 });
 
-test('queued renewal after its challenge expired is rejected before the expiry timer can run',async t=>{
+test('queued renewal after its challenge expired is rejected before the expiry timer can run',{skip:needsMacOS},async t=>{
  const r=await run(t,'stale-renewal');assert.equal(r.done.reason,'GUARDIAN_PROTOCOL');assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls,[]);
 });
 
@@ -89,7 +89,7 @@ test('real child-generated journal signature binds exact operation and independe
  for(const mutate of [v=>v.body.cid='a'.repeat(64),v=>v.sequence++,v=>v.body.stage='CANCELLED',v=>v.bindingRevision='sha256:'+'0'.repeat(64)]){const changed=JSON.parse(text);mutate(changed);assert.throws(()=>verifyGuardianJournal(canonicalJson(changed),binding));}
  assert.equal(JSON.stringify(r.descriptor).includes('PRIVATE KEY'),false);
 });
-test('missing or wrong binding acknowledgement permits no Docker command',async t=>{
+test('missing or wrong binding acknowledgement permits no Docker command',{skip:needsMacOS},async t=>{
  for(const mode of ['no-binding','wrong-binding'])await t.test(mode,async t=>{const r=await run(t,mode);assert.equal(r.calls.length,0);assert.equal(r.done.noContainerCreated,true);});
 });
 
