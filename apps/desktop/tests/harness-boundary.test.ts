@@ -49,10 +49,10 @@ test('the mode comes from the address, not from the bridge: the mount asks the a
   assert.match(router, /formatRoute\(route, baseOf\(location\.hash\)\)/, 'the page keeps the address it was opened on');
 });
 
-test('only the real screens, the mount file and the call lanes of the preview import the call client, none imports the transport, and nothing in the shared or sample code names the bridge', () => {
+test('only the real screens, the mount file, the root of the preview (for its fallback engine) and the call lanes of the preview import the call client, none imports the transport, and nothing in the shared or sample code names the bridge', () => {
   const client = /api\/client(?:\.js)?['"]/, transport = /api\/transport(?:\.js)?['"]/, named = /bowerloomReal/;
   for (const { file, text } of sources('renderer/harness')) {
-    const code = strip(text), mayImport = /renderer\/harness\/real\//.test(file) || file.endsWith('renderer/harness/mount.tsx') || file.endsWith('renderer/harness/sheets/call-lanes.ts');
+    const code = strip(text), mayImport = /renderer\/harness\/real\//.test(file) || file.endsWith('renderer/harness/mount.tsx') || file.endsWith('renderer/harness/HarnessApp.tsx') || file.endsWith('renderer/harness/sheets/call-lanes.ts');
     if (!mayImport) assert.doesNotMatch(code, client, `${file} reaches the client`);
     assert.doesNotMatch(code, transport, `${file} reaches the transport`);
     assert.doesNotMatch(code, named, `${file} names the bridge: only renderer/api/transport.ts does`);

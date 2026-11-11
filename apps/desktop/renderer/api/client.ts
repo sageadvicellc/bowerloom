@@ -8,7 +8,8 @@ import { REAL_CALLS } from '../../shared/real/types.js';
 import type { RealBridge } from '../../shared/real/types.js';
 import { ENGINE_CALLS } from '../../shared/engine/types.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
-import { pageTransport } from './transport.js';
+import { createSampleEngine } from '../../shared/engine/sample.js';
+import { pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
 export interface ApiClient {
@@ -31,6 +32,14 @@ export function createApiClient(raw: RawBridges): ApiClient {
 /** The client of this window. */
 export function getApiClient(): ApiClient {
   return createApiClient(pageTransport());
+}
+
+/**
+ * The engine of a page that was handed none: the in-memory sample for the sample launch, and none for the launch on the person's own folders, where the sheets then say so
+ * and never fall back to the sample. The page reaches the sample engine here and nowhere else.
+ */
+export function fallbackEngine(realMode: boolean): EngineBridge | null {
+  return realMode ? null : createSampleEngine({ previewEngines: samplePreviewEngines() });
 }
 
 /** The short code in an error from a reader call ('NOT_ALLOWED', 'UNKNOWN_PLACE', ...), or 'FAILED'. */
