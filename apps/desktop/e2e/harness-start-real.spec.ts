@@ -7,7 +7,7 @@
  *  - Copy puts the same command on the clipboard with the full folder path (main's `clipboard.writeText` is replaced by a recorder, so the person's own clipboard is never touched);
  *  - the folder is byte for byte as it was, and Start made no run record;
  *  - a bad instruction (too long, a leading dash) blocks the button, and a change clears the commands;
- *  - the "Not in beta.1" note is gone for Start only.
+ *  - the "Not in beta.1" note is gone for Start. The record of a run ("Record this run") has its own spec, harness-runs-real.spec.ts.
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
@@ -147,11 +147,11 @@ test('once the engines are installed, Show the command shows one command for eac
   await sheet.getByRole('button', { name: 'Show the command', exact: true }).click();
   await expect(sheet.locator('[data-command-for]')).toHaveCount(1);
   await expect(sheet.locator('[data-command-for="claude-code"] pre')).toHaveText("cd ~/Projects/team && claude 'another one'");
-  // Start wrote nothing in the folder and made no run record: Runs still says runs are not in beta.1.
+  // Start wrote nothing in the folder and made no run record: Runs still says there are no runs yet.
   expect(filesOf(dir), 'the folder is as the install left it').toEqual(after);
   await p.keyboard.press('Escape');
   await p.evaluate(() => { location.hash = '#app/runs'; });
-  await expect(p.getByText('Runs are not in beta.1.')).toBeVisible();
+  await expect(p.getByText('No runs yet. Record one after you start an engine.')).toBeVisible();
 });
 
 test('a bad instruction blocks the button and says why: over 4,000 characters, or a leading dash', async () => {
@@ -177,7 +177,8 @@ test('a bad instruction blocks the button and says why: over 4,000 characters, o
 test('the Beta mark no longer lists Start, and still lists the controls that are not in beta.1', async () => {
   const p = page();
   await p.getByRole('button', { name: 'About this beta', exact: true }).click();
-  await expect(p.locator('.hx-preview-pop li')).toHaveText(['Compare', 'Runs']);
+  // Since beta.2 no control is left on the list: Compare and Runs work too, so the list is empty and has no heading.
+  await expect(p.locator('.hx-preview-pop li')).toHaveCount(0);
   await p.keyboard.press('Escape');
 });
 

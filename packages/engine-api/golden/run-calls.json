@@ -1,0 +1,13 @@
+{
+  "format": "bowerloom/engine-api-runs-golden/v1",
+  "note": "The calls of the bowerloomRuns bridge, added in 0.8.0-beta.2 after the base: the manual record of runs and the figures read from an engine's own session log. Written by hand, because the base source never had them: the base golden file stays as it is. Change it only with RUN_CALLS, in the same commit.",
+  "bridge": "bowerloomRuns",
+  "channelPrefix": "bowerloom-runs:",
+  "runCalls": [
+    { "name": "listRuns", "arity": 0, "optionalArgs": 0, "channel": "bowerloom-runs:listRuns", "returns": "plain" },
+    { "name": "recordRun", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-runs:recordRun", "returns": "plain" },
+    { "name": "updateRun", "arity": 2, "optionalArgs": 0, "channel": "bowerloom-runs:updateRun", "returns": "plain" },
+    { "name": "readRunFigures", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-runs:readRunFigures", "returns": "plain" }
+  ],
+  "runCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_FOLDER", "UNKNOWN_RUN"]
+}

@@ -54,10 +54,10 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await expect(p.getByText('Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.')).toBeVisible();
     await noFalseClaim('help');
   });
-  await test.step('Runs: an empty list says runs are not in beta.1, and does not point to Start', async () => {
+  await test.step('Runs: an empty list says to record a run after starting an engine, and does not point to Start', async () => {
     await go('#app/runs');
     await expect(p.getByRole('heading', { level: 1, name: 'Runs', exact: true })).toBeVisible();
-    await expect(p.getByText('Runs are not in beta.1.')).toBeVisible();
+    await expect(p.getByText('No runs yet. Record one after you start an engine.')).toBeVisible();
     await expect(p.getByText('No runs yet. Press Start on a harness.')).toHaveCount(0);
     await noFalseClaim('runs');
   });
@@ -127,12 +127,12 @@ test('real mode words: Welcome, Runs, Help, Projects, Library, Install history a
     await expect(p.getByRole('button', { name: /^Undo Made .* from a scan$/ })).toBeVisible();
     await expect(p.getByText('Nothing is listed yet.')).toHaveCount(0);
   });
-  await test.step('the Beta mark lists every blocked control, and no line could mean Install from a folder', async () => {
+  await test.step('the Beta mark lists no blocked control now that Compare and Runs work, and shows no heading over an empty list', async () => {
     await go('#app/harnesses');
     await p.getByRole('button', { name: 'About this beta', exact: true }).click();
     const lines = await p.locator('.hx-preview-pop li').allInnerTexts();
-    expect(lines).toEqual(['Compare', 'Runs']);
-    for (const line of lines) expect(line).not.toMatch(/from a folder/i);
+    expect(lines).toEqual([]);
+    await expect(p.locator('.hx-pop-head')).toHaveCount(0);
     await p.keyboard.press('Escape');
   });
 });

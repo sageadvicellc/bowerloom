@@ -108,9 +108,11 @@ test('main registers the reader and the engine calls for the plan that loads the
   const main = read('main/main.ts').replace(/\/\/.*$/gm, '');
   assert.equal([...main.matchAll(/registerRealIpc\(/g)].length, 1); assert.equal([...main.matchAll(/registerEngineIpc\(/g)].length, 1);
   assert.match(main, /if \(launch\.realReader\) \{[\s\S]*?registerRealIpc\([\s\S]*?if \(launch\.engineCalls\) \{[\s\S]*?registerEngineIpc\(/, 'the engine handlers sit inside the reader branch');
-  assert.match(read('preload/real-preload.ts'), /exposes all three objects or none/, 'the bridge file says why one never loads without the others');
+  assert.match(read('preload/real-preload.ts'), /exposes all four objects or none/, 'the bridge file says why one never loads without the others');
   assert.equal([...main.matchAll(/registerLocalModelsIpc\(/g)].length, 1);
   assert.match(main, /if \(launch\.realReader\) \{[\s\S]*?registerLocalModelsIpc\(/, 'the local calls sit inside the reader branch, so the bridge that holds them has a handler');
+  assert.equal([...main.matchAll(/registerRunsIpc\(/g)].length, 1);
+  assert.match(main, /if \(launch\.realReader\) \{[\s\S]*?registerRunsIpc\(/, 'the runs calls sit inside the reader branch, so the bridge that holds them has a handler');
 });
 
 test('a refused start tells main to exit with the words, before any window opens, and nothing after it runs', () => {

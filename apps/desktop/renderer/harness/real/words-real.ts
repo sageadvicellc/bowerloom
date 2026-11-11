@@ -83,10 +83,11 @@ export const REAL = deepFreeze({
     betaAbout: 'Bowerloom is in beta. It reads your own folders and writes only after you approve what it will write.',
   },
   /**
-   * The list of the Beta mark's popover in this mode: every control that is not in beta.1. Install from a folder and Edit from a folder work, so no line is worded
+   * The list of the Beta mark's popover in this mode: every control that is not in beta.1. It is empty since beta.2, when Compare and Runs began to work on the person's own folders.
+   * Install from a folder and Edit from a folder work, so no line is worded
    * so that it could mean them (everything in Projects works, and so does Assign to project): the lines that share a name with a working control say where the blocked one is.
    */
-  notInBeta: ['Compare', 'Runs'],
+  notInBeta: [] as readonly string[],
 } as const);
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

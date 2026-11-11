@@ -26,5 +26,5 @@ export function mountHarness(root: HTMLElement): void {
   wireSkipLink(document);
   const realMode = isRealHash(location.hash);
   const api = realMode ? getApiClient() : null;
-  createRoot(root).render(<ErrorBoundary real={realMode}><HarnessApp realMode={realMode} real={api === null ? null : api.reader} engine={api === null ? undefined : api.engine} local={api === null ? undefined : api.local} /></ErrorBoundary>);
+  createRoot(root).render(<ErrorBoundary real={realMode}><HarnessApp realMode={realMode} real={api === null ? null : api.reader} engine={api === null ? undefined : api.engine} local={api === null ? undefined : api.local} runs={api === null ? undefined : api.runs} /></ErrorBoundary>);
 }

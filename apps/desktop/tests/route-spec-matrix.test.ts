@@ -55,15 +55,15 @@ test('row ids are unique, and every mode is one of sample, real and no-bridge', 
   for (const row of rows) { assert.ok(row.modes.length > 0, row.id); for (const mode of row.modes) assert.ok(MODES.includes(mode), `${row.id}: ${mode}`); }
 });
 
-test('Runs and Compare have a sample mode only, as at the base', () => {
-  for (const name of ['runs', 'compare']) assert.deepEqual(ofKind('route').find(r => r.route === name)?.modes, ['sample']);
+test('Runs and Compare have a sample mode and, since beta.2, a real mode with its own spec', () => {
+  for (const name of ['runs', 'compare']) assert.deepEqual(ofKind('route').find(r => r.route === name)?.modes, ['sample', 'real']);
 });
 
 test('a mode that lists a spec is a mode of the row, and the no-bridge specs sit on a no-bridge row', () => {
   for (const row of rows) {
     if (row.e2e.noBridge.length > 0) assert.ok(row.modes.includes('no-bridge'), row.id);
     if (row.e2e.sample.length > 0) assert.ok(row.modes.includes('sample'), row.id);
-    if (row.e2e.real.length > 0 && !['runs', 'compare'].includes(row.route ?? '')) assert.ok(row.modes.includes('real'), row.id);
+    if (row.e2e.real.length > 0) assert.ok(row.modes.includes('real'), row.id);
   }
 });
 
@@ -82,7 +82,6 @@ test('every route has a dedicated e2e spec in each of its modes, or names the sp
     for (const mode of row.modes) {
       const key = mode === 'no-bridge' ? 'noBridge' : mode as 'sample' | 'real';
       const specs = row.e2e[key];
-      if (mode === 'real' && ['runs', 'compare'].includes(row.route ?? '')) continue;
       assert.ok(specs.length > 0 || row.newSpec, `${row.id}: a spec in ${mode} mode`);
     }
   }

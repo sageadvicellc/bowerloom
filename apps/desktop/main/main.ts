@@ -10,6 +10,8 @@ import { realFolderFollowing } from './real-fs.js';
 import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
 import { registerLocalModelsIpc } from './local-models-ipc.js';
+import { registerRunsIpc } from './runs-ipc.js';
+import { folderRefOf } from './run-folder.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createScanSession } from './scan-session.js';
 import { createRecorder } from './engine-events.js';
@@ -280,6 +282,9 @@ app.whenReady().then(async () => {
     }
     // The local models report and the list of extensions the host holds: two read-only calls with no argument. The report reads only 127.0.0.1 ports (packages/local-models) and writes nothing.
     registerLocalModelsIpc({ ipc: ipcMain, appIndexUrl: indexUrl, stateRoot: engineStateRoot(home), extensionHost: () => extensionHost, tell: line => { process.stderr.write(`${line}\n`); } });
+    // The run record: the person's manual list of runs, saved in the state folder, and the figures read from an engine's own session log. The page knows a folder by the id the engine calls gave out;
+    // main works the full path out from the folder's label and keeps it. Nothing here starts a program, reads a process, or reads or keeps a line of a chat.
+    registerRunsIpc({ ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), folder: async id => { const found = (await engineForExit?.folders())?.find(f => f.id === id); return found === undefined ? null : folderRefOf(found, home); }, tell: line => { process.stderr.write(`${line}\n`); } });
   }
   // The extension loader reads the app bundle's own extensions folder and nothing else (main/extension-host.ts). A bad extension is skipped and never stops the start. Each skip goes to stderr
   // and, in a launch that keeps the usage log, its code is recorded there too. Limit: a launch with no usage log has stderr only, which a Finder-launched app does not show.

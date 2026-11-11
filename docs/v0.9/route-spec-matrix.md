@@ -8,7 +8,7 @@ The data lives in `route-spec-matrix.json`. This page is the reading copy. A tes
 
 - A route row has the route params, the sheets that open from it, the modes it renders in, the current screen file, and the default extension that will own it.
 - The modes are `sample` (the `--sample` launch, address base `#sample`), `real` (the default launch, `#app`, with the bridges), and `no-bridge` (an `#app` window with no bridge).
-- Runs and Compare have a sample mode only, as the scope says. A real launch shows "Runs are not in beta.1."
+- Runs and Compare have a sample mode (made-up runs in the store) and, since beta.2, a real mode: the runs the person recorded, read from main through the `bowerloomRuns` bridge. An empty real list says "No runs yet. Record one after you start an engine."
 - The e2e lists name the specs that visit or assert the row in that mode. A listed spec is not proof that every assertion of the row is covered. The file lists come from the address and the labels each spec uses, and from the header of each spec.
 - `new spec` names the spec written for a route that had no spec of its own at the base. Each asserts the base behavior and nothing new.
 - The screenshot specs (`docs-shots`, `landing-shots`, `screen-tour-shots`) are never listed. They skip unless an environment flag is set.
@@ -105,22 +105,23 @@ Count: 37 rows. 15 routes, 4 route params, 8 sheets, 4 launches, 3 shell chrome 
   - unit: `real-projects`, `harness-install`, `saved-scan-screens`
 - **runs** (`route:runs`)
   - params: id
-  - modes: sample
-  - screen: `screens/Runs.tsx`
+  - modes: sample, real
+  - screen: `screens/Runs.tsx`, `runs-real/RunsReal.tsx`
   - target extension: `projects`
   - e2e sample: `harness-compare`, `harness-runs`
-  - e2e real: `harness-real-words`, `harness-start-real`
-  - unit: `harness-runs`
+  - e2e real: `harness-runs-real`, `harness-real-words`, `harness-start-real`
+  - unit: `harness-runs`, `runs-real-model`, `runs-store`, `runs-logs`, `runs-ipc`, `runs-bridge`
   - new spec: `harness-runs.spec.ts`
-  - note: Sample mode only, as the scope says. A real launch shows the line "Runs are not in beta.1." and is read by harness-real-words and harness-start-real; those files are listed under real but do not make a real mode of Runs.
+  - note: Sample mode keeps its made-up runs in the store. A real launch shows the runs the person recorded (the bowerloomRuns bridge), with the figures of each from the engine's own session log. An empty list says "No runs yet. Record one after you start an engine."
 - **compare** (`route:compare`)
   - params: group
-  - modes: sample
-  - screen: `screens/Compare.tsx`
+  - modes: sample, real
+  - screen: `screens/Compare.tsx`, `runs-real/CompareReal.tsx`
   - target extension: `projects`
   - e2e sample: `harness-compare`
-  - unit: `harness-runs`
-  - note: Sample mode only. An address with no group parses to the runs route.
+  - e2e real: `harness-compare-real`
+  - unit: `harness-runs`, `runs-real-model`
+  - note: Sample mode compares made-up runs. A real launch compares the recorded runs of one instruction across engines. An address with no group parses to the runs route.
 - **interfaces** (`route:interfaces`)
   - params: id
   - modes: sample, real

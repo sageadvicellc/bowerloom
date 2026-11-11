@@ -410,10 +410,12 @@
       ],
       "sheets": [],
       "modes": [
-        "sample"
+        "sample",
+        "real"
       ],
       "screenFiles": [
-        "apps/desktop/renderer/harness/screens/Runs.tsx"
+        "apps/desktop/renderer/harness/screens/Runs.tsx",
+        "apps/desktop/renderer/harness/runs-real/RunsReal.tsx"
       ],
       "targetExtension": "projects",
       "e2e": {
@@ -422,16 +424,22 @@
           "apps/desktop/e2e/harness-runs.spec.ts"
         ],
         "real": [
+          "apps/desktop/e2e/harness-runs-real.spec.ts",
           "apps/desktop/e2e/harness-real-words.spec.ts",
           "apps/desktop/e2e/harness-start-real.spec.ts"
         ],
         "noBridge": []
       },
       "unit": [
-        "apps/desktop/tests/harness-runs.test.ts"
+        "apps/desktop/tests/harness-runs.test.ts",
+        "apps/desktop/tests/runs-real-model.test.ts",
+        "apps/desktop/tests/runs-store.test.ts",
+        "apps/desktop/tests/runs-logs.test.ts",
+        "apps/desktop/tests/runs-ipc.test.ts",
+        "apps/desktop/tests/runs-bridge.test.ts"
       ],
       "newSpec": "apps/desktop/e2e/harness-runs.spec.ts",
-      "notes": "Sample mode only, as the scope says. A real launch shows the line \"Runs are not in beta.1.\" and is read by harness-real-words and harness-start-real; those files are listed under real but do not make a real mode of Runs."
+      "notes": "Sample mode keeps its made-up runs in the store. A real launch shows the runs the person recorded (the bowerloomRuns bridge), with the figures of each from the engine's own session log. An empty list says \"No runs yet. Record one after you start an engine.\""
     },
     {
       "id": "route:compare",
@@ -442,24 +450,29 @@
       ],
       "sheets": [],
       "modes": [
-        "sample"
+        "sample",
+        "real"
       ],
       "screenFiles": [
-        "apps/desktop/renderer/harness/screens/Compare.tsx"
+        "apps/desktop/renderer/harness/screens/Compare.tsx",
+        "apps/desktop/renderer/harness/runs-real/CompareReal.tsx"
       ],
       "targetExtension": "projects",
       "e2e": {
         "sample": [
           "apps/desktop/e2e/harness-compare.spec.ts"
         ],
-        "real": [],
+        "real": [
+          "apps/desktop/e2e/harness-compare-real.spec.ts"
+        ],
         "noBridge": []
       },
       "unit": [
-        "apps/desktop/tests/harness-runs.test.ts"
+        "apps/desktop/tests/harness-runs.test.ts",
+        "apps/desktop/tests/runs-real-model.test.ts"
       ],
       "newSpec": null,
-      "notes": "Sample mode only. An address with no group parses to the runs route."
+      "notes": "Sample mode compares made-up runs. A real launch compares the recorded runs of one instruction across engines. An address with no group parses to the runs route."
     },
     {
       "id": "route:interfaces",

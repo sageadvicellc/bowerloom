@@ -77,11 +77,11 @@ test('the bridge: one named call per channel, nothing generic, two objects and n
   assert.match(preload, /for \(const call of ENGINE_CALLS\) engine\[call\] = \(\.\.\.args: unknown\[\]\) => ipcRenderer\.invoke\(ENGINE_CHANNELS\[call\], \.\.\.args\)/);
   assert.equal([...preload.matchAll(/ipcRenderer\.(\w+)/g)].every(m => m[1] === 'invoke'), true, 'only invoke');
   assert.doesNotMatch(preload, /ipcRenderer\s*[,}]|exposeInMainWorld\('[^']+',\s*ipcRenderer|require\(|process\./);
-  assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('(\w+)'/g)].map(m => m[1]), ['bowerloomReal', 'bowerloomEngine', 'bowerloomLocal'], 'three bridges: the reader, the sheets, and the two read-only local calls');
+  assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('(\w+)'/g)].map(m => m[1]), ['bowerloomReal', 'bowerloomEngine', 'bowerloomLocal', 'bowerloomRuns'], 'four bridges: the reader, the sheets, the two read-only local calls, and the run record');
   // Every channel main answers is one of these three lists. Main answers none itself: the handlers of the two files check the sender before they run.
   const main = strip(read('main/main.ts'));
   assert.equal([...main.matchAll(/ipcMain\.\w+/g)].length, 0, 'main.ts answers no channel itself');
-  for (const file of ['main/real-ipc.ts', 'main/engine-ipc.ts', 'main/local-models-ipc.ts']) {
+  for (const file of ['main/real-ipc.ts', 'main/engine-ipc.ts', 'main/local-models-ipc.ts', 'main/runs-ipc.ts']) {
     const code = strip(read(file));
     assert.equal([...code.matchAll(/ipc\.handle\(/g)].length, 1, `${file}: one place registers handlers`);
     assert.match(code, /senderFrame/); assert.match(code, /isAllowedRealSender\(true, /);

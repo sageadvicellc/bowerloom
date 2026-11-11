@@ -53,6 +53,25 @@ export function localCallSpec(name: string): CallSpec | undefined {
   return LOCAL_CALLS.find(c => c.name === name);
 }
 
+/** The prefix of a runs channel: `bowerloom-runs:<call>`. */
+const RUNS_PREFIX = 'bowerloom-runs:';
+
+const run = (name: string, arity: number): CallSpec => Object.freeze({ name, arity, optionalArgs: 0, channel: `${RUNS_PREFIX}${name}`, returns: 'plain' as ReturnKind });
+
+/**
+ * The calls of the fourth bridge, `bowerloomRuns`, added in 0.8.0-beta.2: the manual record of runs and the figures read from an engine's own session log. They are not engine calls,
+ * reader calls or local calls: those lists stay frozen, and `callSpec` and `localCallSpec` do not find these. Every call answers plain data and takes the arguments of its arity as
+ * one value each. The only refusals are the call's own: see `RUN_CALL_REFUSAL_CODES`.
+ */
+export const RUN_CALLS: readonly CallSpec[] = Object.freeze([
+  run('listRuns', 0), run('recordRun', 1), run('updateRun', 2), run('readRunFigures', 1),
+]);
+
+/** The spec of a runs call, or undefined for a name the list does not hold. Own names only. */
+export function runCallSpec(name: string): CallSpec | undefined {
+  return RUN_CALLS.find(c => c.name === name);
+}
+
 /** The spec of a call on either side, or undefined for a name the contract does not hold. Own names only: `constructor` and `__proto__` are not calls. */
 export function callSpec(name: string): CallSpec | undefined {
   return ENGINE_API_CALLS.find(c => c.name === name) ?? READER_API_CALLS.find(c => c.name === name);

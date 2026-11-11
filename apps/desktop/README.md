@@ -45,6 +45,15 @@ On your own folders the main process does the work with Bowerloom's own packages
 
 When AGENTS.md and CLAUDE.md differ, **Merge** moves the CLAUDE.md text into the harness instructions. It shows its own plan, and writes only after you approve it and say yes again. The install that follows uses Accept AGENTS.md. When only a file's mode changed after Bowerloom wrote it, the file shows **Restore mode** and **Keep new mode**. Keep new mode is refused when the new mode lets others write the file.
 
+## Runs and Compare on your own folders
+
+Bowerloom starts no engine and cannot see one run, so a run here is a note you keep. **Record this run** on the Start sheet appears right after you copy a command, and **Add a run** on the Runs screen takes a run you started another way. A run is Recorded until you mark it Done. Compare lines up the runs of one instruction across engines.
+
+- The notes are saved in Bowerloom's own state folder (`runs/runs.json` below `$XDG_STATE_HOME/bowerloom`, or `~/.local/state/bowerloom`). Nothing is written into your project. A file that cannot be read is moved aside, never written over.
+- For a run in Claude Code or Codex, Bowerloom reads figures from that engine's own session log: when it began and ended, how long, the input and output counts, the model's name and whether the last turn finished. It reads only those numbers from each line. It never reads, shows, stores or logs the chat. It reads only `~/.claude/projects` and `~/.codex/sessions`, follows no link, and skips a log over 64 MB. A log it cannot find or read is said in words ("No session log found", "Could not read the log"), and a figure it did not find reads "Not read", never zero.
+- The shape of those logs is not verified from a vendor page: this repository holds none, so the reader is tolerant of what it does not know. Details are in `main/run-logs.ts`.
+- The window reaches this through a fourth bridge, `bowerloomRuns` (four calls, `shared/api/runs.ts`). The 39 engine calls and their golden file are unchanged. The new calls have their own golden file, `packages/engine-api/golden/run-calls.json`.
+
 ## Where the app may write
 
 Apart from the steps you approve on your own folders (see above), the app has no way to change a Bowerloom file of yours. The app also writes a local usage log of what was done, with no name and no path (`BOWERLOOM_EVENT_LOG=off` turns it off), and it moves the state record of an earlier version into the private state folder of Bowerloom. Two small writes remain in the main process: the usage summary, which goes only to the path you pick in the save dialog, and the private copy of a tidy-up report, which the app removes when it closes. The browser engine keeps its own profile folder (window settings and cache) between starts. `tests/writers.test.ts` and `tests/writers-imports.test.ts` hold the list of files that can write.

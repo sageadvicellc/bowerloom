@@ -8,6 +8,7 @@ import type { RealBridge } from '../real/types.js';
 import { ENGINE_CALLS, ENGINE_CALL_REFUSALS, ENGINE_CHANNELS } from '../engine/types.js';
 import type { EngineBridge, EngineCall } from '../engine/types.js';
 import { LOCAL_REFUSALS } from './local.js';
+import { RUN_REFUSALS } from './runs.js';
 
 /** The names of the reader calls. */
 export type ReaderCall = (typeof REAL_CALLS)[number];
@@ -26,7 +27,7 @@ export const READER_REFUSALS = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UN
 /** The short codes an engine call can be refused with: the table shared/engine/types.ts already holds. */
 export const ENGINE_REFUSALS: readonly string[] = ENGINE_CALL_REFUSALS;
 
-export type ApiSide = 'reader' | 'engine' | 'local';
+export type ApiSide = 'reader' | 'engine' | 'local' | 'runs';
 
 const FALLBACK = 'FAILED';
 /** The reader side also reads this one word. The page itself uses it for a window with no bridge. Main never throws it. */
@@ -38,6 +39,7 @@ const PATTERNS: Readonly<Record<ApiSide, RegExp>> = Object.freeze({
   reader: patternOf([...READER_REFUSALS, NO_BRIDGE]),
   engine: patternOf(ENGINE_REFUSALS),
   local: patternOf(LOCAL_REFUSALS),
+  runs: patternOf(RUN_REFUSALS),
 });
 
 /** The short code in an error from a call ('BUSY', 'UNKNOWN_FOLDER', ...) for the given side, or 'FAILED'. */

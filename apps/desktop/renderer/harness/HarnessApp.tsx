@@ -33,7 +33,9 @@ import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { FolderDraftProvider } from './folder-draft.js';
 import { useCloseGuard } from './close-guard.js';
-import { fallbackEngine, fallbackLocal } from '../api/client.js';
+import { fallbackEngine, fallbackLocal, fallbackRuns } from '../api/client.js';
+import type { RunsBridge } from '../../shared/api/runs.js';
+import { RunsProvider } from './runs-real/runs-session.js';
 import type { LocalBridge } from '../../shared/local-models/types.js';
 import { LocalProvider, SkippedProvider, useLocal } from './local-models/local.js';
 import { LocalModelsPending } from './local-models/LocalModels.js';
@@ -80,7 +82,7 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
  * `realMode` is true for the launch on the person's own folders (the default launch, the address `#app`); `real` is its read-only bridge, null when the window has none or a partial one.
  * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
  */
-export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine, local: givenLocal, registry: givenRegistry }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined; local?: LocalBridge | null | undefined; registry?: Registry<ScreenMount> }): ReactElement {
+export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine, local: givenLocal, runs: givenRuns, registry: givenRegistry }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined; local?: LocalBridge | null | undefined; runs?: RunsBridge | null | undefined; registry?: Registry<ScreenMount> }): ReactElement {
   // The world is made once, from the sample, dated from the clock now (the runs started 12 minutes ago). Runs that are running at the start finish by themselves after about 15 seconds.
   // On the person's own folders it starts empty, and the first read replaces it.
   const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
@@ -89,7 +91,9 @@ export function HarnessApp({ store: given, real = null, realMode = real !== null
   const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : fallbackEngine(realMode)));
   // The local models calls: the sample bridge in the sample launch, the preload's bridge (or none) on the person's own folders.
   const [local] = useState<LocalBridge | null>(() => (givenLocal !== undefined ? givenLocal : fallbackLocal(realMode)));
+  // The runs calls (the manual record of runs and the figures of a session log): the preload's bridge, or none. The sample launch has none, and its screens keep their made-up runs in the store.
+  const [runs] = useState<RunsBridge | null>(() => (givenRuns !== undefined ? givenRuns : fallbackRuns(realMode)));
   // The registry is the only route table. It holds the six default extensions unless a caller (a test) gives its own.
   const [registry] = useState(() => givenRegistry ?? createScreenRegistry());
-  return <HarnessProvider store={store}><EngineProvider engine={engine}><LocalProvider bridge={local} sample={!realMode && local !== null}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></LocalProvider></EngineProvider></HarnessProvider>;
+  return <HarnessProvider store={store}><EngineProvider engine={engine}><LocalProvider bridge={local} sample={!realMode && local !== null}><RunsProvider runs={runs}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></RunsProvider></LocalProvider></EngineProvider></HarnessProvider>;
 }

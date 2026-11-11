@@ -174,7 +174,7 @@ test('the real words (the preview on the person\'s own folders) are frozen, with
     for (const [key, text] of entries) { assert.ok(countWords(text) <= limit, `${group}.${key}: ${text}`); assert.equal(bannedHere(text), null, `${group}.${key}`); assert.equal(text, text.trim(), `${group}.${key}`); }
   }
   for (const line of REAL.notInBeta) { assert.ok(countWords(line) <= LIMITS.popover, line); assert.equal(bannedHere(line), null, line); }
-  assert.deepEqual(REAL.notInBeta, ['Compare', 'Runs']);
+  assert.deepEqual(REAL.notInBeta, [], 'Compare and Runs work on the person\'s own folders since beta.2, so the list is empty');
   // Everything in Projects, and Assign to project, work on the person's own folders, so no line names them.
   assert.ok(!REAL.notInBeta.some(line => /Projects|Assign|Add a folder|Install|Update|Review/.test(line)), 'a working Projects control is not on the list');
   assert.ok(!REAL.notInBeta.some(line => /^Install from a folder$|^From a folder$/.test(line)), 'Install from a folder works, so it is not on the list');
@@ -212,7 +212,7 @@ test('the words that depend on the mode never say that a blocked feature works i
   }
   for (const text of [...welcomeLines(true), ...historyLines(true, 0), noRunsWords(true), bringToastWords(true), bringTipWords(true)]) assert.ok(countWords(text) <= LIMITS.hint, text);
   for (const text of helpLines(true)) assert.ok(countWords(text) <= LIMITS.paragraph, text);
-  assert.equal(noRunsWords(true), 'Runs are not in beta.1.');
+  assert.equal(noRunsWords(true), 'No runs yet. Record one after you start an engine.');
   assert.equal(welcomeLines(true)[1], 'Running one is not in beta.1.');
   assert.equal(helpLines(true)[1], 'Build one from your agents and skills. Running one is not in beta.1.');
   assert.equal(helpLines(true)[3], 'Bowerloom only reads until you approve a write. To undo a folder install, press Undo, then approve the removal.');
