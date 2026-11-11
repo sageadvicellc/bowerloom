@@ -25,7 +25,8 @@ function dependencyTree(root){
 }
 export function verifyInstalledContainerProof(configPath,environment=process.env){
  try{
-  if(Object.keys(environment).some(name=>/^NODE_/i.test(name)&&environment[name]!==undefined&&!(name==='NODE_TEST_CONTEXT'&&environment[name]==='child-v8')))fail();
+  const childV8=environment.NODE_TEST_CONTEXT==='child-v8';
+  if(Object.keys(environment).some(name=>/^NODE_/i.test(name)&&environment[name]!==undefined&&!(name==='NODE_TEST_CONTEXT'&&childV8)&&!(name==='NODE_TEST_WORKER_ID'&&childV8&&/^[1-9][0-9]{0,8}$/.test(environment[name]))))fail();
   const path=canonical(configPath),raw=readFileSync(path);if(raw.length>1024*1024)fail();const config=JSON.parse(raw);
   closed(config,['format','proofRoot','checkout','installedRoot','artifactSha256','distributionSha256','files']);
   if(config.format!=='bowerloom/installed-container-proof/v1'||!/^([a-f0-9]{64})$/.test(config.artifactSha256)||!/^([a-f0-9]{64})$/.test(config.distributionSha256))fail();

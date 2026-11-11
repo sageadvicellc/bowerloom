@@ -37,6 +37,14 @@ test('ambient Node module controls, checkout destinations and malformed proof pi
  const f=fixture(t);for(const env of [{NODE_PATH:'/checkout/node_modules'},{NODE_OPTIONS:'--import=PRIVATE'},{NODE_V8_COVERAGE:'/private'},{NODE_TEST_CONTEXT:'unexpected'}])assert.throws(()=>verifyInstalledContainerProof(f.configPath,env),refused);
  for(const change of [c=>c.checkout=c.proofRoot,c=>c.artifactSha256='unknown',c=>c.files.push(c.files[0]),c=>c.files[0].path='../escape',c=>c.extra=true]){const g=fixture(t);change(g.config);g.save();assert.throws(()=>verifyInstalledContainerProof(g.configPath,{}),refused);}
 });
+test('NODE_TEST_WORKER_ID is admitted only as a plain positive integer beside NODE_TEST_CONTEXT=child-v8',t=>{
+ const f=fixture(t),child={NODE_TEST_CONTEXT:'child-v8'};
+ for(const id of ['1','7','42','1000'])assert.equal(verifyInstalledContainerProof(f.configPath,{...child,NODE_TEST_WORKER_ID:id}).inventoryCount,3+CONTAINER_RUNTIME_FILES.length,id);
+ for(const id of ['','0','-1','+1','01','1.5','1e3','0x1','abc','1 ','\n1',' 1','1,2','NaN','9'.repeat(400)])assert.throws(()=>verifyInstalledContainerProof(f.configPath,{...child,NODE_TEST_WORKER_ID:id}),refused,JSON.stringify(id));
+ for(const env of [{NODE_TEST_WORKER_ID:'1'},{NODE_TEST_CONTEXT:'unexpected',NODE_TEST_WORKER_ID:'1'},{NODE_test_worker_id:'1'},{node_test_worker_id:'1',NODE_TEST_CONTEXT:'child-v8'}])assert.throws(()=>verifyInstalledContainerProof(f.configPath,env),refused,JSON.stringify(env));
+ for(const other of [{NODE_PATH:'/x'},{NODE_OPTIONS:'--import=PRIVATE'},{NODE_V8_COVERAGE:'/p'},{NODE_TEST_OTHER:'1'}])assert.throws(()=>verifyInstalledContainerProof(f.configPath,{...child,NODE_TEST_WORKER_ID:'1',...other}),refused,JSON.stringify(other));
+ assert.equal(verifyInstalledContainerProof(f.configPath,{...child,NODE_TEST_WORKER_ID:undefined}).inventoryCount,3+CONTAINER_RUNTIME_FILES.length);
+});
 test('runtime and dependency symlinks cannot borrow checkout bytes',t=>{
  for(const kind of ['runtime','dependency']){const f=fixture(t),target=join(f.root,'outside.js');writeFileSync(target,'export const outside=true;');const selected=kind==='runtime'?join(f.installedRoot,CONTAINER_RUNTIME_FILES[0]):join(dirname(f.installedRoot),'pg/index.cjs');rmSync(selected);symlinkSync(target,selected);assert.throws(()=>verifyInstalledContainerProof(f.configPath,{}),refused);}
 });
@@ -54,11 +62,6 @@ test('preparation rejects bad artifact identity before invoking npm or creating 
 
 test('real node --test subprocess permits only its exact child-v8 bookkeeping metadata',t=>{
  const f=fixture(t),script=join(f.root,'runner.test.mjs'),guard=pathToFileURL(join(f.proofRoot,'driver/installed-container-guard.mjs')).href;
- // The guard admits one NODE_ variable in a test child: NODE_TEST_CONTEXT=child-v8. Node 24.21.0 adds NODE_TEST_WORKER_ID to the child, so the guard refuses a real child there. That is a gap between the guard and this Node, and not a fault of this test, so the test says so and skips.
- const probeFile=join(f.root,'env-probe.test.mjs');writeFileSync(probeFile,`import test from 'node:test';test('env',()=>{console.log('KEYS:'+Object.keys(process.env).join(','));});`);
- const probe=cp.spawnSync(process.execPath,['--test',probeFile],{cwd:f.proofRoot,env:{},encoding:'utf8',timeout:10000,maxBuffer:65536});
- const extra=(/KEYS:(\S*)/.exec(probe.stdout)?.[1]??'').split(',').filter(k=>/^NODE_/i.test(k)&&k!=='NODE_TEST_CONTEXT');
- if(extra.length>0){t.skip(`this Node gives a node --test child ${extra.join(', ')} besides NODE_TEST_CONTEXT, and the proof guard refuses any other NODE_ variable.`);return;}
  writeFileSync(script,`import test from 'node:test';import assert from 'node:assert/strict';import {verifyInstalledContainerProof} from ${JSON.stringify(guard)};test('verified before any service contact',()=>{assert.equal(process.env.NODE_TEST_CONTEXT,'child-v8');assert.equal(verifyInstalledContainerProof(${JSON.stringify(f.configPath)}).inventoryCount,${3+CONTAINER_RUNTIME_FILES.length});});`);
  const result=cp.spawnSync(process.execPath,['--test',script],{cwd:f.proofRoot,env:{},encoding:'utf8',timeout:10000,maxBuffer:65536});assert.equal(result.status,0,result.stderr+result.stdout);assert.match(result.stdout,/verified before any service contact/);
 });
