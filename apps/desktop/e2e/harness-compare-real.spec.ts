@@ -93,8 +93,10 @@ test('the rating is locked until the run is marked done, then unlocks; a saved r
   await expect(better).toHaveAttribute('aria-disabled', 'true');
   await better.click({ force: true });
   await expect(better, 'a locked rating does not take a press').toHaveAttribute('aria-pressed', 'false');
+  await claude.locator('textarea').fill('Typed before the status changed.');
   await claude.locator('[data-toggle-done]').click();
   await expect(claude).toHaveAttribute('data-status', 'done');
+  await expect(claude.locator('textarea'), 'unsaved notes survive a change of status').toHaveValue('Typed before the status changed.');
   await expect(claude.getByRole('button', { name: 'Better', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
   await claude.getByRole('button', { name: 'Better', exact: true }).click();
   await claude.locator('textarea').fill('Fast and clear.');

@@ -59,6 +59,7 @@ test('each state of the log has its own line, and a log that was read has none',
 test('each reason a run has no figures has its own words, the window and the place are named without a full path, and the cap is named', () => {
   assert.equal(figuresStateWords('not-found', null, '~/Projects/team'), 'No session log found in ~/Projects/team, within an hour of the start. Details stay as you recorded them.');
   assert.equal(figuresStateWords('not-found', 'capped', '~/Projects/team'), 'Searched the newest 300 logs only. Details stay as you recorded them.');
+  assert.equal(figuresStateWords('found', 'capped'), 'Searched the newest 300 logs only. This log may not be the right one.');
   assert.equal(figuresStateWords('ambiguous'), 'More than one session log fits this run. Not read.');
   assert.equal(figuresStateWords('unreadable', 'too-large'), 'The log is over 64 MB. Not read.');
   assert.equal(figuresStateWords('unreadable', 'unplaced'), 'Could not tell when the log began. Not read.');

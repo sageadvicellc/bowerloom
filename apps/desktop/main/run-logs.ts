@@ -38,6 +38,8 @@ export interface LogReaderDeps {
   readonly maxBytes?: number;
   /** For a test: the call that opens a file. */
   readonly openFile?: typeof open;
+  /** Where an unexpected failure is logged: its class and errno code, never a path or a message. Left out, nothing is logged. */
+  readonly tell?: (line: string) => void;
 }
 
 const WINDOW_MS = LOG_WINDOW_MINUTES * 60_000;
@@ -61,6 +63,12 @@ const timeOf = (v: unknown): number | null => {
   return Number.isFinite(ms) ? ms : null;
 };
 const codeOf = (e: unknown): string => String((e as { code?: unknown } | null)?.code ?? '');
+/** The log line of an unexpected failure: the class and the errno code, which hold no path. */
+function told(deps: { readonly tell?: ((line: string) => void) | undefined }, where: string, error: unknown): void {
+  if (deps.tell === undefined) return;
+  const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : 'Error', code = /^[A-Z0-9]{2,20}$/.test(codeOf(error)) ? `, ${codeOf(error)}` : '';
+  try { deps.tell(`Bowerloom: the session log reader failed in ${where} (${name}${code}).`); } catch { /* the log never changes the answer */ }
+}
 const noPermission = (e: unknown): boolean => codeOf(e) === 'EACCES' || codeOf(e) === 'EPERM';
 
 const real = async (path: string): Promise<string | null> => { try { return await realpath(path); } catch { return null; } };
@@ -126,7 +134,7 @@ const trimSlash = (p: string): string => p.normalize('NFC').replace(/\/+$/, '');
 type Head = { readonly kind: 'placed'; readonly firstMs: number } | { readonly kind: 'other-folder' } | { readonly kind: 'unplaced' } | { readonly kind: 'no-permission' };
 
 /** The first time and the folder a log names, from its first lines. */
-async function head(path: string, project: string, engine: string, opener: typeof open): Promise<Head> {
+async function head(path: string, project: string, engine: string, opener: typeof open, deps: LogReaderDeps): Promise<Head> {
   let firstMs: number | null = null, cwd: string | null = null, seen = 0, kept = 0;
   let fh: FileHandle | null = null;
   try {
@@ -137,7 +145,7 @@ async function head(path: string, project: string, engine: string, opener: typeo
       seen += 1; kept += line.length;
       return seen < HEAD_LINES && kept < HEAD_BUDGET && !(firstMs !== null && cwd !== null);
     });
-  } catch (error) { return noPermission(error) ? { kind: 'no-permission' } : { kind: 'unplaced' }; } finally { await fh?.close().catch(() => undefined); }
+  } catch (error) { if (noPermission(error)) return { kind: 'no-permission' }; if (codeOf(error) !== 'ENOENT') told(deps, 'placing a log', error); return { kind: 'unplaced' }; } finally { await fh?.close().catch(() => undefined); }
   if (firstMs === null) return { kind: 'unplaced' };
   if (cwd === null) return engine === 'codex' ? { kind: 'other-folder' } : { kind: 'placed', firstMs };
   if (trimSlash(cwd) === project) return { kind: 'placed', firstMs };
@@ -198,7 +206,7 @@ function summed(t: Tally, parts: readonly number[]): number | null {
   return sum;
 }
 
-async function figuresOf(path: string, engine: string, maxBytes: number, opener: typeof open): Promise<RunFigures> {
+async function figuresOf(path: string, engine: string, maxBytes: number, opener: typeof open, deps: LogReaderDeps, capped: boolean): Promise<RunFigures> {
   let fh: FileHandle | null = null;
   try {
     fh = await openPlain(path, opener);
@@ -222,11 +230,13 @@ async function figuresOf(path: string, engine: string, maxBytes: number, opener:
     if (t.bad > 0) reason = 'partial';
     else if (engine === 'codex' ? t.outcome === 'unknown' && t.sawEvent : t.lastStop === 'tool_use') reason = 'still-writing';
     else if (inputTokens === null && outputTokens === null && t.model === null && duration === null) reason = 'no-figures';
+    // The log was chosen among the newest few hundred only: one beyond them might fit as well, so the answer says so.
+    else if (capped) reason = 'capped';
     return Object.freeze({
       state: 'found' as const, reason, startedAt: t.firstMs === null ? null : new Date(t.firstMs).toISOString(), endedAt: t.lastMs === null || t.lastMs === t.firstMs ? null : new Date(t.lastMs).toISOString(),
       durationMs: duration, inputTokens, outputTokens, model: t.model, outcome: t.outcome,
     });
-  } catch (error) { return noPermission(error) ? NO_FIGURES('unreadable', 'no-permission') : NO_FIGURES('unreadable'); } finally { await fh?.close().catch(() => undefined); }
+  } catch (error) { if (noPermission(error)) return NO_FIGURES('unreadable', 'no-permission'); told(deps, 'reading a log', error); return NO_FIGURES('unreadable'); } finally { await fh?.close().catch(() => undefined); }
 }
 
 /**
@@ -273,7 +283,7 @@ export async function readFigures(deps: LogReaderDeps, query: FigureQuery): Prom
     const placed: { path: string; firstMs: number }[] = [];
     let unplaced = 0, denied = 0;
     for (const c of looked) {
-      const h = await head(c.path, project, query.engine, deps.openFile ?? open);
+      const h = await head(c.path, project, query.engine, deps.openFile ?? open, deps);
       if (h.kind === 'placed') placed.push({ path: c.path, firstMs: h.firstMs });
       else if (h.kind === 'unplaced') unplaced += 1;
       else if (h.kind === 'no-permission') denied += 1;
@@ -290,11 +300,11 @@ export async function readFigures(deps: LogReaderDeps, query: FigureQuery): Prom
     if (mine !== undefined) {
       // Another log that fits this run and belongs to no recorded run, or a file that could not be placed beside it, means the choice is a guess.
       if (fitsMe.some(p => p.path !== mine && !runOf.has(p.path)) || unplaced + denied > 0) return NO_FIGURES('ambiguous');
-      return await figuresOf(mine, query.engine, maxBytes, deps.openFile ?? open);
+      return await figuresOf(mine, query.engine, maxBytes, deps.openFile ?? open, deps, capped);
     }
     if (fitsMe.length > 0) return NO_FIGURES('not-found');
     if (denied > 0) return NO_FIGURES('unreadable', 'no-permission');
     if (unplaced > 0) return NO_FIGURES('unreadable', 'unplaced');
     return NO_FIGURES('not-found', capped ? 'capped' : null);
-  } catch { return NO_FIGURES('unreadable'); }
+  } catch (error) { told(deps, 'matching a log', error); return NO_FIGURES('unreadable'); }
 }

@@ -86,7 +86,7 @@ export function registerRunsIpc(deps: RunsIpcDeps): void {
   const now = deps.now ?? ((): number => Date.now());
   const tell = deps.tell ?? ((line: string): void => { try { process.stderr.write(`${line}\n`); } catch { /* a closed stderr never stops a call */ } });
   const store = deps.store ?? createRunStore({ stateRoot: deps.stateRoot });
-  const figures = deps.figures ?? ((query: FigureQuery): Promise<RunFigures> => readFigures({ home: deps.home }, query));
+  const figures = deps.figures ?? ((query: FigureQuery): Promise<RunFigures> => readFigures({ home: deps.home, tell }, query));
   const refuse = (code: string): never => { throw new Refusal(code); };
 
   const answers: Readonly<Record<RunCall, (...args: unknown[]) => Promise<unknown>>> = {

@@ -23,15 +23,17 @@ import type { RunListControl } from './runs-session.js';
 import '../screens/compare.css';
 import './runs-real.css';
 
-interface Draft { readonly rating: RunRating | null; readonly notes: string }
+/** What the person changed and has not saved. A field that is left out follows what main answered. */
+interface Draft { readonly rating?: RunRating | null; readonly notes?: string }
+interface Shown { readonly rating: RunRating | null; readonly notes: string }
 
-interface ColumnProps { run: RunView; draft: Draft; control: RunListControl; onRating(rating: RunRating): void; onNotes(notes: string): void; onFailed(code: string): void; onSynced(id: string): void }
+interface ColumnProps { run: RunView; draft: Shown; control: RunListControl; onRating(rating: RunRating): void; onNotes(notes: string): void; onFailed(code: string): void; onSynced(id: string, scope: 'rating' | 'all'): void }
 
 function Column({ run, draft, control, onRating, onNotes, onFailed, onSynced }: ColumnProps): ReactElement {
   const figures = useFigures(useRuns(), run.id);
   const name = engineName(run), open = canRateReal(run);
   const noteId = `hc-notes-${run.id}`, askId = `hc-ask-${run.id}`;
-  const toggle = (): void => { void control.change(run.id, { status: run.status === 'done' ? 'recorded' : 'done' }).then(code => { if (code !== null) onFailed(code); else onSynced(run.id); }); };
+  const toggle = (): void => { void control.change(run.id, { status: run.status === 'done' ? 'recorded' : 'done' }).then(code => { if (code !== null) onFailed(code); else onSynced(run.id, 'rating'); }); };
   return (
     <section className="hc-col" data-run={run.id} data-status={run.status} aria-label={`${name}, ${realStatusWords(run.status)}`}>
       <header className="hc-col-head">
@@ -81,16 +83,22 @@ export function CompareReal({ group }: { group: string }): ReactElement {
     );
   }
   const runs = found.runs;
-  const draftOf = (run: RunView): Draft => drafts[run.id] ?? { rating: run.rating, notes: run.notes };
-  const change = (run: RunView, next: Partial<Draft>): void => { setSaved(false); setDrafts(current => ({ ...current, [run.id]: { ...draftOf(run), ...next } })); };
+  const draftOf = (run: RunView): Shown => { const d = drafts[run.id]; return { rating: d?.rating !== undefined ? d.rating : run.rating, notes: d?.notes !== undefined ? d.notes : run.notes }; };
+  const change = (run: RunView, next: Draft): void => { setSaved(false); setDrafts(current => ({ ...current, [run.id]: { ...current[run.id], ...next } })); };
   /** The draft of a run is dropped, so the box and the rating show what main answered. */
-  const synced = (id: string): void => setDrafts(current => { const { [id]: _gone, ...rest } = current; return rest; });
+  const synced = (id: string, scope: 'rating' | 'all'): void => setDrafts(current => {
+    const old = current[id];
+    if (old === undefined) return current;
+    // After a change of status only the rating follows main: notes the person has typed and not saved are kept.
+    if (scope === 'rating') { const { rating: _gone, ...rest } = old; return { ...current, [id]: rest }; }
+    const { [id]: _all, ...others } = current; return others;
+  });
   const save = (): void => {
     // A run that is not done keeps its notes only; a run that is done saves its rating and notes. Each run is reported on its own.
     const jobs = runs.map(run => { const d = draftOf(run); return control.change(run.id, canRateReal(run) ? { rating: d.rating, notes: d.notes } : { notes: d.notes }); });
     void Promise.all(jobs).then(codes => {
       const report = runs.map((run, at) => ({ name: engineName(run), code: codes[at] ?? null }));
-      for (const [at, run] of runs.entries()) if (codes[at] === null) synced(run.id);
+      for (const [at, run] of runs.entries()) if (codes[at] === null) synced(run.id, 'all');
       const ok = report.every(r => r.code === null);
       setSaved(ok);
       ui.showToast(ok ? RUNS_REAL.hint.savedToast : saveReportWords(report));

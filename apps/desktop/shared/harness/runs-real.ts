@@ -4,7 +4,7 @@
  * The figures of a run come from the engine's own session log. A figure the log did not hold is shown as "Not read", never as a zero.
  */
 import { ENGINE_NAMES } from '../engine/types.js';
-import { LOG_MAX_MB, RUN_RECORD_LIMIT } from '../api/runs.js';
+import { LOG_CANDIDATE_CAP, LOG_MAX_MB, RUN_RECORD_LIMIT } from '../api/runs.js';
 import type { FiguresReason, FiguresState, RecordedStatus, RunFigures, RunOutcome, RunRating, RunView } from '../api/runs.js';
 
 /** The runs of one instruction in one project, newest first. Compare shows a group of two or more. */
@@ -66,9 +66,10 @@ export const modelWords = (model: string | null): string => model ?? 'Not read';
 export function figuresStateWords(state: FiguresState, reason: FiguresReason | null = null, label: string | null = null): string | null {
   switch (state) {
     case 'found':
+      if (reason === 'capped') return `Searched the newest ${LOG_CANDIDATE_CAP} logs only. This log may not be the right one.`;
       return reason === 'partial' ? 'Part of the log could not be read. Counts are not shown.' : reason === 'still-writing' ? 'The log may still be written. Figures can change.' : reason === 'no-figures' ? 'The log holds no figures.' : null;
     case 'not-found':
-      if (reason === 'capped') return 'Searched the newest 300 logs only. Details stay as you recorded them.';
+      if (reason === 'capped') return `Searched the newest ${LOG_CANDIDATE_CAP} logs only. Details stay as you recorded them.`;
       return label === null ? 'No session log found. Details stay as you recorded them.' : `No session log found in ${label}, within an hour of the start. Details stay as you recorded them.`;
     case 'ambiguous': return 'More than one session log fits this run. Not read.';
     case 'unreadable':

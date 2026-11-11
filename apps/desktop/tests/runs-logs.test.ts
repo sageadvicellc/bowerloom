@@ -3,7 +3,7 @@
 // A prompt or a reply in a log never reaches the answer: the answer is numbers and short words, and the tests look for a marker text that is in every log.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { claudeFolderName, readFigures } from '../main/run-logs.js';
@@ -224,6 +224,7 @@ test('a folder with many logs is read in bounded time: only the newest 300 are l
   const f0 = claudeLog(r, 'fresh.jsonl'); const later = new Date(CHANGED.getTime() + 3_600_000); utimesSync(f0, later, later);
   const f = await readFigures({ home: r.home }, q(r, 'claude-code'));
   assert.equal(f.state, 'found'); assert.equal(f.startedAt, at(1));
+  assert.equal(f.reason, 'capped', 'a log chosen among the newest 300 only says so, since one beyond them might fit too');
 });
 
 test('when the cap of 300 is hit and no log matches, the answer says only the newest 300 were searched', async t => {
@@ -399,4 +400,24 @@ test('the reads are asynchronous: the answer is a promise, and the caller can do
   assert.ok(pending instanceof Promise);
   await pending; clearImmediate(timer);
   assert.equal(ticked, true, 'the event loop ran while the log was read');
+});
+
+test('an unexpected failure is logged with its class and errno code and no path, and the answer is a state, not a throw', async t => {
+  const r = rig(t); claudeLog(r); const told: string[] = [];
+  const broken = (): never => { throw Object.assign(new TypeError(`cannot open ${r.home}/secret`), { code: 'EIO' }); };
+  const f = await readFigures({ home: r.home, openFile: broken as never, tell: l => { told.push(l); } }, q(r, 'claude-code'));
+  assert.equal(f.state, 'unreadable');
+  assert.ok(told.length >= 1);
+  for (const line of told) { assert.match(line, /TypeError, EIO/); assert.equal(line.includes(r.home) || line.includes('secret'), false, line); }
+  const quiet = await readFigures({ home: r.home, openFile: broken as never }, q(r, 'claude-code'));
+  assert.equal(quiet.state, 'unreadable');
+});
+
+test('the log reader opens files for reading only: no flag that creates or changes a file appears, and every open is read-only without following a link', () => {
+  const code = readFileSync(join(DESKTOP, 'main', 'run-logs.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  assert.doesNotMatch(code, /\bO_(?:CREAT|WRONLY|RDWR|APPEND|TRUNC|EXCL)\b/);
+  assert.deepEqual([...new Set([...code.matchAll(/constants\.(O_\w+)/g)].map(m => m[1]))].sort(), ['O_NOFOLLOW', 'O_RDONLY']);
+  const opens = [...code.matchAll(/\b(?:await\s+)?(?:opener|open|openFile)\(([^)]*)\)/g)].map(m => m[1]!);
+  assert.deepEqual(opens, ['path, constants.O_RDONLY | constants.O_NOFOLLOW'], 'the one open call has exactly the read-only flags');
+  assert.doesNotMatch(code, /\b(?:writeFile|appendFile|mkdir|rename|unlink|rm|chmod|truncate|copyFile|symlink|utimes)\s*\(/);
 });
