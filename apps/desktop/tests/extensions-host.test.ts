@@ -304,3 +304,18 @@ test('M2: if apps/desktop/extensions holds anything, package.json extraResources
   const ships = entries.some(e => e.to === 'extensions' && e.from === 'extensions');
   if (holds) assert.equal(ships, true, 'apps/desktop/extensions has content but extraResources has no { from: "extensions", to: "extensions" } entry, so a packaged build would load zero extensions');
 });
+
+test('E3: the app\'s own bundle loads the first bundled extension, Local models, with nothing skipped or refused, and it is not protected', () => {
+  const host = startExtensions(extensionsBundleRoot({ packaged: false, resourcesPath: '/nowhere', appRoot: join(DESKTOP, 'dist') }));
+  assert.deepEqual(host.registry.list().map(m => m.id), [...DEFAULT_IDS, 'local-models']);
+  assert.deepEqual(host.skipped, []); assert.deepEqual(host.refused, []);
+  const found = host.registry.list().find(m => m.id === 'local-models');
+  assert.deepEqual(found, { id: 'local-models', title: 'Local models', kind: 'ui', routes: ['local-models'], protected: false });
+  assert.deepEqual(host.registry.resolve('local-models'), { found: true, id: 'local-models', mount: undefined });
+});
+
+test('Local models can be uninstalled, because it is bundled and not protected, and its route is then freed', () => {
+  const host = startExtensions(extensionsBundleRoot({ packaged: false, resourcesPath: '/nowhere', appRoot: join(DESKTOP, 'dist') }));
+  assert.equal(host.registry.uninstall('local-models').ok, true);
+  assert.equal(host.registry.resolve('local-models').found, false);
+});
