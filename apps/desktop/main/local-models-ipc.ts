@@ -3,7 +3,7 @@
  * Each call:
  *  - is answered only for the app's own page, in its main frame, before anything else happens;
  *  - takes no argument;
- *  - hands back plain data, or one short code (NOT_ALLOWED, BAD_ARGUMENT, FAILED).
+ *  - hands back plain data, or one short code (NOT_ALLOWED, BAD_ARGUMENT, HOST_NOT_STARTED, FAILED). A failure is logged here by call name and error class, never by its message.
  * `localModels` is the report of packages/local-models. A server that is down is a state in the report, never a refusal. `listExtensions` says which bundled
  * extensions the extension host of main holds now and which folders it skipped (main/extension-host.ts). Neither call writes, starts a program, or reads a process.
  */
@@ -22,6 +22,8 @@ export interface LocalModelsIpcDeps {
   readonly stateRoot: string;
   /** The extension host main started (main/extension-host.ts), or null while it has not. The answer follows its registry, not a second read of the bundle. */
   readonly extensionHost: () => ExtensionHost | null;
+  /** Where a failure is logged. Main passes its stderr line writer. The default writes to stderr. */
+  readonly tell?: (line: string) => void;
   /** Test use: another source of the report. Defaults to the package. */
   readonly models?: LocalModels;
 }
@@ -34,13 +36,23 @@ export function listingOf(host: ExtensionHost): ExtensionsListing {
   });
 }
 
+/** The class of a failure as a short word, for the log. Never the message, which can hold a path. */
+const causeClass = (error: unknown): string => {
+  if (!(error instanceof Error)) return 'NotAnError';
+  return /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(error.name) ? error.name : 'Error';
+};
+
+/** A refusal with a code the page may see. Anything else thrown by an answer is FAILED. */
+class Refusal extends Error {}
+
 export function registerLocalModelsIpc(deps: LocalModelsIpcDeps): void {
+  const tell = deps.tell ?? ((line: string): void => { try { process.stderr.write(`${line}\n`); } catch { /* a closed stderr never stops a call */ } });
   const models = deps.models ?? createLocalModels({ stateRoot: deps.stateRoot });
   const answers: Readonly<Record<LocalCall, () => Promise<unknown>>> = {
     localModels: () => models.localModels(),
     listExtensions: async () => {
       const host = deps.extensionHost();
-      if (host === null) throw new Error('extension host not started');
+      if (host === null) throw new Refusal('HOST_NOT_STARTED');
       return listingOf(host);
     },
   };
@@ -51,7 +63,9 @@ export function registerLocalModelsIpc(deps: LocalModelsIpcDeps): void {
       if (args.length !== LOCAL_ARITY[call]) throw new Error('BAD_ARGUMENT');
       try {
         return await answers[call]();
-      } catch {
+      } catch (error) {
+        if (error instanceof Refusal) throw new Error(error.message);
+        try { tell(`Bowerloom: the local call ${call} failed (${causeClass(error)}).`); } catch { /* the log never changes the answer */ }
         throw new Error('FAILED');
       }
     });

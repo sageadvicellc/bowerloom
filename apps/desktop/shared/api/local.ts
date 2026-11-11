@@ -16,8 +16,14 @@ export const LOCAL_ARITY: Readonly<Record<LocalCall, number>> = Object.freeze({ 
 /** One channel for each call, in the namespace of this bridge. */
 export const LOCAL_CHANNELS: Readonly<Record<LocalCall, string>> = Object.freeze({ localModels: 'bowerloom-local:localModels', listExtensions: 'bowerloom-local:listExtensions' });
 
-/** The short codes a local call can be refused with. A server that is down is not a refusal: it is a state in the report. */
-export const LOCAL_REFUSALS: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'FAILED']);
+/**
+ * The short codes a local call can be refused with. A server that is down is not a refusal: it is a state in the report.
+ * HOST_NOT_STARTED: `listExtensions` ran before main started the extension host. NOT_ALLOWED: the sender is not the app page. BAD_ARGUMENT: the call carried an argument.
+ * FAILED: anything else; main logs the class of the cause, and the page never sees a message.
+ */
+export const LOCAL_REFUSAL_CODES = ['NOT_ALLOWED', 'BAD_ARGUMENT', 'HOST_NOT_STARTED', 'FAILED'] as const;
+export type LocalRefusalCode = (typeof LOCAL_REFUSAL_CODES)[number];
+export const LOCAL_REFUSALS: readonly string[] = Object.freeze([...LOCAL_REFUSAL_CODES]);
 
 /** One extension folder that main could not load: its name as main cleaned it, and the short code of the loader. No message and no path. */
 export interface SkippedExtension { readonly name: string; readonly code: string }

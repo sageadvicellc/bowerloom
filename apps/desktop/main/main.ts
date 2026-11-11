@@ -279,7 +279,7 @@ app.whenReady().then(async () => {
       app.once('quit', () => { try { engine.clearReportCopies(); } finally { void engine.close(); } });
     }
     // The local models report and the list of extensions the host holds: two read-only calls with no argument. The report reads only 127.0.0.1 ports (packages/local-models) and writes nothing.
-    registerLocalModelsIpc({ ipc: ipcMain, appIndexUrl: indexUrl, stateRoot: engineStateRoot(home), extensionHost: () => extensionHost });
+    registerLocalModelsIpc({ ipc: ipcMain, appIndexUrl: indexUrl, stateRoot: engineStateRoot(home), extensionHost: () => extensionHost, tell: line => { process.stderr.write(`${line}\n`); } });
   }
   // The extension loader reads the app bundle's own extensions folder and nothing else (main/extension-host.ts). A bad extension is skipped and never stops the start. Each skip goes to stderr
   // and, in a launch that keeps the usage log, its code is recorded there too. Limit: a launch with no usage log has stderr only, which a Finder-launched app does not show.

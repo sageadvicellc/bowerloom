@@ -10,7 +10,7 @@ import { ENGINE_CALLS } from '../../shared/engine/types.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
 import { LOCAL_CALLS } from '../../shared/api/local.js';
-import type { LocalBridge } from '../../shared/api/local.js';
+import type { LocalBridge, LocalRefusalCode } from '../../shared/api/local.js';
 import { pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
@@ -51,5 +51,5 @@ export function fallbackEngine(realMode: boolean): EngineBridge | null {
 export const readerCodeOf = (error: unknown): string => refusalCode(error, 'reader');
 /** The short code in an error from an engine call ('BAD_ARGUMENT', 'UNKNOWN_FOLDER', ...), or 'FAILED'. */
 export const engineCodeOf = (error: unknown): string => refusalCode(error, 'engine');
-/** The short code in an error from a local call ('NOT_ALLOWED', 'BAD_ARGUMENT'), or 'FAILED'. */
-export const localCodeOf = (error: unknown): string => refusalCode(error, 'local');
+/** The short code in an error from a local call ('NOT_ALLOWED', 'BAD_ARGUMENT', 'HOST_NOT_STARTED'), or 'FAILED'. HOST_NOT_STARTED passes through, so a screen can say the extension host has not started. */
+export const localCodeOf = (error: unknown): LocalRefusalCode => refusalCode(error, 'local') as LocalRefusalCode;
