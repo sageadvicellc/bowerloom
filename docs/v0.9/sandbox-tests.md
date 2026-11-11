@@ -295,6 +295,8 @@ Each test skips when the user is root. The reason text is "root ignores file mod
 
 ### Skips for coarse file times (9 tests)
 
+The probe also checks two sibling folders made one after the other: on a coarse clock the second can carry the same change time as the first, so a sort by change time cannot tell which was made last.
+
 Each test skips when a probe of the temporary folder finds that two quick changes can carry one timestamp. The probe never answers true on macOS. The helper is `skipOnCoarseFileTimes`. The reason text is "this file system gives two quick changes one timestamp, so the test cannot see" followed by the last column.
 
 | File | Test | What the test needs |
@@ -322,7 +324,7 @@ Each test skips when a probe finds that a folder removed and made again at one p
 
 Both S6 tests (the catalog root of the managed skills, and the registered slices) no longer skip. A run in the container showed the new folder getting the id of the deleted one, although the probe said "not reused". Each test now renames the old folder aside instead of deleting it, so both folders exist at once and cannot share an inode. The assertions are unchanged. Nothing is deleted: the old folder is removed with the test fixture.
 
-### End-to-end skips off macOS (4 tests)
+### End-to-end skips off macOS (6 tests)
 
 Each spec skips through `test.skip(process.platform !== 'darwin', reason)`. The reason is in the spec.
 
@@ -332,6 +334,8 @@ Each spec skips through `test.skip(process.platform !== 'darwin', reason)`. The 
 | `apps/desktop/e2e/harness-close-guard.spec.ts` | a window that stayed after Keep editing asks again at the next close, and Discard closes it |
 | `apps/desktop/e2e/harness-close-guard.spec.ts` | Quit from the application menu (Cmd+Q) with a change asks, and no quit happens while the window refuses to close |
 | `apps/desktop/e2e/harness-close-guard.spec.ts` | Quit from the application menu (Cmd+Q) with no change quits at once and asks nothing |
+| `apps/desktop/e2e/harness-close-guard.spec.ts` | with no change, the window closes and no box appears |
+| `apps/desktop/e2e/harness-close-guard.spec.ts` | a change that was undone asks nothing when the window closes |
 
 ### Skips for one direction (3 tests)
 

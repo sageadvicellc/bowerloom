@@ -39,7 +39,11 @@ export function fileTimesAreCoarse(): boolean {
   coarse ??= probe((folder, n) => {
     const dir = path.join(folder, `t${n}`); fs.mkdirSync(dir);
     const before = fs.statSync(dir, { bigint: true }); fs.writeFileSync(path.join(dir, 'a'), 'x'); const after = fs.statSync(dir, { bigint: true });
-    return before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs;
+    if (before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs) return true;
+    // Two sibling folders made one after the other, each then given a file: the second must carry a later change time.
+    const first = path.join(folder, `a${n}`), second = path.join(folder, `b${n}`);
+    fs.mkdirSync(first); fs.writeFileSync(path.join(first, 'x'), 'x'); fs.mkdirSync(second); fs.writeFileSync(path.join(second, 'x'), 'x');
+    return fs.statSync(second, { bigint: true }).ctimeNs <= fs.statSync(first, { bigint: true }).ctimeNs;
   });
   return coarse;
 }

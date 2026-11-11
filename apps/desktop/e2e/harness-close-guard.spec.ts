@@ -87,6 +87,7 @@ test('closing the window with a change: Discard closes it', async () => {
 });
 
 test('with no change, the window closes and no box appears', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS only: on any other platform the app quits when its last window closes (main/main.ts, window-all-closed), so the test loses the app it still reads');
   const x = await start(0);
   await fresh(x.page, BUILDER);
   await expect(count(x.page)).toContainText('No change yet.');
@@ -96,6 +97,7 @@ test('with no change, the window closes and no box appears', async () => {
 });
 
 test('a change that was undone asks nothing when the window closes', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS only: on any other platform the app quits when its last window closes (main/main.ts, window-all-closed), so the test loses the app it still reads');
   const x = await start(0);
   await change(x.page);
   await x.page.locator('[data-builder-undo]').click();
