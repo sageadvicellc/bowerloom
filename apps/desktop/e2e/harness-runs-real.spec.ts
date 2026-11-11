@@ -261,7 +261,7 @@ test('a save that answers after the screen was left drops its result: no move to
   await goTo(p, '#app/harnesses');
   await expect(sheet).toHaveCount(0);
   await gateRelease(h, 'recordRun');
-  await expect.poll(async () => (JSON.parse(readFileSync(stateFile(), 'utf8')) as { runs: unknown[] }).runs.length).toBe(1);
+  await expect.poll(() => (existsSync(stateFile()) ? (JSON.parse(readFileSync(stateFile(), 'utf8')) as { runs: unknown[] }).runs.length : 0)).toBe(1);
   await p.waitForTimeout(600);
   expect(await p.evaluate(() => location.hash), 'the page was not moved to Runs').toBe('#app/harnesses');
   await expect(p.getByText('Recorded. Find it in Runs.')).toHaveCount(0);
