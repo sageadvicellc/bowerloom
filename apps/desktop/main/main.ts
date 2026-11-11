@@ -24,6 +24,8 @@ import { dockFolder, followAppearance } from './dock-icon.js';
 import { windowFailure } from './window-failure.js';
 import { bringForBox, closeGuard } from './close-guard.js';
 import { quitHold } from './quit-hold.js';
+import { extensionsBundleRoot, startExtensions } from './extension-host.js';
+import type { ExtensionHost, UsageRecorder } from './extension-host.js';
 import { stderrErrorHandler } from './stderr-guard.js';
 import type { EngineService } from './engine-service.js';
 import { APP_HOST, APP_INDEX, APP_SCHEME, allowRequest, chooseUserData, decideNavigation, makeTempDataDir, removeAndReport, resolveAppFile, userDataArg, webPreferences } from './security.js';
@@ -88,6 +90,15 @@ function startupFailed(error: unknown, title = 'Bowerloom could not start'): voi
 
 /** The engine calls of this launch, once registered; null for a launch with none. A window that dies waits for this to be idle (main/window-failure.ts). */
 let engineForExit: EngineService | null = null;
+
+/**
+ * The extensions of this run: the six protected defaults and the ones inside the app bundle. Held for the whole run; set once the app is ready. Nothing reads it yet.
+ * The later lane that lets a person uninstall (an IPC channel) must call extensionHost.uninstall (main/extension-host.ts, uninstallExtension), and never registry.uninstall,
+ * so that a protected extension is refused PROTECTED and the check fails closed.
+ */
+let extensionHost: ExtensionHost | null = null;
+/** The local usage log's recorder of this run. Set only for a launch with engine calls, which is the only launch that keeps the log; the sample writes nothing to the real app data. */
+let usageRecorder: UsageRecorder | undefined;
 
 /** True once a failed window has started the quit of the app. The close guard then lets the unload go on without a box (main/close-guard.ts). */
 let closeEnding = false;
@@ -211,6 +222,9 @@ app.whenReady().then(async () => {
         return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
       },
     });
+    // The local usage log: lines about what was done, never a name or a path. BOWERLOOM_EVENT_LOG=off turns it off. Only a launch with engine calls keeps it.
+    const record = createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv(), home });
+    if (launch.engineCalls) usageRecorder = record;
     // The adopt and install sheets of the harness-first window. They plan read-only, and write only through the packages, with the revision of a plan the person approved.
     if (launch.engineCalls) {
       const engine = registerEngineIpc({
@@ -219,8 +233,7 @@ app.whenReady().then(async () => {
         previewEngines: enginePreviewSwitch(),
         // A share write that comes back from its dialog after a quit began is refused (main/engine-bundle.ts).
         quitBegun: () => quitHeld.begun(),
-        // The local usage log: lines about what was done, never a name or a path. BOWERLOOM_EVENT_LOG=off turns it off.
-        record: createRecorder({ stateRoot: engineStateRoot(home), env: diagnosticsEnv(), home }),
+        record,
         // Main's own question before every write (U16): words main builds from its record of the plan; the window cannot word or skip it.
         confirm: async ask => {
           const options: Electron.MessageBoxOptions = { type: 'question', title: ask.title, message: ask.message, detail: ask.detail, buttons: ['Cancel', ask.button ?? 'Write'], defaultId: 0, cancelId: 0, noLink: true };
@@ -265,6 +278,9 @@ app.whenReady().then(async () => {
       app.once('quit', () => { try { engine.clearReportCopies(); } finally { void engine.close(); } });
     }
   }
+  // The extension loader reads the app bundle's own extensions folder and nothing else (main/extension-host.ts). A bad extension is skipped and never stops the start. Each skip goes to stderr
+  // and, in a launch that keeps the usage log, its code is recorded there too. Limit: a launch with no usage log has stderr only, which a Finder-launched app does not show.
+  extensionHost = startExtensions(extensionsBundleRoot({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }), line => { process.stderr.write(`${line}\n`); }, usageRecorder);
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(startupFailed);
