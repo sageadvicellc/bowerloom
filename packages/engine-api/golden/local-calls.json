@@ -1,0 +1,10 @@
+{
+  "format": "bowerloom/engine-api-local-golden/v1",
+  "note": "The calls of the bowerloomLocal bridge, added in 0.9 after the base. Written by hand, because the base source never had them: the base golden file stays as it is. Change it only with LOCAL_CALLS, in the same commit.",
+  "bridge": "bowerloomLocal",
+  "channelPrefix": "bowerloom-local:",
+  "localCalls": [
+    { "name": "localModels", "arity": 0, "optionalArgs": 0, "channel": "bowerloom-local:localModels", "returns": "plain" }
+  ],
+  "localCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT"]
+}

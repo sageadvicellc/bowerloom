@@ -59,6 +59,9 @@ export const READER_GATE_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_
 /** The codes the reader itself refuses with (`RealRefusal`). */
 export const READER_REFUSAL_CODES: readonly string[] = Object.freeze(['BAD_ARGUMENT', 'UNKNOWN_PLACE', 'TOO_MANY', 'BUSY', 'NO_HOME']);
 
+/** The codes a local call is refused with before it runs: the wrong page, or an argument where the call takes none. A probe that fails is never one of them. */
+export const LOCAL_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT']);
+
 /** Every code the engine side returns that the contract names. */
 export function engineRefusalCodes(): ReadonlySet<string> {
   return new Set([...ENGINE_CALL_REFUSAL_CODES, ...NAMED_OUTCOMES, ...ENGINE_MAIN_REFUSAL_CODES, ...ENGINE_MAIN_ANSWER_REFUSAL_CODES]);

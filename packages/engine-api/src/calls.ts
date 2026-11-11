@@ -34,6 +34,25 @@ export const READER_API_CALLS: readonly CallSpec[] = Object.freeze([
   reader('readSelected', 1, 'bowerloom-real:read-selected'),
 ]);
 
+/** The prefix of a local models channel: `bowerloom-local:<call>`. */
+const LOCAL_PREFIX = 'bowerloom-local:';
+
+const local = (name: string, arity: number, returns: ReturnKind): CallSpec => Object.freeze({ name, arity, optionalArgs: 0, channel: `${LOCAL_PREFIX}${name}`, returns });
+
+/**
+ * The calls of the third bridge, `bowerloomLocal`, added in 0.9. They are not engine calls and not reader calls: the 39 engine calls and the 3 reader calls above stay
+ * frozen, and `callSpec` does not find these. `localModels` answers a `LocalModelsReport` (packages/local-models) as plain data. A server that is down is a state in the
+ * report, never a refusal. The only refusals are the call's own: see `LOCAL_CALL_REFUSAL_CODES`.
+ */
+export const LOCAL_CALLS: readonly CallSpec[] = Object.freeze([
+  local('localModels', 0, 'plain'),
+]);
+
+/** The spec of a local call, or undefined for a name the list does not hold. Own names only. */
+export function localCallSpec(name: string): CallSpec | undefined {
+  return LOCAL_CALLS.find(c => c.name === name);
+}
+
 /** The spec of a call on either side, or undefined for a name the contract does not hold. Own names only: `constructor` and `__proto__` are not calls. */
 export function callSpec(name: string): CallSpec | undefined {
   return ENGINE_API_CALLS.find(c => c.name === name) ?? READER_API_CALLS.find(c => c.name === name);
