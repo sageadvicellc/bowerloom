@@ -28,8 +28,8 @@ export function sampleLocalReport(sampledAt: string): LocalModelsReport {
   };
 }
 
-/** The bridge of the sample launch. `now` is given so a test can fix the time. */
-export function createSampleLocal(now: () => string = () => new Date().toISOString()): LocalBridge {
+/** The bridge of the sample launch. `now` gives the time of each read as an ISO text: the page passes its clock (renderer/harness/clock.ts), and a test passes a fixed one. This file reads no clock. */
+export function createSampleLocal(now: () => string): LocalBridge {
   return {
     localModels: async () => sampleLocalReport(now()),
     listExtensions: async () => ({ extensions: [LOCAL_MODELS_MANIFEST], skipped: [] }),

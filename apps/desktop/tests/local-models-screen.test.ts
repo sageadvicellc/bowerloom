@@ -9,8 +9,8 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HIcon } from '../renderer/harness/icons.js';
 import { HarnessApp } from '../renderer/harness/HarnessApp.js';
-import { LocalModelsBody } from '../renderer/harness/local-models/LocalModels.js';
-import type { BodyProps } from '../renderer/harness/local-models/LocalModels.js';
+import { LocalModelsBody, PendingBody, ReadAnnouncer } from '../renderer/harness/local-models/LocalModels.js';
+import type { BodyProps, PendingProps } from '../renderer/harness/local-models/LocalModels.js';
 import { BUNDLED_IDS, createScreenRegistry, registerBundled } from '../renderer/harness/extension-mounts.js';
 import { followExtensions } from '../renderer/harness/bundled-extensions.js';
 import type { Bundled, Scheduler } from '../renderer/harness/bundled-extensions.js';
@@ -28,7 +28,7 @@ import { DESKTOP } from './support.js';
 const NOW = { daysAgo: 0, time: '10:00' };
 type G = { location?: { hash: string } };
 const SAMPLE = sampleLocalReport('2026-11-11T10:00:00Z');
-const props = (over: Partial<BodyProps> = {}): BodyProps => ({ available: true, sample: false, report: SAMPLE, failed: false, stale: false, busy: false, ...over });
+const props = (over: Partial<BodyProps> = {}): BodyProps => ({ available: true, sample: false, report: SAMPLE, failed: false, stale: false, busy: false, code: null, ...over });
 const body = (over: Partial<BodyProps> = {}): string => renderToStaticMarkup(createElement(LocalModelsBody, props(over)) as ReactElement);
 const empty = (over: Partial<LocalModelsReport>): LocalModelsReport => ({ sampledAt: SAMPLE.sampledAt, models: [], endpointsConfigured: 0, notes: [], ...over });
 
@@ -119,6 +119,66 @@ test('no state is blank', () => {
   }
 });
 
+test('CONFIG_UNREADABLE with no servers shows the note with its reason, and never "No local model servers are set up" and never a count', () => {
+  const text = 'The local models file could not be read, so no server was probed.';
+  const html = body({ report: empty({ notes: [{ code: 'CONFIG_UNREADABLE', text, reason: 'PARSE' }] }) });
+  assert.ok(html.includes(`${text} Reason: PARSE.`));
+  assert.doesNotMatch(html, /No local model servers are set up|data-local-state="empty"|\b0 up\b|data-model=/);
+});
+
+test('a note with no text still shows a sentence that names its code and reason', () => {
+  const html = body({ report: empty({ notes: [{ code: 'NEW_THING', text: '', reason: 'PARSE' }] }) });
+  assert.match(html, /data-local-note="">[^<]*NEW_THING[^<]*PARSE/);
+});
+
+test('a failed read shows its code, on the first read and on a later one', () => {
+  assert.match(body({ report: null, failed: true, code: 'HOST_NOT_STARTED' }), /could not be read\. Trying again\.[^<]*HOST_NOT_STARTED/);
+  assert.match(body({ stale: true, failed: true, code: 'FAILED' }), /data-local-state="stale"[^>]*>[^<]*FAILED/);
+  assert.doesNotMatch(body({ report: null, failed: true, code: null }), /Code:/);
+});
+
+test('two notes with the same sentence, and a row with two equal notes, render with no duplicate-key warning', () => {
+  const errors: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]): void => { errors.push(args); };
+  try {
+    const same = { code: 'PARTIAL_READ', text: 'Same sentence.' };
+    const m = { ...SAMPLE.models[0]!, notes: [{ code: 'METRICS_OFF' }, { code: 'METRICS_OFF' }] };
+    const html = body({ report: { ...SAMPLE, models: [m as never], notes: [same, same] } });
+    assert.equal((html.match(/data-local-note=""/g) ?? []).length, 2);
+  } finally { console.error = original; }
+  assert.deepEqual(errors, []);
+});
+
+test('the read announcer is a status line that is always there, and says "Reading the servers." or "Updated." only when told', () => {
+  const html = (announce: 'reading' | 'updated' | null): string => renderToStaticMarkup(createElement(ReadAnnouncer, { announce }) as ReactElement);
+  assert.match(html('reading'), /role="status"[^>]*>Reading the servers\.</);
+  assert.match(html('updated'), /role="status"[^>]*>Updated\.</);
+  const quiet = html(null);
+  assert.match(quiet, /role="status"/); assert.equal(quiet.replace(/<[^>]*>/g, ''), '');
+  assert.match(quiet, /hxl-sr-only/);
+  const css = readFileSync(join(DESKTOP, 'renderer/harness/local-models/local-models.css'), 'utf8');
+  assert.match(css, /\.hxl-sr-only\s*\{[^}]*clip|\.hxl-sr-only\s*\{[^}]*position:\s*absolute/);
+  assert.equal(LOCAL_WORDS.refreshing, 'Reading the servers.');
+});
+
+test('the Refresh button stays enabled during a read, so keyboard focus is not lost, and the staleness comes from the hook', () => {
+  const text = readFileSync(join(DESKTOP, 'renderer/harness/local-models/LocalModels.tsx'), 'utf8');
+  assert.doesNotMatch(text, /disabled=\{[^}]*busy/);
+  assert.doesNotMatch(text, /realNowMs|isStale\(/, 'the render reads no clock');
+  assert.match(text, /memo\(/);
+});
+
+test('the waiting line of the extension list names a failure and the skipped extensions', () => {
+  const html = (over: PendingProps): string => renderToStaticMarkup(createElement(PendingBody, over) as ReactElement);
+  assert.match(html({}), /Reading the local model servers\./);
+  const failed = html({ problem: 'HOST_NOT_STARTED' });
+  assert.match(failed, /extension host has not started/i); assert.match(failed, /HOST_NOT_STARTED/);
+  assert.match(html({ loading: false, skipped: [{ name: 'alpha', code: 'X' }] }), /did not load/);
+  const skipped = html({ skipped: [{ name: 'alpha', code: 'BAD_MANIFEST' }, { name: 'beta', code: 'TOO_BIG' }] });
+  for (const word of ['alpha', 'BAD_MANIFEST', 'beta', 'TOO_BIG']) assert.ok(skipped.includes(word), word);
+});
+
 // ---- the extension: registration, the list that is not ready, the navigation and the route
 
 test('the manifest is bundled, not protected, owns the route local-models, and the sample manifest equals it', () => {
@@ -192,7 +252,7 @@ test('the route local-models is an extension route: it parses, formats and belon
 });
 
 test('the sample launch shows the screen route as a waiting line at the first frame (never the not-found state), and a launch with no bridge says so plainly', () => {
-  const sample = renderApp('#sample/local-models', createSampleLocal());
+  const sample = renderApp('#sample/local-models', createSampleLocal(() => SAMPLE.sampledAt));
   assert.match(sample, /data-screen="local-models"/); assert.match(sample, /data-local-pending=""/); assert.doesNotMatch(sample, /ROUTE_NOT_FOUND/);
   const none = renderApp('#app/local-models', null, true);
   assert.doesNotMatch(none, /data-local-pending/);
@@ -200,7 +260,7 @@ test('the sample launch shows the screen route as a waiting line at the first fr
 });
 
 test('the navigation has no Local models item before the list answers, so a removed extension has no entry', () => {
-  assert.doesNotMatch(renderApp('#sample/harnesses', createSampleLocal()), /data-nav-key="local-models"/);
+  assert.doesNotMatch(renderApp('#sample/harnesses', createSampleLocal(() => SAMPLE.sampledAt)), /data-nav-key="local-models"/);
   assert.doesNotMatch(renderApp('#app/harnesses', null, true), /data-nav-key="local-models"/);
 });
 
@@ -244,4 +304,32 @@ test('the bundled extension ships: the folder holds one manifest and extraResour
   assert.equal(existsSync(join(DESKTOP, 'extensions/local-models/manifest.json')), true);
   const pkg = JSON.parse(readFileSync(join(DESKTOP, 'package.json'), 'utf8')) as { build: { extraResources: { from: string; to: string }[] } };
   assert.ok(pkg.build.extraResources.some(e => e.from === 'extensions' && e.to === 'extensions'));
+});
+
+test('listExtensions that keeps failing shows a sentence after three tries, with its code, and keeps trying quietly', async () => {
+  const registry = createScreenRegistry(), clock = fakeClock(), answers: Bundled[] = [];
+  let calls = 0, ok = false;
+  const bridge: LocalBridge = {
+    localModels: async () => SAMPLE,
+    listExtensions: async () => { calls += 1; if (ok) return { extensions: [LOCAL_MODELS_MANIFEST], skipped: [{ name: 'alpha', code: 'BAD_MANIFEST' }] }; throw new Error('HOST_NOT_STARTED'); },
+  };
+  followExtensions(registry, bridge, s => answers.push(s), clock);
+  for (let i = 0; i < 2; i += 1) { await settle(); clock.queue[i]!.run(); }
+  await settle();
+  assert.equal(calls, 3); assert.equal(answers.length, 1, 'the third failure gives one notice');
+  assert.equal(answers[0]!.ready, false); assert.equal(answers[0]!.problem, 'HOST_NOT_STARTED'); assert.deepEqual(answers[0]!.extensions, []);
+  assert.equal(clock.queue.length, 3, 'it still tries again'); assert.equal(clock.queue[2]!.ms, REFRESH_MS);
+  clock.queue[2]!.run(); await settle();
+  assert.equal(calls, 4); assert.equal(answers.length, 1, 'the same failure is not told twice');
+  ok = true; clock.queue[3]!.run(); await settle();
+  assert.equal(answers.length, 2); assert.equal(answers[1]!.ready, true); assert.equal(answers[1]!.problem, null);
+  assert.deepEqual(answers[1]!.skipped, [{ name: 'alpha', code: 'BAD_MANIFEST' }]);
+});
+
+test('a listExtensions that throws at once, not as a rejected promise, is a failed try and not a crash', async () => {
+  const registry = createScreenRegistry(), clock = fakeClock(), answers: Bundled[] = [];
+  const bridge: LocalBridge = { localModels: async () => SAMPLE, listExtensions: () => { throw new Error('FAILED'); } };
+  assert.doesNotThrow(() => followExtensions(registry, bridge, s => answers.push(s), clock));
+  await settle();
+  assert.equal(clock.queue.length, 1); assert.equal(answers.length, 0);
 });

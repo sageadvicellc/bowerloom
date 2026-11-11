@@ -62,8 +62,9 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
   // The bundled extensions follow `listExtensions`. Until its first answer, their route waits with a plain line: a failure at launch is "not ready yet", never the not-found state.
   const bundled = useBundledExtensions(registry, useLocal().bridge);
   if (isFirstRun(route)) return <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />;
-  const waiting = route.name === 'local-models' && !bundled.ready;
-  return <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>{waiting ? <LocalModelsPending /> : <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />}</Shell>;
+  // The line also stands for a route whose extension main skipped, so that the skipped names and codes are shown and not a bare not-found state.
+  const waiting = route.name === 'local-models' && (!bundled.ready || (bundled.skipped.length > 0 && !bundled.extensions.some(x => x.id === 'local-models')));
+  return <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>{waiting ? <LocalModelsPending problem={bundled.problem} skipped={bundled.skipped} loading={!bundled.ready} /> : <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />}</Shell>;
 }
 
 /**

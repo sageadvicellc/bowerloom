@@ -20,6 +20,11 @@ export const LOCAL_WORDS = Object.freeze({
   empty: 'No local model servers are set up. Add a port to the local models file.',
   list: 'Local model servers',
   idle: 'Idle',
+  updated: 'Updated.',
+  noteUnknown: 'The app got a note it has no words for.',
+  rowNoteUnknown: 'A note about this server has no words yet.',
+  reasonUnknown: 'The server gave a reason this app has no words for.',
+  stateUnknown: 'Unknown state',
 });
 
 const STATE_WORDS: Readonly<Record<ModelState, string>> = Object.freeze({ up: 'Up', down: 'Down', unreachable: 'Not answering', unsupported: 'Not supported', starting: 'Starting' });
@@ -30,10 +35,21 @@ const REASON_WORDS: Readonly<Record<string, string>> = Object.freeze({
   LOADING: 'The server is loading a model.', UNSUPPORTED_PROVIDER: 'This kind of server cannot be read yet.',
 });
 
-export const stateWords = (state: ModelState): string => STATE_WORDS[state];
-export const stateTone = (state: ModelState): Tone => STATE_TONE[state];
+const known = (table: Readonly<Record<string, unknown>>, key: unknown): key is string => typeof key === 'string' && Object.hasOwn(table, key);
+/** A state this app does not know (a later server) still reads: "Unknown state (name)". */
+export const stateWords = (state: ModelState): string => (known(STATE_WORDS, state) ? STATE_WORDS[state] : `${LOCAL_WORDS.stateUnknown} (${String(state)})`);
+export const stateTone = (state: ModelState): Tone => (known(STATE_TONE, state) ? STATE_TONE[state] : 'warn');
+/** Known states rank 0 to 4; any other state ranks after them, at a fixed place. */
+const UNKNOWN_RANK = 5;
+const rankOf = (state: ModelState): number => (known(STATE_RANK, state) ? STATE_RANK[state] : UNKNOWN_RANK);
 /** A plain sentence for a reason code, or null when the code has none. The code itself is never shown as the only explanation. */
-export const reasonWords = (code: string | null): string | null => (code === null ? null : REASON_WORDS[code] ?? null);
+export const reasonWords = (code: string | null): string | null => (known(REASON_WORDS, code) ? REASON_WORDS[code]! : null);
+/** The sentence of a reason code, or, for a code this app does not know, a sentence that names it. Null only when there is no code. */
+const reasonLine = (code: string | null): string | null => {
+  const words = reasonWords(code);
+  if (words !== null) return words;
+  return typeof code === 'string' && code !== '' ? `${LOCAL_WORDS.reasonUnknown} Code: ${code}.` : null;
+};
 
 const finite = (n: number | null): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 const GROUP = /\B(?=(\d{3})+(?!\d))/g;
@@ -102,7 +118,7 @@ export interface Row {
   readonly tone: Tone;
   /** A plain sentence for a state that is not "up", or null. */
   readonly why: string | null;
-  /** True for a card that shows only the title, the state and the reason: it has no facts and no notes. */
+  /** True for a card that shows the title, the state, the reason and its own notes, and no facts. */
   readonly compact: boolean;
   readonly facts: readonly Fact[];
   /** The row's own notes as plain sentences, when the report carries them (a later report version). Empty when it does not. */
@@ -122,7 +138,7 @@ export function rowNotes(model: LocalModel): readonly string[] {
   for (const item of raw) {
     const code = typeof item === 'string' ? item : item !== null && typeof item === 'object' && typeof (item as { code?: unknown }).code === 'string' ? (item as { code: string }).code : null;
     const text = item !== null && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string' ? (item as { text: string }).text : null;
-    const words = text ?? (code === null ? null : NOTE_WORDS[code] ?? null);
+    const words = text !== null && text.trim() !== '' ? text : code === null || code === '' ? null : known(NOTE_WORDS, code) ? NOTE_WORDS[code]! : `${LOCAL_WORDS.rowNoteUnknown} Code: ${code}.`;
     if (words !== null && !out.includes(words)) out.push(words);
   }
   return Object.freeze(out);
@@ -156,23 +172,39 @@ const COMPACT_STATES: readonly ModelState[] = Object.freeze(['down', 'unreachabl
 export function rowOf(model: LocalModel): Row {
   const compact = COMPACT_STATES.includes(model.state);
   return Object.freeze({
-    id: model.id, name: titleOf(model), stateText: stateWords(model.state), tone: stateTone(model.state), why: model.state === 'up' ? null : reasonWords(model.stateReason),
-    compact, facts: compact ? Object.freeze([]) : factsOf(model), notes: compact ? Object.freeze([]) : rowNotes(model),
+    id: model.id, name: titleOf(model), stateText: stateWords(model.state), tone: stateTone(model.state), why: model.state === 'up' ? null : reasonLine(model.stateReason),
+    compact, facts: compact ? Object.freeze([]) : factsOf(model), notes: rowNotes(model),
   });
 }
 
-/** Up first, then starting, not answering, not supported and down; then by name, then by port. */
+/** Up first, then starting, not answering, not supported and down, then any state this app does not know; then by name, then by port. */
 export function sortModels(models: readonly LocalModel[]): readonly LocalModel[] {
-  return [...models].sort((a, b) => STATE_RANK[a.state] - STATE_RANK[b.state] || (baseName(a.modelName) ?? '').localeCompare(baseName(b.modelName) ?? '') || a.port - b.port);
+  return [...models].sort((a, b) => rankOf(a.state) - rankOf(b.state) || (baseName(a.modelName) ?? '').localeCompare(baseName(b.modelName) ?? '') || a.port - b.port);
 }
+
+/** The sentences of a report's notes, each with a key that is unique in the report. */
+interface Shown { readonly sentences: readonly string[]; readonly sentenceKeys: readonly string[] }
 
 export type ReportView =
   /** The probe itself failed: the report holds no servers and no count. Only the note's sentence is shown. */
-  | { readonly kind: 'probe-failed'; readonly sentences: readonly string[]; readonly rows: readonly []; readonly summary: null }
-  | { readonly kind: 'empty'; readonly sentences: readonly string[]; readonly rows: readonly []; readonly summary: string }
-  | { readonly kind: 'rows'; readonly sentences: readonly string[]; readonly rows: readonly Row[]; readonly summary: string };
+  | ({ readonly kind: 'probe-failed'; readonly rows: readonly []; readonly summary: null } & Shown)
+  /** The local models file could not be read and no server was probed: the note and its reason are shown, with no "no servers" sentence and no count. */
+  | ({ readonly kind: 'config-unreadable'; readonly rows: readonly []; readonly summary: null } & Shown)
+  | ({ readonly kind: 'empty'; readonly rows: readonly []; readonly summary: string } & Shown)
+  | ({ readonly kind: 'rows'; readonly rows: readonly Row[]; readonly summary: string } & Shown);
 
-const noteSentence = (note: LocalModelsNote): string => note.text;
+const clean = (value: unknown): string | null => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
+
+/**
+ * The plain sentence of a note: its text, then its reason when it has one ("Reason: PARSE."). A note with no text, or whose text is blank, is never blank on screen:
+ * a generic sentence names its code and its reason.
+ */
+export function noteSentence(note: LocalModelsNote): string {
+  const text = clean(note?.text), code = clean(note?.code), reason = clean(note?.reason);
+  const why = reason === null ? '' : ` Reason: ${reason}.`;
+  if (text !== null) return `${/[.!?]$/.test(text) ? text : `${text}.`}${why}`;
+  return `${LOCAL_WORDS.noteUnknown} Code: ${code ?? 'none'}.${why}`;
+}
 
 /** "2 up, 1 down", or "None up" when nothing is up. */
 export function summaryOf(models: readonly LocalModel[]): string {
@@ -183,13 +215,26 @@ export function summaryOf(models: readonly LocalModel[]): string {
 
 /**
  * What the screen shows for a report. A PROBE_FAILED note means the report is empty because the read failed, not because no server is set up: the note's sentence is shown
- * instead of the empty state and instead of any count. Every other note is shown as its plain sentence, such as PARTIAL_READ.
+ * instead of the empty state and instead of any count. A CONFIG_UNREADABLE note with no servers is the same: the file could not be read, so "no servers are set up" would be false.
+ * Every other note is shown as its plain sentence, such as PARTIAL_READ.
  */
 export function viewOf(report: LocalModelsReport): ReportView {
-  const sentences = report.notes.map(noteSentence);
-  if (report.notes.some(n => n.code === 'PROBE_FAILED')) return Object.freeze({ kind: 'probe-failed', sentences: Object.freeze(sentences), rows: Object.freeze([]) as readonly [], summary: null });
-  if (report.models.length === 0) return Object.freeze({ kind: 'empty', sentences: Object.freeze(sentences.filter((_, i) => report.notes[i]!.code !== 'NO_ENDPOINTS')), rows: Object.freeze([]) as readonly [], summary: summaryOf([]) });
-  return Object.freeze({ kind: 'rows', sentences: Object.freeze(sentences), rows: Object.freeze(sortModels(report.models).map(rowOf)), summary: summaryOf(report.models) });
+  const seen = new Map<string, number>();
+  const items = report.notes.map(note => {
+    const code = clean(note?.code) ?? 'none';
+    const n = seen.get(code) ?? 0;
+    seen.set(code, n + 1);
+    return { code, key: `${code}-${n}`, text: noteSentence(note) };
+  });
+  const shown = (keep: (code: string) => boolean = () => true): Shown => {
+    const kept = items.filter(i => keep(i.code));
+    return { sentences: Object.freeze(kept.map(i => i.text)), sentenceKeys: Object.freeze(kept.map(i => i.key)) };
+  };
+  const has = (code: string): boolean => items.some(i => i.code === code);
+  if (has('PROBE_FAILED')) return Object.freeze({ kind: 'probe-failed', ...shown(), rows: Object.freeze([]) as readonly [], summary: null });
+  if (report.models.length === 0 && has('CONFIG_UNREADABLE')) return Object.freeze({ kind: 'config-unreadable', ...shown(), rows: Object.freeze([]) as readonly [], summary: null });
+  if (report.models.length === 0) return Object.freeze({ kind: 'empty', ...shown(code => code !== 'NO_ENDPOINTS'), rows: Object.freeze([]) as readonly [], summary: summaryOf([]) });
+  return Object.freeze({ kind: 'rows', ...shown(), rows: Object.freeze(sortModels(report.models).map(rowOf)), summary: summaryOf(report.models) });
 }
 
 /** True when the last good read is older than the limit, or the last call failed. `now` and `sampledAt` are milliseconds. */

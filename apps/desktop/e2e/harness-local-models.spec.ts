@@ -44,8 +44,10 @@ test('the screen lists the three sample servers with their state, figures and "n
   await expect(p.locator('.hx-count')).toHaveText('2 up, 1 down');
   const dir = test.info().outputDir;
   mkdirSync(dir, { recursive: true });
+  // The screenshot is taken at 1280 by 800, and the window goes back to the size it had, so the next test starts where this one did.
+  const before = p.viewportSize() ?? await p.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
   await p.setViewportSize({ width: 1280, height: 800 });
-  await p.screenshot({ path: join(dir, 'local-models-screen.png') });
+  try { await p.screenshot({ path: join(dir, 'local-models-screen.png') }); } finally { await p.setViewportSize(before); }
 });
 
 test('a server that is down is a compact card: the title, the state and the reason, with no field', async () => {
@@ -83,23 +85,44 @@ test('the navigation has a Local models item after the list answers, and it is t
   await expect(p.locator('[data-screen="local-models"]')).toBeVisible();
 });
 
-test('the Refresh button is reachable by keyboard, the rows are named headings, and the list has a name', async () => {
+test('the Refresh button is reachable by keyboard, keeps the focus through a read, and says Updated only when it was pressed', async () => {
   const p = page();
   await fresh(p, '#sample/local-models');
   const refresh = p.getByRole('button', { name: 'Refresh', exact: true });
+  const announce = p.locator('[data-local-announce]');
+  await expect(announce).toHaveText('');
   await refresh.focus();
   await expect(refresh).toBeFocused();
+  await expect(refresh).toBeEnabled();
   await p.keyboard.press('Enter');
+  await expect(announce).toHaveText('Updated.');
+  await expect(refresh).toBeFocused();
+  await expect(refresh).toBeEnabled();
   await expect(p.locator('[data-model]')).toHaveCount(3);
   await expect(p.getByRole('list', { name: 'Local model servers' })).toBeVisible();
   await expect(p.getByRole('heading', { level: 2, name: 'Example-9B \u00b7 port 8091' })).toBeVisible();
+  // The line is a status region that is on the page from the start.
+  await expect(p.locator('[data-local-announce][role="status"]')).toHaveCount(1);
 });
 
-test('the screen reads again by itself while the page is visible', async () => {
+test('the screen reads again by itself while the page is visible, and an automatic read announces nothing and keeps the focus', async () => {
   const p = page();
   await fresh(p, '#sample/local-models');
+  await expect(p.locator('[data-model]')).toHaveCount(3);
+  // Every read of the sample bridge asks the clock for its time, so the count of those asks counts the reads.
+  await p.evaluate(() => {
+    const w = window as unknown as { __reads: number };
+    const original = Date.prototype.toISOString;
+    w.__reads = 0;
+    Date.prototype.toISOString = function toISOString(this: Date): string { w.__reads += 1; return original.call(this); };
+  });
+  const refresh = p.getByRole('button', { name: 'Refresh', exact: true });
+  await refresh.focus();
   const first = await p.locator('[data-model]').first().getAttribute('data-model');
-  await p.waitForTimeout(3500);
+  await expect.poll(() => p.evaluate(() => (window as unknown as { __reads: number }).__reads), { timeout: 8000, message: 'a second read' }).toBeGreaterThanOrEqual(1);
   await expect(p.locator('[data-model]')).toHaveCount(3);
   expect(await p.locator('[data-model]').first().getAttribute('data-model')).toBe(first);
+  await expect(p.locator('[data-local-announce]')).toHaveText('');
+  await expect(refresh).toBeFocused();
+  await expect(refresh).toBeEnabled();
 });

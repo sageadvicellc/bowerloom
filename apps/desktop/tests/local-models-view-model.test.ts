@@ -2,7 +2,7 @@
 // the order of rows, the optional notes of a row, and a failed probe that shows the note's sentence and never an empty state or a zero count.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LOCAL_WORDS, REFRESH_MS, STALE_AFTER_MS, baseName, contextPercent, contextWords, factsOf, formatBytes, formatCount, formatRate, isStale, reasonWords, rowNotes, rowOf, sortModels, stateWords, summaryOf, viewOf } from '../shared/local-models/view-model.js';
+import { LOCAL_WORDS, REFRESH_MS, STALE_AFTER_MS, baseName, noteSentence, stateTone, contextPercent, contextWords, factsOf, formatBytes, formatCount, formatRate, isStale, reasonWords, rowNotes, rowOf, sortModels, stateWords, summaryOf, viewOf } from '../shared/local-models/view-model.js';
 import type { LocalModel, LocalModelsReport } from '../shared/local-models/types.js';
 import { createSampleLocal, sampleLocalReport, LOCAL_MODELS_MANIFEST } from '../shared/local-models/sample.js';
 
@@ -80,15 +80,15 @@ test('the title is the model name without its quantization and extension, then t
   assert.equal(rowOf(model({ modelName: '', modelFile: '', port: 8093 })).name, 'llama-server \u00b7 port 8093');
 });
 
-test('a down, starting or unreachable server is a compact card: the title, the state, the reason and nothing else; no "not reported" field', () => {
+test('a down, starting or unreachable server is a compact card: the title, the state, the reason and its own notes; no fact and no "not reported" field', () => {
   for (const [state, reason] of [['down', 'CONNECTION_REFUSED'], ['unreachable', 'TIMEOUT'], ['starting', 'LOADING']] as const) {
     const row = rowOf({ ...model({ ...NULLS, state, stateReason: reason }), notes: [{ code: 'PARTIAL_READ' }] } as unknown as LocalModel);
-    assert.deepEqual(row.facts, [], state); assert.deepEqual(row.notes, [], state); assert.equal(row.compact, true, state);
+    assert.deepEqual(row.facts, [], state); assert.deepEqual(row.notes, ['Some figures of this server could not be read.'], `${state}: a compact card keeps its own notes`); assert.equal(row.compact, true, state);
     assert.equal(row.name, 'llama-server \u00b7 port 8091'); assert.ok(row.why !== null && row.why.length > 5, state);
     assert.doesNotMatch(JSON.stringify(row), /not reported/, state);
   }
   const unknown = rowOf(model({ ...NULLS, state: 'down', stateReason: 'SOMETHING_NEW' }));
-  assert.equal(unknown.why, null); assert.deepEqual(unknown.facts, []);
+  assert.match(unknown.why ?? '', /SOMETHING_NEW/, 'an unknown reason code still has a sentence that names it'); assert.deepEqual(unknown.facts, []);
   assert.equal(rowOf(model()).compact, false); assert.equal(rowOf(model()).facts.length, 9);
   assert.equal(rowOf(model({ ...NULLS, state: 'unsupported', stateReason: 'UNSUPPORTED_PROVIDER' })).compact, false, 'only the three states of the answer are compact');
 });
@@ -144,7 +144,7 @@ test('no servers set up is the empty state, with a count, and not a failed probe
 test('the notes of a row are read when present and ignored when not', () => {
   assert.deepEqual(rowNotes(model()), []);
   assert.deepEqual(rowNotes({ ...model(), notes: [{ code: 'PARTIAL_READ', text: 'Some figures could not be read.' }, { code: 'METRICS_OFF' }, { code: 'METRICS_UNREADABLE' }, { code: 'NEW_CODE' }, 'METRICS_OFF', 7, null] } as unknown as LocalModel),
-    ['Some figures could not be read.', 'This server runs without metrics, so speed and request figures are not reported.', 'The metrics of this server could not be read.']);
+    ['Some figures could not be read.', 'This server runs without metrics, so speed and request figures are not reported.', 'The metrics of this server could not be read.', 'A note about this server has no words yet. Code: NEW_CODE.']);
   assert.deepEqual(rowNotes({ ...model(), notes: 'PARTIAL_READ' } as unknown as LocalModel), []);
   assert.deepEqual(rowOf({ ...model(), notes: [{ code: 'METRICS_OFF' }] } as unknown as LocalModel).notes.length, 1);
 });
@@ -167,4 +167,50 @@ test('the sample: two up, one down, made-up names, no memory, and a sample bridg
   const bridge = createSampleLocal(() => '2026-11-11T10:00:00Z');
   assert.deepEqual(await bridge.localModels(), sample);
   assert.deepEqual((await bridge.listExtensions()).extensions, [LOCAL_MODELS_MANIFEST]);
+});
+
+
+test('a note with no text, or with a code this app does not know, is never blank: a generic sentence names the code and the reason', () => {
+  const blank = noteSentence({ code: 'NEW_THING', text: '', reason: 'PARSE' });
+  assert.match(blank, /NEW_THING/); assert.match(blank, /PARSE/); assert.ok(blank.trim().length > 20);
+  assert.match(noteSentence({ code: 'NEW_THING', text: '   ' }), /NEW_THING/);
+  assert.match(noteSentence({ code: '', text: '' } as never), /none/i);
+  assert.equal(noteSentence({ code: 'PARTIAL_READ', text: 'Some figures could not be read.' }), 'Some figures could not be read.');
+  assert.equal(noteSentence({ code: 'CONFIG_UNREADABLE', text: 'The file could not be read.', reason: 'PARSE' }), 'The file could not be read. Reason: PARSE.');
+  assert.deepEqual(viewOf(report({ notes: [{ code: 'X1', text: '' }] })).sentences.map(t => t.includes('X1')), [true]);
+});
+
+test('CONFIG_UNREADABLE with no servers shows the config note with its reason, and no empty sentence and no count', () => {
+  const text = 'The local models file could not be read, so no server was probed.';
+  const view = viewOf(report({ models: [], endpointsConfigured: 0, notes: [{ code: 'CONFIG_UNREADABLE', text, reason: 'PARSE' }] }));
+  assert.equal(view.kind, 'config-unreadable');
+  assert.deepEqual(view.sentences, [`${text} Reason: PARSE.`]);
+  assert.match(view.sentences[0]!, /PARSE/);
+  assert.equal(view.summary, null); assert.equal(view.rows.length, 0);
+  // With servers in the report the note sits above the rows and the view is still rows.
+  assert.equal(viewOf(report({ notes: [{ code: 'CONFIG_UNREADABLE', text, reason: 'PARSE' }] })).kind, 'rows');
+});
+
+test('an unknown state has words, a tone and a fixed rank after the known states; an unknown reason has a sentence', () => {
+  const odd = model({ state: 'sleeping' as never, stateReason: 'WEIRD' });
+  const row = rowOf(odd);
+  assert.match(row.stateText, /sleeping/); assert.equal(row.tone, 'warn'); assert.equal(stateTone('sleeping' as never), 'warn');
+  assert.match(row.why ?? '', /WEIRD/);
+  assert.doesNotMatch(JSON.stringify(row), /undefined|NaN/);
+  const sorted = sortModels([model({ id: 'x', state: 'sleeping' as never, modelName: 'A' }), model({ id: 'd', state: 'down', modelName: 'A' }), model({ id: 'u', modelName: 'B' }), model({ id: 'y', state: undefined as never, modelName: 'A' })]);
+  assert.deepEqual(sorted.map(m => m.id), ['u', 'd', 'x', 'y']);
+  assert.equal(rowOf(model({ state: 'unreachable', stateReason: null })).why, null);
+});
+
+test('a report with two notes of one code gives each its own key', () => {
+  const view = viewOf(report({ notes: [{ code: 'PARTIAL_READ', text: 'Same.' }, { code: 'PARTIAL_READ', text: 'Same.' }, { code: 'OTHER', text: 'Same.' }] }));
+  assert.equal(view.sentenceKeys.length, 3); assert.equal(new Set(view.sentenceKeys).size, 3);
+});
+
+test('the sample bridge takes its clock from the caller', async () => {
+  let at = '2026-11-11T10:00:00Z';
+  const bridge = createSampleLocal(() => at);
+  assert.equal((await bridge.localModels()).sampledAt, at);
+  at = '2026-11-11T10:00:03Z';
+  assert.equal((await bridge.localModels()).sampledAt, at);
 });

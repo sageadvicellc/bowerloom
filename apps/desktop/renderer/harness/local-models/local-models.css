@@ -13,3 +13,4 @@
 [data-home] .hxl-fact dt { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.35; }
 [data-home] .hxl-fact dd { margin: 0; font-size: var(--hm-text-base); line-height: 1.35; overflow-wrap: anywhere; }
 [data-home] .hxl-fact:not([data-reported]) dd { color: var(--text-muted); }
+[data-home] .hxl-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

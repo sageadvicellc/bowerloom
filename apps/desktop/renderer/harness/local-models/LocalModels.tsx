@@ -4,19 +4,21 @@
  * The screen reads again every few seconds while the page is visible, and has a Refresh button. It stores nothing. All display logic is in shared/local-models/view-model.ts.
  * Structure copied from Install history (screens/History.tsx): Screen, a hint line, then a list of rows with a tile, a name and a state dot.
  */
+import { memo, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Screen } from '../Screen.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon } from '../icons.js';
-import { LOCAL_WORDS, isStale, viewOf } from '../../../shared/local-models/view-model.js';
+import { LOCAL_WORDS, viewOf } from '../../../shared/local-models/view-model.js';
 import type { Row } from '../../../shared/local-models/view-model.js';
-import type { LocalModelsReport } from '../../../shared/local-models/types.js';
-import { realNowMs } from '../clock.js';
+import type { LocalModelsReport, SkippedExtension } from '../../../shared/local-models/types.js';
 import { useLocal } from './local.js';
 import { useLocalReport } from './useLocalReport.js';
+import type { Announce } from './useLocalReport.js';
 import './local-models.css';
 
-function ModelRow({ row }: { row: Row }): ReactElement {
+/** One card. The rows of a view are the same objects while the figures are the same, so a read of the same figures draws no card again. */
+const ModelRow = memo(function ModelRow({ row }: { row: Row }): ReactElement {
   const titleId = `hxl-name-${row.id}`;
   return (
     <li className="hx-row hxl-row" data-model={row.id} data-state={row.stateText} data-compact={row.compact ? '' : undefined} aria-labelledby={titleId}>
@@ -27,7 +29,7 @@ function ModelRow({ row }: { row: Row }): ReactElement {
           <StateDot tone={row.tone} className="hx-row-state">{row.stateText}</StateDot>
         </div>
         {row.why === null ? null : <p className="hx-text hx-muted hxl-why">{row.why}</p>}
-        {row.notes.map(note => <p key={note} className="hx-text hx-muted hxl-why" data-row-note="">{note}</p>)}
+        {row.notes.map((note, i) => <p key={`${i}-${note}`} className="hx-text hx-muted hxl-why" data-row-note="">{note}</p>)}
         {row.facts.length === 0 ? null : (
           <dl className="hxl-facts">
             {row.facts.map(fact => (
@@ -41,11 +43,42 @@ function ModelRow({ row }: { row: Row }): ReactElement {
       </div>
     </li>
   );
+});
+
+export const HOST_WORDS = Object.freeze({ notStarted: 'The extension host has not started yet. Trying again.', skipped: 'These extensions could not be loaded.', unavailable: 'The Local models extension did not load.' });
+
+export interface PendingProps {
+  /** The short code of the failure of the extension list, once it has failed a few times. */
+  readonly problem?: string | null;
+  /** The extensions main could not load, with the short code of each. */
+  readonly skipped?: readonly SkippedExtension[];
+  /** False once the list has answered and this extension is still not there: the waiting line is then not true. */
+  readonly loading?: boolean;
 }
 
-/** The screen while the extension list has not answered yet at launch. The host may not be ready for a moment, so this is a plain waiting line and never an error. */
-export function LocalModelsPending(): ReactElement {
-  return <Screen slot="local-models" title={LOCAL_WORDS.title}><p className="kit-hint hx-hint" role="status" data-local-pending="">{LOCAL_WORDS.loading}</p></Screen>;
+/**
+ * The screen while the extension list has not answered yet at launch. The host may not be ready for a moment, so it starts as a plain waiting line and never an error. After a few failed tries it says
+ * that the extension host has not started, with the code, and the tries go on. Extensions that main skipped are listed with the code of each.
+ */
+export function LocalModelsPending(props: PendingProps = {}): ReactElement {
+  return <Screen slot="local-models" title={LOCAL_WORDS.title}><PendingBody {...props} /></Screen>;
+}
+
+/** The lines of the waiting screen, without the screen around them. */
+export function PendingBody({ problem = null, skipped = [], loading = true }: PendingProps): ReactElement {
+  return (
+    <>
+      {problem === null
+        ? <p className="kit-hint hx-hint" role="status" data-local-pending="">{loading ? LOCAL_WORDS.loading : HOST_WORDS.unavailable}</p>
+        : <p className="kit-hint hx-hint" role="status" data-local-pending="" data-local-problem={problem}>{HOST_WORDS.notStarted} Code: {problem}.</p>}
+      {skipped.length === 0 ? null : (
+        <div data-local-skipped="">
+          <p className="hx-text">{HOST_WORDS.skipped}</p>
+          <ul>{skipped.map((x, i) => <li key={`${i}-${x.name}`} data-skipped={x.name}>{x.name}. Code: {x.code}.</li>)}</ul>
+        </div>
+      )}
+    </>
+  );
 }
 
 export interface BodyProps {
@@ -58,18 +91,26 @@ export interface BodyProps {
   /** True when the last good read is old, or the newest read failed. */
   readonly stale: boolean;
   readonly busy: boolean;
+  /** The short code of the newest failed read, shown beside the words of the failure. */
+  readonly code?: string | null;
+}
+
+/** A status line that only a screen reader hears. It is always on the page, so that a change in it is read out. */
+export function ReadAnnouncer({ announce }: { announce: Announce }): ReactElement {
+  return <p className="hxl-sr-only" role="status" data-local-announce="">{announce === 'reading' ? LOCAL_WORDS.refreshing : announce === 'updated' ? LOCAL_WORDS.updated : ''}</p>;
 }
 
 /** What the stage shows. Every state has words: no bridge, loading, retrying, a failed probe, no server set up, and the rows. A failed probe shows the note's sentence and never the empty state. */
-export function LocalModelsBody({ available, sample, report, failed, stale, busy }: BodyProps): ReactElement {
+export function LocalModelsBody({ available, sample, report, failed, stale, busy, code = null }: BodyProps): ReactElement {
   if (!available) return <p className="kit-hint hx-hint" role="status" data-local-state="no-bridge">{LOCAL_WORDS.noBridge}</p>;
-  const view = report === null ? null : viewOf(report);
+  const view = useMemo(() => (report === null ? null : viewOf(report)), [report]);
+  const codeLine = code === null ? null : ` Code: ${code}.`;
   return (
     <div className="hxl-body" aria-busy={busy}>
       {sample ? <p className="kit-hint hx-hint" data-local-sample="">{LOCAL_WORDS.sample}</p> : null}
-      {view === null ? <p className="kit-hint hx-hint" role="status" data-local-state={failed ? 'retrying' : 'loading'}>{failed ? LOCAL_WORDS.failedFirst : LOCAL_WORDS.loading}</p> : null}
-      {view !== null && stale ? <p className="kit-hint hx-hint" role="status" data-local-state="stale">{LOCAL_WORDS.stale}</p> : null}
-      {view === null ? null : view.sentences.map(sentence => <p key={sentence} className="hx-text" data-local-note="">{sentence}</p>)}
+      {view === null ? <p className="kit-hint hx-hint" role="status" data-local-state={failed ? 'retrying' : 'loading'}>{failed ? `${LOCAL_WORDS.failedFirst}${codeLine ?? ''}` : LOCAL_WORDS.loading}</p> : null}
+      {view !== null && stale ? <p className="kit-hint hx-hint" role="status" data-local-state="stale">{LOCAL_WORDS.stale}{failed ? codeLine : null}</p> : null}
+      {view === null ? null : view.sentences.map((sentence, i) => <p key={view.sentenceKeys[i]} className="hx-text" data-local-note="">{sentence}</p>)}
       {view === null || view.kind !== 'empty' ? null : <p className="hx-text" data-local-state="empty">{LOCAL_WORDS.empty}</p>}
       {view === null || view.kind !== 'rows' ? null : <ul className="hxl-list" aria-label={LOCAL_WORDS.list}>{view.rows.map(row => <ModelRow key={row.id} row={row} />)}</ul>}
     </div>
@@ -79,12 +120,13 @@ export function LocalModelsBody({ available, sample, report, failed, stale, busy
 export function LocalModels(): ReactElement {
   const { bridge, sample } = useLocal();
   const state = useLocalReport(bridge);
-  const view = state.report === null ? null : viewOf(state.report);
-  const stale = state.report !== null && isStale(state.failed, state.at, realNowMs());
-  const refresh = <HButton icon="play" disabled={bridge === null || state.busy} onClick={state.refresh}>{LOCAL_WORDS.refresh}</HButton>;
+  const view = useMemo(() => (state.report === null ? null : viewOf(state.report)), [state.report]);
+  // Refresh stays enabled while a read runs, so keyboard focus is never dropped. The hook ignores a click while a read runs.
+  const refresh = <HButton icon="play" disabled={bridge === null} onClick={state.refresh}>{LOCAL_WORDS.refresh}</HButton>;
   return (
     <Screen slot="local-models" title={LOCAL_WORDS.title} count={view === null || view.summary === null ? undefined : view.summary} tools={refresh}>
-      <LocalModelsBody available={bridge !== null} sample={sample} report={state.report} failed={state.failed} stale={stale} busy={state.busy} />
+      <ReadAnnouncer announce={state.announce} />
+      <LocalModelsBody available={bridge !== null} sample={sample} report={state.report} failed={state.failed} stale={state.report !== null && state.stale} busy={state.busy} code={state.code} />
     </Screen>
   );
 }

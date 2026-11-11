@@ -12,6 +12,7 @@ import { createSampleEngine } from '../../shared/engine/sample.js';
 import { LOCAL_CALLS } from '../../shared/api/local.js';
 import type { LocalBridge, LocalRefusalCode } from '../../shared/api/local.js';
 import { createSampleLocal } from '../../shared/local-models/sample.js';
+import { realNowIso } from '../harness/clock.js';
 import { pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
@@ -60,5 +61,5 @@ export const localCodeOf = (error: unknown): LocalRefusalCode => refusalCode(err
  * The sample is never used for the real launch.
  */
 export function fallbackLocal(realMode: boolean): LocalBridge | null {
-  return realMode ? getApiClient().local : createSampleLocal();
+  return realMode ? getApiClient().local : createSampleLocal(realNowIso);
 }
