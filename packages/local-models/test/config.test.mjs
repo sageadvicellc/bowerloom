@@ -14,6 +14,7 @@ function stateRoot(t, content) {
 }
 const ports = result => result.endpoints.map(e => `${e.provider}:${e.port}${e.configured ? '' : '?'}`);
 const codes = result => result.notes.map(n => n.code);
+const reasons = result => result.notes.map(n => n.reason);
 
 test('the file is local-models.json, and the three well-known defaults are 8080, 11434 and 1234', () => {
   assert.equal(CONFIG_FILE_NAME, 'local-models.json');
@@ -103,6 +104,30 @@ test('a file that cannot be read gives no endpoint at all and CONFIG_UNREADABLE:
     assert.equal(result.unreadable, true);
     assert.equal(result.endpointsConfigured, 0);
   }
+});
+
+test('CONFIG_UNREADABLE carries a reason code: PARSE, SHAPE, TOO_LARGE, NOT_FILE or IO', t => {
+  const reasonOf = content => reasons(readEndpointConfig(stateRoot(t, content)));
+  assert.deepEqual(reasonOf('{'), ['PARSE']);
+  assert.deepEqual(reasonOf(''), ['PARSE']);
+  for (const shape of ['null', '[]', '42', '{}', '{"endpoints":5}']) assert.deepEqual(reasonOf(shape), ['SHAPE'], shape);
+  assert.deepEqual(reasonOf(`{"endpoints":[],"pad":"${'x'.repeat(20000)}"}`), ['TOO_LARGE']);
+  const dir = stateRoot(t);
+  fs.mkdirSync(path.join(dir, CONFIG_FILE_NAME));
+  assert.deepEqual(reasons(readEndpointConfig(dir)), ['NOT_FILE']);
+  assert.deepEqual(reasons(readEndpointConfig(5)), ['IO']);
+  for (const note of readEndpointConfig(dir).notes) assert.ok(!/[\\/]/.test(JSON.stringify(note)), 'no path in the note');
+});
+
+test('a state folder that is really a file (ENOTDIR) is CONFIG_UNREADABLE with NOT_FILE, not "no file"', t => {
+  const dir = stateRoot(t);
+  const asFile = path.join(dir, 'plain');
+  fs.writeFileSync(asFile, 'x');
+  const result = readEndpointConfig(asFile);
+  assert.equal(result.unreadable, true);
+  assert.deepEqual(result.endpoints, []);
+  assert.deepEqual(codes(result), ['CONFIG_UNREADABLE']);
+  assert.deepEqual(reasons(result), ['NOT_FILE']);
 });
 
 test('a byte order mark in front of good JSON is accepted', t => {

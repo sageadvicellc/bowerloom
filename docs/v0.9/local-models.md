@@ -28,7 +28,7 @@ Rules:
 
 ## The three default ports
 
-These are probed without any file. A default that does not answer is left out of the report, so you do not see a wall of "down".
+These are probed without any file. A default that does not answer is left out of the report, so you do not see a wall of "down". This is by design: an unreachable default endpoint is dropped silently, and only a port you wrote in the file shows as down, unreachable or unsupported.
 
 - llama-server: 8080
 - Ollama: 11434
@@ -49,10 +49,14 @@ A row that is not `up` carries a short reason code, such as `CONNECTION_REFUSED`
 ## Notes
 
 - `METRICS_OFF`: the server runs without metrics, so request and speed figures are not reported.
-- `PARTIAL_READ`: the server answered, but at least one of `/props`, `/slots`, `/v1/models` or `/metrics` failed. Some figures could not be read. A 404 or 501 is not a failure: it means the server switched that endpoint off.
+- `METRICS_UNREADABLE`: `/metrics` answered 200, but none of the figures asked for were in it. A 404 or 501 is `METRICS_OFF` instead.
+- `PARTIAL_READ`: the server answered, but at least one of `/props`, `/slots`, `/v1/models` or `/metrics` failed, or answered 200 with a body that could not be read or lacked its expected key. Some figures could not be read. A 404 or 501 is not a failure: it means the server switched that endpoint off.
 - `NO_ENDPOINTS`: no local server answered.
-- `CONFIG_UNREADABLE`: the ports file could not be read.
+- `CONFIG_UNREADABLE`: the ports file could not be read. Its `reason` is `PARSE` (not JSON), `SHAPE` (wrong form), `TOO_LARGE`, `NOT_FILE` (a folder, a link, or a path through a file) or `IO` (any other read error).
+- `PROBE_FAILED`: the whole probe failed. Its `reason` is the error class, such as `TYPE_ERROR` or `ERROR`. The message is never kept.
 - `ENDPOINT_REFUSED_*`, `TOO_MANY_ENDPOINTS`: an entry in the ports file was left out.
+
+The report-level `notes` list holds each code once. Each model row also has its own `notes`: the codes that apply to that row (`PARTIAL_READ`, `METRICS_OFF`, `METRICS_UNREADABLE`), each with the `paths` that caused it, taken from a fixed list. No response text is kept.
 
 A figure the server did not give is shown as "not reported". It is never shown as 0.
 

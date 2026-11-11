@@ -41,6 +41,8 @@ export interface LocalModel {
   /** Always null in this version: no process is read. */
   readonly uptimeSeconds: number | null;
   readonly build: string | null;
+  /** The conditions of this row alone. Empty when the row was read in full. The report-level `notes` stays as it is. */
+  readonly notes: readonly LocalModelRowNote[];
   /** ISO time of the probe. */
   readonly sampledAt: string;
 }
@@ -48,6 +50,18 @@ export interface LocalModel {
 export interface LocalModelsNote {
   readonly code: string;
   readonly text: string;
+  /** A short code that says why, such as PARSE or NOT_FILE for CONFIG_UNREADABLE, or an error class for PROBE_FAILED. Absent when the note has no sub-cause. Never message text. */
+  readonly reason?: string;
+}
+
+/** The paths a row note may name. A fixed list: a path is never built from what a server sent. */
+export const ROW_NOTE_PATHS = ['/health', '/props', '/slots', '/metrics', '/v1/models'] as const;
+export type RowNotePath = (typeof ROW_NOTE_PATHS)[number];
+
+/** A condition of one row: PARTIAL_READ, METRICS_OFF or METRICS_UNREADABLE, with the paths that caused it. No body text. */
+export interface LocalModelRowNote {
+  readonly code: string;
+  readonly paths: readonly RowNotePath[];
 }
 
 export interface LocalModelsReport {
