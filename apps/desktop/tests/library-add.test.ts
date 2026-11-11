@@ -1,7 +1,7 @@
 // Library Add (issue 148), variant C: the pure rules of the small Add form in each Library tab. No screen, no engine.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NOTES_READY, folderStepLines, listAfter, notesTone, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS } from '../shared/harness/library-add.js';
+import { NOTES_READY, folderStepLines, listAfter, notesTone, addState, canAttach, copySources, notesDone, notesRestart, NOTES_START, keeperHeld, notesEdits, skillEdits, skillHeld, targetsFor, KEEPER_EDITS, showLinkAction, linkTarget } from '../shared/harness/library-add.js';
 import { firstSaved, savedReduce } from '../renderer/harness/real/saved-scan.js';
 import { WORDS } from '../renderer/harness/words.js';
 import { LIMITS, bannedHere, countWords } from '../shared/harness/words.js';
@@ -147,3 +147,32 @@ test('notes that can be attached but leave the keeper reporting only are said in
   for (const how of ['report-only', 'git-missing']) assert.equal(notesTone(how), 'quiet', how);
 });
 
+
+// ---- the empty Context tab and the link flow (beta.2 Context page)
+
+test('the empty Context tab offers to link a notes folder, and no other tab or state does', () => {
+  const base = { kind: 'context', real: true, shown: 0, query: '' } as const;
+  assert.equal(showLinkAction(base), true);
+  assert.equal(showLinkAction({ ...base, query: '   ' }), true, 'a blank search is no search');
+  assert.equal(showLinkAction({ ...base, query: 'wiki' }), false, 'a search that finds nothing says so, and is not the empty tab');
+  assert.equal(showLinkAction({ ...base, shown: 1 }), false);
+  assert.equal(showLinkAction({ ...base, real: false }), false, 'the sample links nothing');
+  for (const kind of ['skill', 'agent', 'tool'] as const) assert.equal(showLinkAction({ ...base, kind }), false, kind);
+});
+
+test('a notes folder goes to the folder of the same label: ready with a harness, or it needs one started', () => {
+  const list = [folder('a', { label: '~/Documents/wiki' }), folder('b', { label: '~/Documents/bare', hasDefinition: false }), folder('c', { label: '~/Documents/broken', problem: 'harness.json is not valid.' }), folder('d', { label: '~/Documents/stopped', unfinished: { projection: false, adoption: true } })];
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/wiki' }), { kind: 'ready', folder: list[0] });
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/bare' }), { kind: 'needs-harness', folder: list[1] }, 'a folder with no harness can be linked through the new flow');
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/elsewhere' }), { kind: 'needs-harness', folder: null }, 'a folder main does not list yet: the new flow picks it');
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/broken' }), { kind: 'blocked', folder: list[2], why: 'harness.json is not valid.' });
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/stopped' }), { kind: 'blocked', folder: list[3], why: 'A change stopped part way here.' });
+});
+
+test('the new words of the link flow are short plain lines', () => {
+  const lines = [WORDS.label.linkNotes, WORDS.label.startHarness, WORDS.label.stepNotes, WORDS.label.linkNotesTitle];
+  for (const line of lines) { assert.ok(countWords(line) <= LIMITS.label, line); assert.equal(bannedHere(line), null, line); }
+  const hints = [WORDS.hint.linkEmpty, WORDS.hint.linkWhich, WORDS.hint.needsHarness, WORDS.hint.chooseAgain, WORDS.hint.linkIntro];
+  for (const line of hints) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
+  assert.equal(WORDS.label.linkNotes, 'Link a notes folder');
+});
