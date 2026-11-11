@@ -63,7 +63,7 @@ export const READER_REFUSAL_CODES: readonly string[] = Object.freeze(['BAD_ARGUM
 export const LOCAL_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT']);
 
 /** The codes a runs call is refused with before it runs: the wrong page, a wrong argument, a folder or a run main does not know. FAILED (an unexpected failure) is not named, as for the local calls. */
-export const RUN_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN']);
+export const RUN_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG', 'FOLDER_CHARACTER', 'FOLDER_LINK']);
 
 /** Every code the engine side returns that the contract names. */
 export function engineRefusalCodes(): ReadonlySet<string> {

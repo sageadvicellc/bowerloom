@@ -11,7 +11,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { chmodSync, existsSync, readFileSync, realpathSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -106,12 +106,12 @@ test('a folder with no log, a log that cannot be read and an engine with no read
   const p = page(), dir = teamFolder(home), start = startedMs();
   await registerFolder(h, dir);
   await addRun(p, { engine: 'Codex', instruction: 'No log for this one.', startMs: start });
-  await expect(p.locator('[data-figures-why]')).toHaveText('No session log found. Details stay as you recorded them.');
+  await expect(p.locator('[data-figures-why]')).toHaveText('No session log found in ~/Projects/team, within an hour of the start. Details stay as you recorded them.');
   await expect(p.locator('[data-figure="duration"] dd')).toHaveText('Not read');
   await expect(p.locator('[data-figure="input"] dd')).toHaveText('Not read');
   garbageClaudeLog(home, dir);
   await addRun(p, { engine: 'Claude Code', instruction: 'A log that is not a log.', startMs: start });
-  await expect(p.locator('[data-figures-why]')).toHaveText('Could not read the log.');
+  await expect(p.locator('[data-figures-why]')).toHaveText('Could not tell when the log began. Not read.');
   await expect(p.locator('[data-figure="output"] dd')).toHaveText('Not read');
   await addRun(p, { engine: 'OpenCode', instruction: 'An engine with no reader.', startMs: start });
   await expect(p.locator('[data-figures-why]')).toHaveText('Figures are not available for this engine.');
@@ -213,4 +213,23 @@ test('Record this run shows only after a copy, records the run once, and Show th
   await expect(p.getByRole('heading', { level: 1, name: 'Runs', exact: true })).toBeVisible();
   await expect(p.locator('[data-run]')).toHaveCount(2);
   await expect(p.locator('[data-run]').first()).toContainText('Claude Code in team');
+});
+
+test('a damaged saved file is shown as damaged, a record is refused and nothing is written, and only "Start a new list" moves it aside under a name with the time', async () => {
+  const p = page(), dir = teamFolder(home), file = stateFile();
+  await registerFolder(h, dir);
+  await addRun(p, { engine: 'Codex', instruction: 'The first run.', startMs: startedMs() });
+  writeFileSync(file, 'not json at all');
+  await p.evaluate(() => { location.reload(); });
+  await p.waitForSelector('[data-home]');
+  await goTo(p, '#app/runs');
+  await expect(p.locator('[data-runs-state="damaged"]')).toHaveText('Your saved runs file is damaged. Start a new list.');
+  expect(readFileSync(file, 'utf8'), 'looking at it changes nothing').toBe('not json at all');
+  await p.locator('[data-start-new-list]').click();
+  await expect(p.locator('[data-kept]')).toContainText('Bowerloom kept it as runs.damaged-');
+  const asides = readdirSync(join(h.state, 'bowerloom', 'runs')).filter(n => n.startsWith('runs.damaged-'));
+  expect(asides).toHaveLength(1);
+  expect(readFileSync(join(h.state, 'bowerloom', 'runs', asides[0]!), 'utf8')).toBe('not json at all');
+  await expect(p.getByText('No runs yet. Record one after you start an engine.')).toBeVisible();
+  expect(await p.locator('body').innerText()).not.toContain(home);
 });

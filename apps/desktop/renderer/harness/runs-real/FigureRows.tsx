@@ -1,17 +1,18 @@
 /**
- * The figures of one run as a short list: time taken, input, output, model and outcome, each "Not read" when the log did not hold it, and the line that says why when the log was not read.
+ * The figures of one run as a short list: time taken, input, output, model and outcome, each "Not read" when the log did not hold it or was not read, and the line that says why. Each reason has its own
+ * words (shared/harness/runs-real.ts), and a refusal of the call has the words of its code, never "could not read the log". `label` is the project written with `~`: the line says where Bowerloom looked.
  * Never any text of a chat: the figures are numbers and short words (shared/api/runs.ts).
  */
 import type { ReactElement } from 'react';
-import { figureRows, figuresStateWords } from '../../../shared/harness/runs-real.js';
+import { figureRows, figuresStateWords, runsRefusalWords } from '../../../shared/harness/runs-real.js';
 import type { FiguresView } from './runs-session.js';
 import { RUNS_REAL } from '../runs-real-words.js';
 
-export function FigureRows({ view }: { view: FiguresView }): ReactElement {
+export function FigureRows({ view, label }: { view: FiguresView; label: string }): ReactElement {
   const figures = view.kind === 'ready' ? view.figures : null;
-  const why = figures === null ? null : figuresStateWords(figures.state);
+  const why = view.kind === 'refused' ? runsRefusalWords(view.code) : figures === null ? null : figuresStateWords(figures.state, figures.reason, label);
   return (
-    <div className="hrr-figures" data-figures={figures === null ? 'loading' : figures.state}>
+    <div className="hrr-figures" data-figures={view.kind === 'refused' ? 'refused' : figures === null ? 'loading' : figures.state} data-reason={figures?.reason ?? undefined}>
       {view.kind === 'loading' ? <p className="hx-text hx-muted" role="status">{RUNS_REAL.hint.figuresLoading}</p> : null}
       {why === null ? null : <p className="hx-text" role="status" data-figures-why="">{why}</p>}
       {view.kind === 'loading' ? null : (

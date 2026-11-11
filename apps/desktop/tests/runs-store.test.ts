@@ -2,10 +2,10 @@
 // Writes are whole-file and atomic, stay inside the state folder, and never write over a file that could not be read.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { RUN_RECORD_LIMIT } from '../shared/api/runs.js';
-import { RunStoreError, createRunStore, runsDir, runsFile } from '../main/run-store.js';
+import { RUN_INSTRUCTION_LIMIT, RUN_NOTES_LIMIT, RUN_RECORD_LIMIT } from '../shared/api/runs.js';
+import { RUN_FILE_MAX_BYTES, RUN_MAX_BYTES_EACH, RunStoreError, createRunStore, runsDir, runsFile } from '../main/run-store.js';
 import type { NewRun } from '../main/run-store.js';
 import { tempDir } from './support.js';
 
@@ -33,7 +33,16 @@ test('runs of one instruction in one project share a group, across engines; anot
   assert.equal(new Set([a.groupId, c.groupId, d.groupId]).size, 3);
 });
 
-test('a change saves status, rating and notes; a rating needs the run to be done, and going back to recorded clears it', t => {
+test('Compare is one task across engines: a run of an engine that is in the group already starts a new group, and joins one that has no run of its engine', t => {
+  const s = createRunStore({ stateRoot: tempDir(t) });
+  const a = s.add(folder()), again = s.add(folder()), codex = s.add(folder({ engine: 'codex' })), codex2 = s.add(folder({ engine: 'codex' }));
+  assert.notEqual(again.groupId, a.groupId, 'the same engine, instruction and project does not join');
+  assert.equal(codex.groupId, a.groupId, 'a second engine joins the first group that lacks it');
+  assert.equal(codex2.groupId, again.groupId, 'and the next one joins the next group that lacks it');
+  assert.equal(new Set([a.groupId, again.groupId]).size, 2);
+});
+
+test('a change saves status, rating and notes; a rating needs the run to be done, and going back to recorded keeps it locked', t => {
   const s = createRunStore({ stateRoot: tempDir(t) }); const run = s.add(folder());
   assert.equal(kind(() => s.update(run.id, { rating: 'better' })), 'rating-needs-done');
   assert.equal(s.update(run.id, { notes: 'slow start' }).notes, 'slow start');
@@ -42,7 +51,9 @@ test('a change saves status, rating and notes; a rating needs the run to be done
   assert.equal(s.update(run.id, { rating: null }).rating, null);
   assert.equal(s.update(run.id, { rating: 'worse' }).rating, 'worse');
   const back = s.update(run.id, { status: 'recorded' });
-  assert.deepEqual([back.status, back.rating], ['recorded', null]);
+  assert.deepEqual([back.status, back.rating], ['recorded', 'worse'], 'a rating stays when the run is marked not done: it is locked, never wiped');
+  assert.equal(kind(() => s.update(run.id, { rating: 'better' })), 'rating-needs-done', 'and it cannot be changed until the run is done again');
+  assert.equal(s.update(run.id, { status: 'done' }).rating, 'worse');
   assert.equal(kind(() => s.update('run-99', { notes: 'x' })), 'unknown-run');
 });
 
@@ -63,6 +74,7 @@ test('a write that fails half way leaves the old file whole and no temporary fil
   const before = readFileSync(runsFile(state), 'utf8');
   const failing = createRunStore({ stateRoot: state, rename: () => { throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); } });
   assert.equal(kind(() => failing.add(folder({ engine: 'codex' }))), 'write-failed');
+  try { failing.add(folder({ engine: 'codex' })); assert.fail('no error'); } catch (e) { assert.equal((e as RunStoreError).code, 'ENOSPC', 'the errno code of the cause is kept, and the message holds none'); assert.equal((e as Error).message, 'write-failed'); }
   assert.equal(readFileSync(runsFile(state), 'utf8'), before);
   assert.deepEqual(readdirSync(runsDir(state)), ['runs.json']);
   assert.equal(createRunStore({ stateRoot: state }).list().length, 1, 'a failed add is not in memory either');
@@ -76,25 +88,43 @@ test('no more than the record limit is kept, and one past it is refused, never a
   assert.equal(RUN_RECORD_LIMIT, 500);
 });
 
-test('a file that cannot be read as runs is "damaged": it is not listed, not written over by a change, and a new record moves it aside', t => {
+test('a damaged file is never reset silently: a record and a change refuse and write nothing, and only startNewList moves it aside, under a name with the time', t => {
   const state = tempDir(t); mkdirSync(runsDir(state), { recursive: true, mode: 0o700 });
+  const asides = (): string[] => readdirSync(runsDir(state)).filter(n => n.startsWith('runs.damaged-'));
+  const names: string[] = [];
   for (const text of ['not json', '[]', '{"format":"other","runs":[]}', '{"format":"bowerloom/runs/v1","runs":[{"id":"run-1","rating":"great"}]}', '{"format":"bowerloom/runs/v1","runs":"x"}', '']) {
     writeFileSync(runsFile(state), text);
     const s = createRunStore({ stateRoot: state });
     assert.equal(kind(() => s.list()), 'damaged', text);
+    assert.equal(kind(() => s.add(folder())), 'damaged', text);
     assert.equal(kind(() => s.update('run-1', { notes: 'x' })), 'damaged', text);
-    assert.equal(readFileSync(runsFile(state), 'utf8'), text, 'the damaged file is untouched by a read or a change');
-    const added = s.add(folder());
-    assert.equal(added.id, 'run-1');
-    assert.equal(readFileSync(join(runsDir(state), 'runs.damaged.json'), 'utf8'), text, 'the damaged file was kept beside it');
-    assert.equal(s.list().length, 1);
+    assert.equal(readFileSync(runsFile(state), 'utf8'), text, 'the damaged file is untouched by a read, a record or a change');
+    assert.equal(asides().length, names.length, 'nothing was moved aside');
+    const name = s.startNewList();
+    assert.match(name, /^runs\.damaged-\d{8}T\d{9}Z(-\d+)?\.json$/);
+    assert.equal(readFileSync(join(runsDir(state), name), 'utf8'), text, 'the damaged file was kept under that name');
+    assert.equal(names.includes(name), false, 'an older aside is never overwritten');
+    names.push(name);
+    assert.equal(s.list().length, 0, 'the new list is empty');
+    assert.equal(s.add(folder()).id, 'run-1');
   }
+  assert.equal(asides().length, 6, 'every aside is still there');
+});
+
+test('startNewList refuses a file that is not damaged, and a file that is not there, and moves nothing', t => {
+  const state = tempDir(t); const s = createRunStore({ stateRoot: state });
+  assert.equal(kind(() => s.startNewList()), 'not-damaged');
+  s.add(folder());
+  const before = readFileSync(runsFile(state), 'utf8');
+  assert.equal(kind(() => s.startNewList()), 'not-damaged');
+  assert.equal(readFileSync(runsFile(state), 'utf8'), before);
+  assert.deepEqual(readdirSync(runsDir(state)), ['runs.json']);
 });
 
 test('a file over the size cap, a file that is a link, and a folder that is a link are refused, and nothing is followed', t => {
   const state = tempDir(t); const other = tempDir(t);
   mkdirSync(runsDir(state), { recursive: true, mode: 0o700 });
-  writeFileSync(runsFile(state), 'x'.repeat(9_000_000));
+  writeFileSync(runsFile(state), 'x'.repeat(RUN_FILE_MAX_BYTES + 1));
   assert.equal(kind(() => createRunStore({ stateRoot: state }).list()), 'damaged');
   const s2 = tempDir(t); mkdirSync(runsDir(s2), { recursive: true, mode: 0o700 });
   writeFileSync(join(other, 'real.json'), '{"format":"bowerloom/runs/v1","next":1,"groups":1,"runs":[]}'); symlinkSync(join(other, 'real.json'), runsFile(s2));
@@ -103,7 +133,27 @@ test('a file over the size cap, a file that is a link, and a folder that is a li
   const s3 = tempDir(t); symlinkSync(other, runsDir(s3));
   assert.equal(kind(() => createRunStore({ stateRoot: s3 }).list()), 'unsafe');
   assert.equal(kind(() => createRunStore({ stateRoot: s3 }).add(folder())), 'unsafe');
+  assert.equal(kind(() => createRunStore({ stateRoot: s3 }).startNewList()), 'unsafe');
   assert.deepEqual(readdirSync(other), ['real.json'], 'nothing was written through a link');
+});
+
+test('a full store of runs with every field at its maximum fits under the size cap, with each character counted at its widest', () => {
+  const run = { id: 'run-999999', engine: 'claude-code', instruction: '\u20ac'.repeat(RUN_INSTRUCTION_LIMIT), projectPath: `/${'\u20ac'.repeat(2047)}`, projectName: '\u20ac'.repeat(255), projectLabel: '\u20ac'.repeat(2200), startedAt: '2026-11-11T10:30:00.000Z', status: 'done', groupId: 'group-999999', rating: 'better', notes: '\u20ac'.repeat(RUN_NOTES_LIMIT) };
+  const bytes = Buffer.byteLength(JSON.stringify(run), 'utf8');
+  assert.ok(bytes <= RUN_MAX_BYTES_EACH, `${bytes} bytes for one run, bound ${RUN_MAX_BYTES_EACH}`);
+  assert.ok(RUN_MAX_BYTES_EACH * RUN_RECORD_LIMIT + 1000 <= RUN_FILE_MAX_BYTES, 'the cap holds the record limit of maximum runs');
+});
+
+test('the folder is made private (0700) when it was not, a fsync of the folder does not stop a save, and a stale temporary file of a crash is swept at load while a young one stays', t => {
+  const state = tempDir(t); mkdirSync(runsDir(state), { recursive: true, mode: 0o755 }); chmodSync(runsDir(state), 0o755);
+  const old = join(runsDir(state), 'runs.123.0123456789ab.tmp'), young = join(runsDir(state), 'runs.124.0123456789ab.tmp'), other = join(runsDir(state), 'notes.tmp');
+  for (const f of [old, young, other]) writeFileSync(f, 'x');
+  const past = new Date(Date.now() - 3_600_000); utimesSync(old, past, past);
+  const s = createRunStore({ stateRoot: state });
+  assert.equal(s.list().length, 0);
+  assert.deepEqual(readdirSync(runsDir(state)).sort(), ['notes.tmp', 'runs.124.0123456789ab.tmp'], 'only the old temporary file of ours is gone');
+  s.add(folder());
+  if (process.platform !== 'win32') assert.equal(lstatSync(runsDir(state)).mode & 0o777, 0o700);
 });
 
 test('no file yet is an empty list, and listing makes no folder and no file', t => {

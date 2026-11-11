@@ -109,6 +109,13 @@ test('the rating is locked until the run is marked done, then unlocks; a saved r
   await expect(col.getByRole('button', { name: 'Better', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(col.locator('textarea')).toHaveValue('Fast and clear.');
   await expect(p.locator('.hc-col').filter({ hasText: 'Codex' })).toHaveAttribute('data-status', 'recorded');
+  // Marking the run not done keeps its rating, locked: it is never wiped.
+  await col.locator('[data-toggle-done]').click();
+  await expect(col).toHaveAttribute('data-status', 'recorded');
+  await expect(col.getByRole('button', { name: 'Better', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(col.getByRole('button', { name: 'Better', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  const again = JSON.parse(readFileSync(join(h.state, 'bowerloom', 'runs', 'runs.json'), 'utf8')) as { runs: { engine: string; status: string; rating: string | null }[] };
+  expect(again.runs.find(r => r.engine === 'claude-code' && r.rating !== null)).toMatchObject({ status: 'recorded', rating: 'better' });
 });
 
 test('a group with one run says a second engine is needed, and a group that is not there is a named empty state', async () => {

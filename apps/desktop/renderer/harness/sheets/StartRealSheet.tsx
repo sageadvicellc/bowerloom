@@ -20,6 +20,8 @@ import { HIcon } from '../icons.js';
 import { useEngine } from '../engine.js';
 import { go } from '../router.js';
 import { useRuns } from '../runs-real/runs-session.js';
+import { runsCodeOf } from '../../api/client.js';
+import { runsRefusalWords } from '../../../shared/harness/runs-real.js';
 import { RUNS_REAL } from '../runs-real-words.js';
 import { useUi } from '../ui.js';
 import { START, commandFor, copyName, whyWords } from '../words-start.js';
@@ -68,7 +70,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   /** The runs recorded from this sheet's commands, by engine, and the engine whose record is being saved or failed. */
   const [recorded, setRecorded] = useState<Readonly<Partial<Record<EngineId, string>>>>({});
   const [recording, setRecording] = useState<EngineId | null>(null);
-  const [recordFailed, setRecordFailed] = useState(false);
+  const [recordFailed, setRecordFailed] = useState<string | null>(null);
   /** The refusal the person has already moved past: a change hides it, so an old refusal never lingers beside a good choice. */
   const [passed, setPassed] = useState(0);
   const results = useRef<HTMLHeadingElement>(null);
@@ -81,7 +83,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   // Each time the sheet opens it starts again: the folder list is read, and the folder is the one asked for, or none.
   useEffect(() => {
     if (!open) return;
-    setFolders(null); setFolder(''); setTicks([]); setInstruction(''); setShown(null); setCopied(null); setRecorded({}); setRecording(null); setRecordFailed(false); call.clear();
+    setFolders(null); setFolder(''); setTicks([]); setInstruction(''); setShown(null); setCopied(null); setRecorded({}); setRecording(null); setRecordFailed(null); call.clear();
     readFolders();
   }, [open, folderId, engine]);
 
@@ -116,14 +118,14 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   const why = status.kind === 'no-harness' && current !== undefined ? startFolderLine(current).words : whyWords(status);
   const offered = offeredEngines(current);
   const phase = startSheetPhase(folders, call.refusal !== null);
-  const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); setRecorded({}); setRecordFailed(false); setPassed(call.refusalId); };
+  const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); setRecorded({}); setRecordFailed(null); setPassed(call.refusalId); };
   const pickFolder = (id: string): void => { setFolder(id); setTicks(firstStartEngines(folders?.find(f => f.id === id))); changed(); };
   const tick = (id: EngineId): void => { setTicks(now => (now.includes(id) ? now.filter(x => x !== id) : [...now, id])); changed(); };
   const press = (): void => {
     if (status.kind === 'needs-install') { ui.openProject({ folderId: folder, mode: 'install' }); return; }
     if (status.kind !== 'ready' || engine === null) return;
     const engines = status.engines;
-    setCopied(null); setRecorded({}); setRecordFailed(false);
+    setCopied(null); setRecorded({}); setRecordFailed(null);
     stamp.current += 1;
     const mine = stamp.current;
     void call.plan(START.label.working, () => showAll(engine, folder, engines, instruction), list => { if (stamp.current === mine) setShown(list); });
@@ -136,8 +138,8 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   // Record this run: main saves what the person is looking at (the folder, the engine, the instruction) and the time now. The copy is what the person pastes; the record is only a note.
   const record = (id: EngineId): void => {
     if (runs === null || recording !== null) return;
-    setRecording(id); setRecordFailed(false);
-    runs.recordRun({ folderId: folder, engine: id, instruction, startedAt: null }).then(run => { setRecording(null); setRecorded(now => ({ ...now, [id]: run.id })); }, () => { setRecording(null); setRecordFailed(true); });
+    setRecording(id); setRecordFailed(null);
+    runs.recordRun({ folderId: folder, engine: id, instruction, startedAt: null }).then(run => { setRecording(null); setRecorded(now => ({ ...now, [id]: run.id })); }, error => { setRecording(null); setRecordFailed(runsCodeOf(error)); });
   };
   // While Bowerloom works on a call, the choices are held: an answer (or a refusal) that comes back is always for the choices on screen.
   const held = call.writing || call.busy !== null;
@@ -219,7 +221,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                         <div className="hs-record" data-record-block={view.engine}>
                           <p className="hxe-text hxe-muted">{RUNS_REAL.paragraph.recordNote}</p>
                           <HButton size="small" data-record={view.engine} aria-disabled={recording !== null ? true : undefined} onClick={() => record(view.engine)}>{recording === view.engine ? RUNS_REAL.label.recording : RUNS_REAL.label.recordRun}</HButton>
-                          {recordFailed ? <p className="hxe-text" role="alert" data-record-failed="">{RUNS_REAL.hint.recordFailed}</p> : null}
+                          {recordFailed !== null ? <p className="hxe-text" role="alert" data-record-failed="">{runsRefusalWords(recordFailed)}</p> : null}
                         </div>
                       ) : (
                         <p className="hxe-text hrr-recorded" role="status" data-recorded={view.engine}>

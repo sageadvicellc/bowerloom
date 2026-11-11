@@ -7,7 +7,8 @@
     { "name": "listRuns", "arity": 0, "optionalArgs": 0, "channel": "bowerloom-runs:listRuns", "returns": "plain" },
     { "name": "recordRun", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-runs:recordRun", "returns": "plain" },
     { "name": "updateRun", "arity": 2, "optionalArgs": 0, "channel": "bowerloom-runs:updateRun", "returns": "plain" },
-    { "name": "readRunFigures", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-runs:readRunFigures", "returns": "plain" }
+    { "name": "readRunFigures", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-runs:readRunFigures", "returns": "plain" },
+    { "name": "startNewRunList", "arity": 0, "optionalArgs": 0, "channel": "bowerloom-runs:startNewRunList", "returns": "plain" }
   ],
-  "runCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_FOLDER", "UNKNOWN_RUN"]
+  "runCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_FOLDER", "UNKNOWN_RUN", "RUN_LIMIT", "STORE_DAMAGED", "TOO_LONG", "FOLDER_CHARACTER", "FOLDER_LINK"]
 }

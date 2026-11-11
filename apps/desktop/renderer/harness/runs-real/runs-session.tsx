@@ -17,7 +17,7 @@ export function RunsProvider({ runs, children }: { runs: RunsBridge | null; chil
 /** The runs calls, or null when this window has none. */
 export const useRuns = (): RunsBridge | null => useContext(Context);
 
-export type RunList = { readonly kind: 'loading' } | { readonly kind: 'failed' } | { readonly kind: 'ready'; readonly runs: readonly RunView[] };
+export type RunList = { readonly kind: 'loading' } | { readonly kind: 'failed'; readonly code: string } | { readonly kind: 'ready'; readonly runs: readonly RunView[] };
 
 export interface RunListControl {
   readonly list: RunList;
@@ -27,6 +27,8 @@ export interface RunListControl {
   replace(run: RunView): void;
   /** Saves a change and puts the answer in place. Resolves to the short code of a refusal, or null. */
   change(id: string, patch: RunPatch): Promise<string | null>;
+  /** Moves a damaged saved file aside and starts an empty list. Resolves to the name it was kept as, or the short code of a refusal. */
+  startNew(): Promise<{ readonly asideName: string } | { readonly code: string }>;
 }
 
 /** The list of runs, read once when the screen opens. A list that cannot be read is "failed", never an empty list. */
@@ -37,22 +39,30 @@ export function useRunList(bridge: RunsBridge | null): RunListControl {
     if (bridge === null) return;
     count.current += 1;
     const mine = count.current;
-    bridge.listRuns().then(runs => { if (mine === count.current) setList({ kind: 'ready', runs: [...runs] }); }, () => { if (mine === count.current) setList({ kind: 'failed' }); });
+    bridge.listRuns().then(runs => { if (mine === count.current) setList({ kind: 'ready', runs: [...runs] }); }, error => { if (mine === count.current) setList({ kind: 'failed', code: runsCodeOf(error) }); });
   }, [bridge]);
   useEffect(() => { reload(); return () => { count.current += 1; }; }, [reload]);
+  const kind = useRef<RunList['kind']>('loading');
+  kind.current = list.kind;
   const replace = useCallback((run: RunView): void => {
+    // A list that was not read cannot take a run in place: it is read again, so the screen shows what main holds.
+    if (kind.current !== 'ready') { reload(); return; }
     setList(now => (now.kind === 'ready' ? { kind: 'ready', runs: now.runs.some(r => r.id === run.id) ? now.runs.map(r => (r.id === run.id ? run : r)) : [run, ...now.runs] } : now));
-  }, []);
+  }, [reload]);
+  const startNew = useCallback(async (): Promise<{ readonly asideName: string } | { readonly code: string }> => {
+    if (bridge === null) return { code: 'FAILED' };
+    try { const done = await bridge.startNewRunList(); reload(); return { asideName: done.asideName }; } catch (error) { return { code: runsCodeOf(error) }; }
+  }, [bridge, reload]);
   const change = useCallback(async (id: string, patch: RunPatch): Promise<string | null> => {
     if (bridge === null) return 'FAILED';
     try { replace(await bridge.updateRun(id, patch)); return null; } catch (error) { return runsCodeOf(error); }
   }, [bridge, replace]);
-  return { list, reload, replace, change };
+  return { list, reload, replace, change, startNew };
 }
 
-export type FiguresView = { readonly kind: 'loading' } | { readonly kind: 'ready'; readonly figures: RunFigures };
+export type FiguresView = { readonly kind: 'loading' } | { readonly kind: 'ready'; readonly figures: RunFigures } | { readonly kind: 'refused'; readonly code: string };
 
-/** The figures of one run, read from main when the run is shown. A read that fails is the figures of a log that could not be read. */
+/** The figures of one run, read from main when the run is shown. A refusal of the call is its own state with its own words, never "could not read the log", which says something about the log. */
 export function useFigures(bridge: RunsBridge | null, runId: string | null): FiguresView {
   const [view, setView] = useState<{ id: string | null; value: FiguresView }>({ id: null, value: { kind: 'loading' } });
   useEffect(() => {
@@ -60,7 +70,7 @@ export function useFigures(bridge: RunsBridge | null, runId: string | null): Fig
     let live = true;
     bridge.readRunFigures(runId).then(
       figures => { if (live) setView({ id: runId, value: { kind: 'ready', figures } }); },
-      () => { if (live) setView({ id: runId, value: { kind: 'ready', figures: { state: 'unreadable', startedAt: null, endedAt: null, durationMs: null, inputTokens: null, outputTokens: null, model: null, outcome: 'unknown' } } }); },
+      error => { if (live) setView({ id: runId, value: { kind: 'refused', code: runsCodeOf(error) } }); },
     );
     return () => { live = false; };
   }, [bridge, runId]);

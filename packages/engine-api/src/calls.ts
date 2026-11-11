@@ -64,7 +64,7 @@ const run = (name: string, arity: number): CallSpec => Object.freeze({ name, ari
  * one value each. The only refusals are the call's own: see `RUN_CALL_REFUSAL_CODES`.
  */
 export const RUN_CALLS: readonly CallSpec[] = Object.freeze([
-  run('listRuns', 0), run('recordRun', 1), run('updateRun', 2), run('readRunFigures', 1),
+  run('listRuns', 0), run('recordRun', 1), run('updateRun', 2), run('readRunFigures', 1), run('startNewRunList', 0),
 ]);
 
 /** The spec of a runs call, or undefined for a name the list does not hold. Own names only. */

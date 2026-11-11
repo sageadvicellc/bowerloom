@@ -4,7 +4,8 @@
  * The figures of a run come from the engine's own session log. A figure the log did not hold is shown as "Not read", never as a zero.
  */
 import { ENGINE_NAMES } from '../engine/types.js';
-import type { FiguresState, RecordedStatus, RunFigures, RunOutcome, RunRating, RunView } from '../api/runs.js';
+import { LOG_MAX_MB, RUN_RECORD_LIMIT } from '../api/runs.js';
+import type { FiguresReason, FiguresState, RecordedStatus, RunFigures, RunOutcome, RunRating, RunView } from '../api/runs.js';
 
 /** The runs of one instruction in one project, newest first. Compare shows a group of two or more. */
 export interface RealGroup {
@@ -80,13 +81,36 @@ export function isoToLocalInput(ms: number): string {
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`;
 }
 
-/** The line that says why no figure is shown, or null when the log was read. */
-export function figuresStateWords(state: FiguresState): string | null {
+/**
+ * The line that says why a figure is missing, or null when the log was read whole. Each reason has its own words. `label` is the folder written with `~`, never a full path: with it the line says where Bowerloom
+ * looked and how near the start the log had to begin.
+ */
+export function figuresStateWords(state: FiguresState, reason: FiguresReason | null = null, label: string | null = null): string | null {
   switch (state) {
-    case 'found': return null;
-    case 'not-found': return 'No session log found. Details stay as you recorded them.';
-    case 'unreadable': return 'Could not read the log.';
+    case 'found':
+      return reason === 'partial' ? 'Part of the log could not be read. Counts are not shown.' : reason === 'still-writing' ? 'The log may still be written. Figures can change.' : reason === 'no-figures' ? 'The log holds no figures.' : null;
+    case 'not-found':
+      if (reason === 'capped') return 'Searched the newest 300 logs only. Details stay as you recorded them.';
+      return label === null ? 'No session log found. Details stay as you recorded them.' : `No session log found in ${label}, within an hour of the start. Details stay as you recorded them.`;
+    case 'ambiguous': return 'More than one session log fits this run. Not read.';
+    case 'unreadable':
+      return reason === 'too-large' ? `The log is over ${LOG_MAX_MB} MB. Not read.` : reason === 'unplaced' ? 'Could not tell when the log began. Not read.' : reason === 'no-permission' ? 'Bowerloom may not open the log. Check its permissions.' : 'Could not read the log.';
     case 'not-available': return 'Figures are not available for this engine.';
+  }
+}
+
+/** The words of a refusal of a runs call, each code with its own. A code Bowerloom does not know gets the plain failure. */
+export function runsRefusalWords(code: string): string {
+  switch (code) {
+    case 'BAD_ARGUMENT': return 'Bowerloom could not use what was sent. Check the fields.';
+    case 'UNKNOWN_FOLDER': return 'That project is not there. Choose it again.';
+    case 'FOLDER_CHARACTER': return 'The project name has a character Bowerloom cannot use.';
+    case 'FOLDER_LINK': return 'That project is a link. Choose the real folder.';
+    case 'UNKNOWN_RUN': return 'That run is not saved any more.';
+    case 'RUN_LIMIT': return `${RUN_RECORD_LIMIT} runs are saved. Remove some first. Bowerloom cannot remove runs yet.`;
+    case 'STORE_DAMAGED': return 'Your saved runs file is damaged. Nothing was changed.';
+    case 'TOO_LONG': return 'The text is too long. Shorten it.';
+    default: return 'Bowerloom could not do that. Try again.';
   }
 }
 
@@ -100,6 +124,13 @@ export function figureRows(figures: RunFigures | null): FigureRow[] {
     { key: 'model', label: 'Model', value: modelWords(figures?.model ?? null) },
     { key: 'outcome', label: 'Outcome', value: outcomeWords(figures?.outcome ?? 'unknown') },
   ];
+}
+
+/** "Saved Claude Code. Codex was not saved: That run is not saved any more." One line that says, for each run, whether it was saved. */
+export function saveReportWords(report: readonly { readonly name: string; readonly code: string | null }[]): string {
+  const saved = report.filter(r => r.code === null).map(r => r.name), failed = report.filter(r => r.code !== null);
+  const head = saved.length === 0 ? '' : `Saved ${saved.join(' and ')}. `;
+  return `${head}${failed.map(r => `${r.name} was not saved: ${runsRefusalWords(r.code ?? '')}`).join(' ')}`.trim();
 }
 
 export const REAL_RATINGS: readonly RunRating[] = Object.freeze(['better', 'same', 'worse']);

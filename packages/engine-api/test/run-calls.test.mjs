@@ -13,8 +13,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const golden = JSON.parse(fs.readFileSync(path.join(here, '..', 'golden', 'run-calls.json'), 'utf8'));
 const plain = list => list.map(c => ({ name: c.name, arity: c.arity, optionalArgs: c.optionalArgs, channel: c.channel, returns: c.returns }));
 
-test('the runs list holds four calls, each on the bowerloom-runs channel with plain data', () => {
-  assert.deepEqual(RUN_CALLS.map(c => [c.name, c.arity]), [['listRuns', 0], ['recordRun', 1], ['updateRun', 2], ['readRunFigures', 1]]);
+test('the runs list holds five calls, each on the bowerloom-runs channel with plain data', () => {
+  assert.deepEqual(RUN_CALLS.map(c => [c.name, c.arity]), [['listRuns', 0], ['recordRun', 1], ['updateRun', 2], ['readRunFigures', 1], ['startNewRunList', 0]]);
   for (const c of RUN_CALLS) {
     assert.equal(c.channel, `bowerloom-runs:${c.name}`);
     assert.equal(c.returns, 'plain');
@@ -48,8 +48,8 @@ test('runCallSpec finds a runs call and says nothing for any other name', () => 
   for (const name of ['folders', 'localModels', 'constructor', '__proto__', '']) assert.equal(runCallSpec(name), undefined, name);
 });
 
-test('the runs refusal codes have the format of a code and are the four a call can return before it runs', () => {
-  assert.deepEqual([...RUN_CALL_REFUSAL_CODES], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN']);
+test('the runs refusal codes have the format of a code and are the nine a call can return before it runs', () => {
+  assert.deepEqual([...RUN_CALL_REFUSAL_CODES], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG', 'FOLDER_CHARACTER', 'FOLDER_LINK']);
   for (const code of RUN_CALL_REFUSAL_CODES) assert.match(code, ENGINE_CODE_FORMAT);
 });
 

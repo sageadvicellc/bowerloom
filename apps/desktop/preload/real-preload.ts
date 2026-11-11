@@ -48,7 +48,7 @@ contextBridge.exposeInMainWorld('bowerloomLocal', Object.freeze(local as unknown
 
 /** The runs calls send exactly as many arguments as the call takes, so the page cannot pass main more than main expects. They refuse with one short code, never Electron's long sentence. */
 const runsRefusal = (error: unknown): Error => {
-  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER|UNKNOWN_RUN)\b/);
+  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER|UNKNOWN_RUN|RUN_LIMIT|STORE_DAMAGED|TOO_LONG|FOLDER_CHARACTER|FOLDER_LINK)\b/);
   return new Error(found === null ? 'FAILED' : found[1]);
 };
 const runs: Record<string, unknown> = {};

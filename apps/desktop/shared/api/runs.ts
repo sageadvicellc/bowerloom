@@ -10,22 +10,24 @@
  */
 import type { EngineId } from '../engine/types.js';
 
-export const RUN_CALLS = Object.freeze(['listRuns', 'recordRun', 'updateRun', 'readRunFigures'] as const);
+export const RUN_CALLS = Object.freeze(['listRuns', 'recordRun', 'updateRun', 'readRunFigures', 'startNewRunList'] as const);
 export type RunCall = (typeof RUN_CALLS)[number];
 
 /** How many arguments each call takes. A call with another count is refused BAD_ARGUMENT. */
-export const RUN_ARITY: Readonly<Record<RunCall, number>> = Object.freeze({ listRuns: 0, recordRun: 1, updateRun: 2, readRunFigures: 1 });
+export const RUN_ARITY: Readonly<Record<RunCall, number>> = Object.freeze({ listRuns: 0, recordRun: 1, updateRun: 2, readRunFigures: 1, startNewRunList: 0 });
 
 /** One channel for each call, in the namespace of this bridge. */
 export const RUN_CHANNELS: Readonly<Record<RunCall, string>> = Object.freeze({
-  listRuns: 'bowerloom-runs:listRuns', recordRun: 'bowerloom-runs:recordRun', updateRun: 'bowerloom-runs:updateRun', readRunFigures: 'bowerloom-runs:readRunFigures',
+  listRuns: 'bowerloom-runs:listRuns', recordRun: 'bowerloom-runs:recordRun', updateRun: 'bowerloom-runs:updateRun', readRunFigures: 'bowerloom-runs:readRunFigures', startNewRunList: 'bowerloom-runs:startNewRunList',
 });
 
 /**
  * The short codes a runs call can be refused with. NOT_ALLOWED: the sender is not the app page. BAD_ARGUMENT: the count or the shape of the arguments is wrong.
- * UNKNOWN_FOLDER: main did not give out that folder id. UNKNOWN_RUN: no record has that id. FAILED: anything else (main logs the class of the cause, and the page never sees a message).
+ * UNKNOWN_FOLDER: main did not give out that folder id, or the folder is not there. FOLDER_CHARACTER: the folder's name holds a character Bowerloom cannot use. FOLDER_LINK: the folder is a link.
+ * UNKNOWN_RUN: no record has that id. TOO_LONG: the instruction or the notes are over the limit. RUN_LIMIT: the most runs are saved already. STORE_DAMAGED: the saved file cannot be read, and
+ * nothing was written. FAILED: anything else (main logs the class of the cause and a short reason, and the page never sees a message).
  */
-export const RUN_REFUSAL_CODES = ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'FAILED'] as const;
+export const RUN_REFUSAL_CODES = ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG', 'FOLDER_CHARACTER', 'FOLDER_LINK', 'FAILED'] as const;
 export type RunRefusalCode = (typeof RUN_REFUSAL_CODES)[number];
 export const RUN_REFUSALS: readonly string[] = Object.freeze([...RUN_REFUSAL_CODES]);
 
@@ -70,14 +72,25 @@ export interface RunPatch { readonly status?: RecordedStatus; readonly rating?: 
 
 /**
  * How a read of the session log ended. `found`: a log was matched and read. `not-found`: no log, no engine home or no folder was there. `unreadable`: a log was there and could not be
- * read (permission, a shape Bowerloom does not know, too large). `not-available`: the engine has no reader of its log here. In the last three every figure is null: never a zero.
+ * read. `ambiguous`: more than one log fits the run, so none is read. `not-available`: the engine has no reader of its log here. Except for `found` every figure is null: never a zero.
+ * `reason` says why in one short word, so each case has its own words: see `figuresStateWords` (shared/harness/runs-real.ts).
  */
-export type FiguresState = 'found' | 'not-found' | 'unreadable' | 'not-available';
+export type FiguresState = 'found' | 'not-found' | 'unreadable' | 'ambiguous' | 'not-available';
+export type FiguresReason = 'capped' | 'too-large' | 'unplaced' | 'no-permission' | 'partial' | 'still-writing' | 'no-figures';
+export const FIGURES_STATES: readonly FiguresState[] = Object.freeze(['found', 'not-found', 'unreadable', 'ambiguous', 'not-available']);
+export const FIGURES_REASONS: readonly FiguresReason[] = Object.freeze(['capped', 'too-large', 'unplaced', 'no-permission', 'partial', 'still-writing', 'no-figures']);
 export type RunOutcome = 'finished' | 'stopped' | 'unknown';
+/** The largest log, in megabytes, that Bowerloom reads. A log over it is "too large". */
+export const LOG_MAX_MB = 64;
+/** A log is the one of a run when it began this many minutes before the recorded start or after it. */
+export const LOG_WINDOW_MINUTES = 60;
+/** The most logs of a folder that are looked at. */
+export const LOG_CANDIDATE_CAP = 300;
 
 /** The figures of one run. Each is null when the log did not hold it. Nothing here is text from the chat. */
 export interface RunFigures {
   readonly state: FiguresState;
+  readonly reason: FiguresReason | null;
   readonly startedAt: string | null;
   readonly endedAt: string | null;
   readonly durationMs: number | null;
@@ -88,7 +101,10 @@ export interface RunFigures {
   readonly outcome: RunOutcome;
 }
 
-export const NO_FIGURES = (state: FiguresState): RunFigures => Object.freeze({ state, startedAt: null, endedAt: null, durationMs: null, inputTokens: null, outputTokens: null, model: null, outcome: 'unknown' as const });
+export const NO_FIGURES = (state: FiguresState, reason: FiguresReason | null = null): RunFigures => Object.freeze({ state, reason, startedAt: null, endedAt: null, durationMs: null, inputTokens: null, outputTokens: null, model: null, outcome: 'unknown' as const });
+
+/** The answer of `startNewRunList`: the name of the file the damaged list was kept as. A name only, never a path. */
+export interface RunListReset { readonly asideName: string }
 
 /** The object `bowerloomRuns` holds in the page. */
 export interface RunsBridge {
@@ -96,4 +112,6 @@ export interface RunsBridge {
   recordRun(input: RecordRunInput): Promise<RunView>;
   updateRun(id: string, patch: RunPatch): Promise<RunView>;
   readRunFigures(id: string): Promise<RunFigures>;
+  /** Moves a damaged saved file aside under a new name and starts an empty list. The only call that does. */
+  startNewRunList(): Promise<RunListReset>;
 }

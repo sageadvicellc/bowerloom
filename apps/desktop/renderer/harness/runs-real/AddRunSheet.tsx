@@ -10,7 +10,7 @@ import { ENGINE_IDS } from '../../../shared/engine/engines.js';
 import { RUN_INSTRUCTION_LIMIT } from '../../../shared/api/runs.js';
 import { parseRecordInput } from '../../../shared/api/runs-shape.js';
 import type { RunView } from '../../../shared/api/runs.js';
-import { isoToLocalInput, localInputToIso } from '../../../shared/harness/runs-real.js';
+import { isoToLocalInput, localInputToIso, runsRefusalWords } from '../../../shared/harness/runs-real.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
@@ -25,18 +25,21 @@ export interface AddRunSheetProps { open: boolean; onClose(): void; onRecorded(r
 export function AddRunSheet({ open, onClose, onRecorded }: AddRunSheetProps): ReactElement | null {
   const runs = useRuns(), engine = useEngine();
   const [folders, setFolders] = useState<readonly FolderInfo[] | null>(null);
+  /** True when the list of projects could not be read: the form then says so and offers a retry, and never the words for an empty list. */
+  const [foldersFailed, setFoldersFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [folder, setFolder] = useState(''), [which, setWhich] = useState<EngineId>('claude-code'), [instruction, setInstruction] = useState(''), [when, setWhen] = useState('');
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState<string | null>(null);
 
   // Each time the form opens it starts again: the folder list is read, and the time is now.
   useEffect(() => {
     if (!open) return;
-    setFolder(''); setWhich('claude-code'); setInstruction(''); setWhen(isoToLocalInput(Date.now())); setBusy(false); setFailed(null); setFolders(null);
+    setFolder(''); setWhich('claude-code'); setInstruction(''); setWhen(isoToLocalInput(Date.now())); setBusy(false); setFailed(null); setFolders(null); setFoldersFailed(false);
     if (engine === null) return;
     let live = true;
-    engine.folders().then(list => { if (live) setFolders(list); }, () => { if (live) setFolders([]); });
+    engine.folders().then(list => { if (live) setFolders(list); }, () => { if (live) setFoldersFailed(true); });
     return () => { live = false; };
-  }, [open, engine]);
+  }, [open, engine, attempt]);
 
   const startedAt = localInputToIso(when);
   const checked = parseRecordInput({ folderId: folder, engine: which, instruction, startedAt }, Date.now());
@@ -53,10 +56,11 @@ export function AddRunSheet({ open, onClose, onRecorded }: AddRunSheetProps): Re
         <>
           <div className="hrr-field">
             <label className="hrr-label" htmlFor="har-project">{RUNS_REAL.label.project}</label>
-            <select id="har-project" className="hrr-control" value={folder} disabled={busy || folders === null} onChange={e => setFolder(e.target.value)}>
-              <option value="">{folders !== null && folders.length === 0 ? RUNS_REAL.hint.noFolders : RUNS_REAL.hint.chooseProject}</option>
+            <select id="har-project" className="hrr-control" value={folder} disabled={busy || folders === null || foldersFailed} onChange={e => setFolder(e.target.value)}>
+              <option value="">{foldersFailed ? RUNS_REAL.hint.foldersFailed : folders !== null && folders.length === 0 ? RUNS_REAL.hint.noFolders : RUNS_REAL.hint.chooseProject}</option>
               {(folders ?? []).map(f => <option key={f.id} value={f.id}>{`${f.name} (${f.label})`}</option>)}
             </select>
+            {foldersFailed ? <p className="hxe-text" role="alert" data-folders-failed="">{RUNS_REAL.hint.foldersFailed} <HButton size="small" data-folders-retry="" onClick={() => setAttempt(n => n + 1)}>{RUNS_REAL.label.tryAgain}</HButton></p> : null}
           </div>
           <div className="hrr-field">
             <label className="hrr-label" htmlFor="har-engine">{RUNS_REAL.label.engine}</label>
@@ -73,7 +77,7 @@ export function AddRunSheet({ open, onClose, onRecorded }: AddRunSheetProps): Re
             <input id="har-when" className="hrr-control" type="datetime-local" value={when} disabled={busy} onChange={e => setWhen(e.target.value)} />
           </div>
           {why === null ? null : <p className="hxe-text hxe-muted" id="har-why" role="status" data-add-why="">{why}</p>}
-          {failed === null ? null : <p className="hxe-text" role="alert" data-add-failed="">{failed === 'UNKNOWN_FOLDER' ? RUNS_REAL.hint.needProject : RUNS_REAL.hint.recordFailed}</p>}
+          {failed === null ? null : <p className="hxe-text" role="alert" data-add-failed="">{runsRefusalWords(failed)}</p>}
         </>
       )}
     </Sheet>

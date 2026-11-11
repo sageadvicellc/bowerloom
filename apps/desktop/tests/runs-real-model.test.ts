@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { NO_FIGURES } from '../shared/api/runs.js';
 import type { RunFigures, RunView } from '../shared/api/runs.js';
 import {
-  canRateReal, countWords, durationWords, figureRows, figuresStateWords, isoToLocalInput, localInputToIso, modelWords, outcomeWords, realCompareGroupOf, realGroupById, realGroups, realRateQuestion, realRunById,
+  canRateReal, countWords, runsRefusalWords, saveReportWords, durationWords, figureRows, figuresStateWords, isoToLocalInput, localInputToIso, modelWords, outcomeWords, realCompareGroupOf, realGroupById, realGroups, realRateQuestion, realRunById,
   realRunName, realStatusWords, startedAtWords,
 } from '../shared/harness/runs-real.js';
 import { RUNS_REAL, recordedToast, runsHintReal } from '../renderer/harness/runs-real-words.js';
@@ -34,12 +34,12 @@ test('the status is Recorded or Done, a rating needs Done, and the question says
 test('a figure the log did not hold is "Not read", never a zero, and a zero that the log did hold is a zero', () => {
   assert.equal(durationWords(null), 'Not read'); assert.equal(countWords(null), 'Not read'); assert.equal(modelWords(null), 'Not read'); assert.equal(outcomeWords('unknown'), 'Not read');
   assert.equal(durationWords(0), '0 seconds'); assert.equal(countWords(0), '0');
-  for (const state of ['not-found', 'unreadable', 'not-available'] as const) assert.deepEqual(figureRows(NO_FIGURES(state)).map(r => r.value), ['Not read', 'Not read', 'Not read', 'Not read', 'Not read'], state);
+  for (const state of ['not-found', 'unreadable', 'ambiguous', 'not-available'] as const) assert.deepEqual(figureRows(NO_FIGURES(state)).map(r => r.value), ['Not read', 'Not read', 'Not read', 'Not read', 'Not read'], state);
   assert.deepEqual(figureRows(null).map(r => r.value), ['Not read', 'Not read', 'Not read', 'Not read', 'Not read']);
 });
 
 test('the figures read as plain words', () => {
-  const f: RunFigures = { state: 'found', startedAt: '2026-11-11T10:31:00.000Z', endedAt: '2026-11-11T11:36:00.000Z', durationMs: 65 * 60_000, inputTokens: 1234567, outputTokens: 90, model: 'claude-test-1', outcome: 'finished' };
+  const f: RunFigures = { state: 'found', reason: null, startedAt: '2026-11-11T10:31:00.000Z', endedAt: '2026-11-11T11:36:00.000Z', durationMs: 65 * 60_000, inputTokens: 1234567, outputTokens: 90, model: 'claude-test-1', outcome: 'finished' };
   assert.deepEqual(figureRows(f), [
     { key: 'duration', label: 'Time taken', value: '1 hour 5 minutes' }, { key: 'input', label: 'Input', value: '1,234,567' }, { key: 'output', label: 'Output', value: '90' },
     { key: 'model', label: 'Model', value: 'claude-test-1' }, { key: 'outcome', label: 'Outcome', value: 'Finished' },
@@ -53,6 +53,39 @@ test('each state of the log has its own line, and a log that was read has none',
   assert.equal(figuresStateWords('not-found'), 'No session log found. Details stay as you recorded them.');
   assert.equal(figuresStateWords('unreadable'), 'Could not read the log.');
   assert.equal(figuresStateWords('not-available'), 'Figures are not available for this engine.');
+});
+
+test('each reason a run has no figures has its own words, the window and the place are named without a full path, and the cap is named', () => {
+  assert.equal(figuresStateWords('not-found', null, '~/Projects/team'), 'No session log found in ~/Projects/team, within an hour of the start. Details stay as you recorded them.');
+  assert.equal(figuresStateWords('not-found', 'capped', '~/Projects/team'), 'Searched the newest 300 logs only. Details stay as you recorded them.');
+  assert.equal(figuresStateWords('ambiguous'), 'More than one session log fits this run. Not read.');
+  assert.equal(figuresStateWords('unreadable', 'too-large'), 'The log is over 64 MB. Not read.');
+  assert.equal(figuresStateWords('unreadable', 'unplaced'), 'Could not tell when the log began. Not read.');
+  assert.equal(figuresStateWords('unreadable', 'no-permission'), 'Bowerloom may not open the log. Check its permissions.');
+  assert.equal(figuresStateWords('found', 'partial'), 'Part of the log could not be read. Counts are not shown.');
+  assert.equal(figuresStateWords('found', 'still-writing'), 'The log may still be written. Figures can change.');
+  assert.equal(figuresStateWords('found', 'no-figures'), 'The log holds no figures.');
+  const all = ['not-found', 'ambiguous', 'unreadable', 'found', 'not-available'] as const;
+  const reasons = [null, 'capped', 'too-large', 'unplaced', 'no-permission', 'partial', 'still-writing', 'no-figures'] as const;
+  const lines = all.flatMap(st => reasons.map(r => figuresStateWords(st, r, '~/Projects/site'))).filter((x): x is string => x !== null);
+  assert.equal(new Set(lines).size >= 10, true);
+  for (const text of lines) { assert.equal(bannedHere(text), null, text); assert.ok(wordCount(text) <= LIMITS.paragraph, text); assert.equal(text.includes('/Users'), false); }
+});
+
+test('each refusal code of a runs call has its own words, and the limit says plainly that removing is not there', () => {
+  const codes = ['BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'FOLDER_CHARACTER', 'FOLDER_LINK', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG'];
+  const words = codes.map(runsRefusalWords);
+  assert.equal(new Set(words).size, codes.length, 'no two codes share words');
+  assert.equal(runsRefusalWords('RUN_LIMIT'), '500 runs are saved. Remove some first. Bowerloom cannot remove runs yet.');
+  assert.equal(runsRefusalWords('STORE_DAMAGED'), 'Your saved runs file is damaged. Nothing was changed.');
+  assert.equal(runsRefusalWords('FAILED'), runsRefusalWords('whatever'));
+  for (const text of [...words, runsRefusalWords('FAILED')]) { assert.equal(bannedHere(text), null, text); assert.ok(wordCount(text) <= LIMITS.paragraph, text); assert.doesNotMatch(text, /could not read the log/i); }
+});
+
+test('a save is reported for each run: what was saved, and what was not and why', () => {
+  assert.equal(saveReportWords([{ name: 'Claude Code', code: null }, { name: 'Codex', code: 'UNKNOWN_RUN' }]), 'Saved Claude Code. Codex was not saved: That run is not saved any more.');
+  assert.equal(saveReportWords([{ name: 'Codex', code: 'STORE_DAMAGED' }]), 'Codex was not saved: Your saved runs file is damaged. Nothing was changed.');
+  assert.equal(saveReportWords([{ name: 'Claude Code', code: 'TOO_LONG' }, { name: 'Codex', code: 'TOO_LONG' }]), 'Claude Code was not saved: The text is too long. Shorten it. Codex was not saved: The text is too long. Shorten it.');
 });
 
 test('times: a start is shown in the computer\'s zone, an unreadable one is said, and the form value round-trips', () => {

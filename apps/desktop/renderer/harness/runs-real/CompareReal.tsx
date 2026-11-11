@@ -5,8 +5,9 @@
  */
 import { useState } from 'react';
 import type { ReactElement } from 'react';
+import { RUN_NOTES_LIMIT } from '../../../shared/api/runs.js';
 import type { RunRating, RunView } from '../../../shared/api/runs.js';
-import { REAL_RATINGS, canRateReal, engineName, realGroupById, realRateQuestion, realStatusWords, startedAtWords } from '../../../shared/harness/runs-real.js';
+import { REAL_RATINGS, canRateReal, engineName, realGroupById, realRateQuestion, realStatusWords, runsRefusalWords, saveReportWords, startedAtWords } from '../../../shared/harness/runs-real.js';
 import { ratingWords, sameInstructionWords } from '../../../shared/harness/runs.js';
 import { Screen } from '../Screen.js';
 import { go } from '../router.js';
@@ -23,13 +24,13 @@ import './runs-real.css';
 
 interface Draft { readonly rating: RunRating | null; readonly notes: string }
 
-interface ColumnProps { run: RunView; draft: Draft; control: RunListControl; onRating(rating: RunRating): void; onNotes(notes: string): void; onFailed(): void }
+interface ColumnProps { run: RunView; draft: Draft; control: RunListControl; onRating(rating: RunRating): void; onNotes(notes: string): void; onFailed(code: string): void; onSynced(id: string): void }
 
-function Column({ run, draft, control, onRating, onNotes, onFailed }: ColumnProps): ReactElement {
+function Column({ run, draft, control, onRating, onNotes, onFailed, onSynced }: ColumnProps): ReactElement {
   const figures = useFigures(useRuns(), run.id);
   const name = engineName(run), open = canRateReal(run);
   const noteId = `hc-notes-${run.id}`, askId = `hc-ask-${run.id}`;
-  const toggle = (): void => { void control.change(run.id, { status: run.status === 'done' ? 'recorded' : 'done' }).then(code => { if (code !== null) onFailed(); }); };
+  const toggle = (): void => { void control.change(run.id, { status: run.status === 'done' ? 'recorded' : 'done' }).then(code => { if (code !== null) onFailed(code); else onSynced(run.id); }); };
   return (
     <section className="hc-col" data-run={run.id} data-status={run.status} aria-label={`${name}, ${realStatusWords(run.status)}`}>
       <header className="hc-col-head">
@@ -39,14 +40,14 @@ function Column({ run, draft, control, onRating, onNotes, onFailed }: ColumnProp
       </header>
       <p className="hx-text">{run.projectName}</p>
       <p className="hx-text hc-muted">{`${RUNS_REAL.label.started} ${startedAtWords(run.startedAt)}.`}</p>
-      <FigureRows view={figures} />
+      <FigureRows view={figures} label={run.projectLabel} />
       <div className="hc-bring"><HButton data-toggle-done={run.id} onClick={toggle}>{run.status === 'done' ? RUNS_REAL.label.markNotDone : RUNS_REAL.label.markDone}</HButton></div>
       <label className="hc-label" htmlFor={noteId}>{RUNS_REAL.label.yourNotes}</label>
-      <textarea id={noteId} className="hc-notes" value={draft.notes} onChange={e => onNotes(e.target.value)} rows={4} />
+      <textarea id={noteId} className="hc-notes" maxLength={RUN_NOTES_LIMIT} value={draft.notes} onChange={e => onNotes(e.target.value)} rows={4} />
       <p className="hc-ask" id={askId}>{realRateQuestion(run)}</p>
       <div className="hc-rating" role="group" aria-labelledby={askId} data-locked={open ? undefined : ''}>
         {REAL_RATINGS.map(rating => (
-          <button key={rating} type="button" className="kit-button hc-rate" data-variant="quiet" aria-pressed={open && draft.rating === rating} aria-disabled={open ? undefined : 'true'}
+          <button key={rating} type="button" className="kit-button hc-rate" data-variant="quiet" aria-pressed={draft.rating === rating} aria-disabled={open ? undefined : 'true'}
             onClick={() => { if (open) onRating(rating); }}>{ratingWords(rating)}</button>
         ))}
       </div>
@@ -81,10 +82,18 @@ export function CompareReal({ group }: { group: string }): ReactElement {
   const runs = found.runs;
   const draftOf = (run: RunView): Draft => drafts[run.id] ?? { rating: run.rating, notes: run.notes };
   const change = (run: RunView, next: Partial<Draft>): void => { setSaved(false); setDrafts(current => ({ ...current, [run.id]: { ...draftOf(run), ...next } })); };
+  /** The draft of a run is dropped, so the box and the rating show what main answered. */
+  const synced = (id: string): void => setDrafts(current => { const { [id]: _gone, ...rest } = current; return rest; });
   const save = (): void => {
-    // A run that is not done keeps its notes in the box until it is; a run that is done saves its rating and notes.
+    // A run that is not done keeps its notes only; a run that is done saves its rating and notes. Each run is reported on its own.
     const jobs = runs.map(run => { const d = draftOf(run); return control.change(run.id, canRateReal(run) ? { rating: d.rating, notes: d.notes } : { notes: d.notes }); });
-    void Promise.all(jobs).then(codes => { const ok = codes.every(c => c === null); setSaved(ok); ui.showToast(ok ? RUNS_REAL.hint.savedToast : RUNS_REAL.hint.saveFailed); });
+    void Promise.all(jobs).then(codes => {
+      const report = runs.map((run, at) => ({ name: engineName(run), code: codes[at] ?? null }));
+      for (const [at, run] of runs.entries()) if (codes[at] === null) synced(run.id);
+      const ok = report.every(r => r.code === null);
+      setSaved(ok);
+      ui.showToast(ok ? RUNS_REAL.hint.savedToast : saveReportWords(report));
+    });
   };
   return (
     <Screen slot="compare" title={RUN_WORDS.label.compare} tools={closeTool}>
@@ -95,7 +104,7 @@ export function CompareReal({ group }: { group: string }): ReactElement {
       {found.comparable ? null : <p className="kit-hint hx-hint" data-compare-state="one">{RUNS_REAL.hint.compareNeedTwo}</p>}
       <div className="hc-cols" data-count={runs.length}>
         {runs.map(run => (
-          <Column key={run.id} run={run} draft={draftOf(run)} control={control} onFailed={() => ui.showToast(RUNS_REAL.hint.saveFailed)}
+          <Column key={run.id} run={run} draft={draftOf(run)} control={control} onFailed={code => ui.showToast(runsRefusalWords(code))} onSynced={synced}
             onRating={rating => change(run, { rating: draftOf(run).rating === rating ? null : rating })} onNotes={notes => change(run, { notes })} />
         ))}
       </div>

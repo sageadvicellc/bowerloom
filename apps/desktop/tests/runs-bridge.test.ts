@@ -26,13 +26,13 @@ const NOW = Date.parse('2026-11-11T12:00:00Z');
 
 // ---- the table
 
-test('the runs table holds four calls with their argument counts and their own channels in the bowerloom-runs namespace', () => {
-  assert.deepEqual([...RUN_CALLS], ['listRuns', 'recordRun', 'updateRun', 'readRunFigures']);
+test('the runs table holds five calls with their argument counts and their own channels in the bowerloom-runs namespace', () => {
+  assert.deepEqual([...RUN_CALLS], ['listRuns', 'recordRun', 'updateRun', 'readRunFigures', 'startNewRunList']);
   assert.equal(Object.isFrozen(RUN_CALLS), true);
-  assert.deepEqual(RUN_ARITY, { listRuns: 0, recordRun: 1, updateRun: 2, readRunFigures: 1 });
+  assert.deepEqual(RUN_ARITY, { listRuns: 0, recordRun: 1, updateRun: 2, readRunFigures: 1, startNewRunList: 0 });
   for (const call of RUN_CALLS) assert.equal(RUN_CHANNELS[call], `bowerloom-runs:${call}`);
-  assert.equal(new Set(Object.values(RUN_CHANNELS)).size, 4);
-  assert.deepEqual([...RUN_REFUSALS], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'FAILED']);
+  assert.equal(new Set(Object.values(RUN_CHANNELS)).size, 5);
+  assert.deepEqual([...RUN_REFUSALS], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG', 'FOLDER_CHARACTER', 'FOLDER_LINK', 'FAILED']);
 });
 
 test('the runs calls are not part of the 42 calls of the reader and the engine, nor of the local calls', () => {
@@ -112,9 +112,9 @@ test('a run id is run- and up to six digits, nothing else', () => {
 });
 
 test('figures that cannot be read are a state with every figure null, never a zero', () => {
-  for (const state of ['not-found', 'unreadable', 'not-available'] as const) {
+  for (const state of ['not-found', 'unreadable', 'ambiguous', 'not-available'] as const) {
     const f = NO_FIGURES(state);
-    assert.deepEqual(f, { state, startedAt: null, endedAt: null, durationMs: null, inputTokens: null, outputTokens: null, model: null, outcome: 'unknown' });
+    assert.deepEqual(f, { state, reason: null, startedAt: null, endedAt: null, durationMs: null, inputTokens: null, outputTokens: null, model: null, outcome: 'unknown' });
     assert.equal(Object.isFrozen(f), true);
   }
 });
@@ -150,13 +150,14 @@ test('each runs call sends exactly its arity of arguments on its own channel, an
   await runs.recordRun!({ a: 1 }, 'extra');
   await runs.updateRun!('run-1', { notes: 'x' }, 'extra');
   await runs.readRunFigures!('run-1', 'extra');
-  assert.deepEqual(sent, [[RUN_CHANNELS.listRuns, []], [RUN_CHANNELS.recordRun, [{ a: 1 }]], [RUN_CHANNELS.updateRun, ['run-1', { notes: 'x' }]], [RUN_CHANNELS.readRunFigures, ['run-1']]]);
+  await runs.startNewRunList!('extra');
+  assert.deepEqual(sent, [[RUN_CHANNELS.listRuns, []], [RUN_CHANNELS.recordRun, [{ a: 1 }]], [RUN_CHANNELS.updateRun, ['run-1', { notes: 'x' }]], [RUN_CHANNELS.readRunFigures, ['run-1']], [RUN_CHANNELS.startNewRunList, []]]);
 });
 
 test('a refusal becomes one short code on the page, and a long message with a path becomes FAILED', async () => {
   const { exposed, failWith } = builtPreload();
   const runs = exposed.get('bowerloomRuns') as Record<string, (...a: unknown[]) => Promise<unknown>>;
-  for (const code of ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN']) {
+  for (const code of ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG', 'FOLDER_CHARACTER', 'FOLDER_LINK']) {
     failWith(new Error(`Error invoking remote method 'bowerloom-runs:updateRun': Error: ${code}`));
     await assert.rejects(runs.updateRun!('run-1', {}), (e: Error) => e.message === code, code);
   }
@@ -174,7 +175,7 @@ test('the other three bridges are unchanged by the fourth: their names and their
 
 // ---- the client
 
-test('the client gives the runs bridge of a window that has all four calls', () => {
+test('the client gives the runs bridge of a window that has all five calls', () => {
   const runs = fullRuns();
   assert.equal(createApiClient({ reader: undefined, engine: undefined, runs }).runs, runs as never);
 });

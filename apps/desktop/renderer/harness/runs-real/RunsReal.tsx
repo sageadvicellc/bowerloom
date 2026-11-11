@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import type { RunView } from '../../../shared/api/runs.js';
-import { engineName, realCompareGroupOf, realGroups, realRunById, realRunName, realStatusWords, startedAtWords } from '../../../shared/harness/runs-real.js';
+import { engineName, realCompareGroupOf, runsRefusalWords, realGroups, realRunById, realRunName, realStatusWords, startedAtWords } from '../../../shared/harness/runs-real.js';
 import type { RealGroup } from '../../../shared/harness/runs-real.js';
 import { Screen } from '../Screen.js';
 import { go } from '../router.js';
@@ -16,7 +16,7 @@ import type { Ui } from '../ui.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon, Tile } from '../icons.js';
 import { RUN_WORDS, compareTitle, firstSentence } from '../runs-words.js';
-import { RUNS_REAL, runsHintReal } from '../runs-real-words.js';
+import { RUNS_REAL, keptWords, runsHintReal } from '../runs-real-words.js';
 import { WORDS } from '../words.js';
 import { FigureRows } from './FigureRows.js';
 import { AddRunSheet } from './AddRunSheet.js';
@@ -63,7 +63,7 @@ function Details({ run, runs, control, ui }: { run: RunView; runs: readonly RunV
   const toggle = (): void => {
     const done = run.status !== 'done';
     setBusy(true);
-    void control.change(run.id, { status: done ? 'done' : 'recorded' }).then(code => { setBusy(false); ui.showToast(code === null ? (done ? RUNS_REAL.hint.doneToast : RUNS_REAL.hint.notDoneToast) : RUNS_REAL.hint.saveFailed); });
+    void control.change(run.id, { status: done ? 'done' : 'recorded' }).then(code => { setBusy(false); ui.showToast(code === null ? (done ? RUNS_REAL.hint.doneToast : RUNS_REAL.hint.notDoneToast) : runsRefusalWords(code)); });
   };
   return (
     <>
@@ -89,7 +89,7 @@ function Details({ run, runs, control, ui }: { run: RunView; runs: readonly RunV
       </section>
       <section className="hx-block" aria-labelledby="hr-d-figures">
         <h3 className="hx-h3" id="hr-d-figures">{RUNS_REAL.label.figures}</h3>
-        <FigureRows view={figures} />
+        <FigureRows view={figures} label={run.projectLabel} />
       </section>
       <div className="hx-actions">
         <HButton variant="primary" disabled={busy} onClick={toggle} data-toggle-done="">{run.status === 'done' ? RUNS_REAL.label.markNotDone : RUNS_REAL.label.markDone}</HButton>
@@ -104,6 +104,10 @@ export function RunsReal({ id }: { id: string | null }): ReactElement {
   const bridge = useRuns(), ui = useUi();
   const control = useRunList(bridge);
   const [adding, setAdding] = useState(false);
+  /** The name a damaged file was kept as, after the person asked for a new list. */
+  const [kept, setKept] = useState<string | null>(null);
+  const [startFailed, setStartFailed] = useState<string | null>(null);
+  const startNew = (): void => { setStartFailed(null); void control.startNew().then(done => { if ('asideName' in done) { setKept(done.asideName); ui.showToast(keptWords(done.asideName)); } else setStartFailed(done.code); }); };
   const runs = control.list.kind === 'ready' ? control.list.runs : [];
   const picked = id === null ? undefined : realRunById(runs, id);
   const selected = picked ?? (id === null ? runs[0] : undefined);
@@ -116,7 +120,13 @@ export function RunsReal({ id }: { id: string | null }): ReactElement {
     return (
       <Screen slot="runs" title={WORDS.label.runs} tools={addButton}>
         {control.list.kind === 'loading' ? <p className="kit-hint hx-hint" role="status" data-runs-state="loading">{RUNS_REAL.hint.listLoading}</p> : (
-          <><p className="kit-hint hx-hint" role="alert" data-runs-state="failed">{RUNS_REAL.hint.listFailed}</p><div className="hx-actions"><HButton onClick={control.reload}>{RUNS_REAL.label.tryAgain}</HButton></div></>
+          <>
+            <p className="kit-hint hx-hint" role="alert" data-runs-state={control.list.code === 'STORE_DAMAGED' ? 'damaged' : 'failed'}>{control.list.code === 'STORE_DAMAGED' ? RUNS_REAL.hint.damaged : RUNS_REAL.hint.listFailed}</p>
+            {startFailed === null ? null : <p className="kit-hint hx-hint" role="alert" data-start-failed="">{runsRefusalWords(startFailed)}</p>}
+            <div className="hx-actions">
+              {control.list.code === 'STORE_DAMAGED' ? <HButton variant="primary" data-start-new-list="" onClick={startNew}>{RUNS_REAL.label.startNewList}</HButton> : <HButton onClick={control.reload}>{RUNS_REAL.label.tryAgain}</HButton>}
+            </div>
+          </>
         )}
         {sheet}
       </Screen>
@@ -133,6 +143,7 @@ export function RunsReal({ id }: { id: string | null }): ReactElement {
   }
   return (
     <Screen slot="runs" title={WORDS.label.runs} tools={addButton} details={selected === undefined ? undefined : <Details key={selected.id} run={selected} runs={runs} control={control} ui={ui} />}>
+      {kept === null ? null : <p className="kit-hint hx-hint" role="status" data-kept="">{keptWords(kept)}</p>}
       <p className="kit-hint hx-hint">{runsHintReal(runs.length)}</p>
       {runs.length === 0 ? <p className="kit-hint hx-hint" data-runs-state="empty">{RUN_WORDS.hint.noRunsReal}</p> : (
         <ul className="hx-rows hr-list" aria-label={RUN_WORDS.label.runsList}>

@@ -22,7 +22,7 @@ export function claudeLog(home: string, dir: string, startMs: number, name = 's1
   put(join(home, '.claude', 'projects', claudeFolderName(dir), name), [
     { type: 'user', timestamp: at(60), cwd: dir, message: { role: 'user', content: `${MARK} please fix` } },
     { type: 'assistant', timestamp: at(80), cwd: dir, message: { id: 'm1', model: 'claude-test-1', content: [{ type: 'text', text: MARK }], stop_reason: 'tool_use', usage: { input_tokens: 3, output_tokens: 8, cache_creation_input_tokens: 2, cache_read_input_tokens: 10 } } },
-    { type: 'assistant', timestamp: at(300), cwd: dir, message: { id: 'm2', model: 'claude-test-1', content: [{ type: 'text', text: MARK }], stop_reason: 'end_turn', usage: { input_tokens: 4, output_tokens: 6 } } },
+    { type: 'assistant', timestamp: at(300), cwd: dir, message: { id: 'm2', model: 'claude-test-1', content: [{ type: 'text', text: MARK }], stop_reason: 'end_turn', usage: { input_tokens: 4, output_tokens: 6, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } },
   ]);
 }
 
