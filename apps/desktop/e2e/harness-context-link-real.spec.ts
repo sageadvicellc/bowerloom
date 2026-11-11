@@ -7,7 +7,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -221,15 +221,28 @@ test.describe('Link a notes folder', () => {
     expect((JSON.parse(readFileSync(approvalsFile(), 'utf8')) as { keys: string[] }).keys).toEqual(keys);
   });
 
-  test('a damaged record of approvals is not written over, and the Library says so instead of "needs approval"', async () => {
+  test('a damaged record of approvals is moved aside by the pick, nothing is lost, and the pages show', async () => {
     test.setTimeout(240_000);
     await start('context');
     const team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
     mkdirSync(dirname(approvalsFile()), { recursive: true });
     writeFileSync(approvalsFile(), '{ damaged');
     await readAgain(await linkHomeNotes(notes, team));
-    expect(readFileSync(approvalsFile(), 'utf8')).toBe('{ damaged');
-    await expect(page().locator('[data-link-problem="damaged"]')).toContainText('Saved approvals could not be read: ~/Documents/field-notes');
+    const aside = readdirSync(dirname(approvalsFile())).filter(n => n.startsWith('approved.json.damaged-'));
+    expect(aside.length).toBe(1);
+    expect(readFileSync(join(dirname(approvalsFile()), aside[0]!), 'utf8')).toBe('{ damaged');
+    await expect(page().locator('[data-part]', { hasText: 'team linked notes' })).toHaveCount(1);
+    await expect(page().locator('[data-link-problem]')).toHaveCount(0);
+  });
+
+  test('a record that became damaged after the pick is named in the Library, with the way out in its words', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
+    const s = await linkHomeNotes(notes, team);
+    writeFileSync(approvalsFile(), '{ damaged');
+    await readAgain(s);
+    await expect(page().locator('[data-link-problem="damaged"]')).toContainText('Saved approvals could not be read: ~/Documents/field-notes. Pick the folder again to start a new list.');
   });
 
   test('a notes folder outside the home folder and the harness folder is refused at the review, with a clear message, and nothing is written', async () => {

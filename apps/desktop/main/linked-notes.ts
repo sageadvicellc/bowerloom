@@ -23,7 +23,7 @@ import type { RealHarness, RealHarnessPlace, RealPlace, RealResult } from '../sh
 import type { ContextSliceItem, Slice, WikiPage } from '../shared/world/types.js';
 import { hashText } from '../shared/world/sample.js';
 import type { LinkProblem } from '../shared/harness/types.js';
-import { approvalKey, readApprovals } from '../../../packages/notes-source/src/index.js';
+import { APPROVALS_LIMITS, approvalKey, readApprovals } from '../../../packages/notes-source/src/index.js';
 import { isThere, makeBudget, newTally, readHead, readText, realFolder, realFolderFollowing, walkFiles } from './real-fs.js';
 import type { Budget, Tally, WalkOptions, WalkedFile } from './real-fs.js';
 import { SKIP_DIRS } from './real-scan.js';
@@ -90,16 +90,19 @@ export function resolveStored(stored: unknown, rootReal: string, home: string): 
 
 export interface LinkedRoot { readonly real: string; readonly stored: string }
 
-/** The approvals of this computer, as the reader sees them: the keys, and whether the record is there and damaged. */
-export function approvalsOf(stateRoot: string): { readonly approved: ReadonlySet<string>; readonly damaged: boolean } {
+/** The approvals of this computer, as the reader sees them: the keys, and whether the record is damaged, its folder is blocked (a link, another owner, open to others), or the record is full. */
+export interface Approvals { readonly approved: ReadonlySet<string>; readonly damaged: boolean; readonly blocked: boolean; readonly full: boolean }
+export function approvalsOf(stateRoot: string): Approvals {
   const r = readApprovals(stateRoot);
-  return { approved: r.status === 'ok' ? r.keys : new Set(), damaged: r.status === 'damaged' };
+  return { approved: r.status === 'ok' ? r.keys : new Set(), damaged: r.status === 'damaged', blocked: r.status === 'blocked', full: r.status === 'ok' && r.keys.size >= APPROVALS_LIMITS.keys };
 }
+/** Why a `~/` link has no approval: each case has its own words, and its own way out (the damaged record is replaced by the next pick; a blocked folder and a full record are not). */
+const whyNoApproval = (a: Approvals): LinkProblem['reason'] => (a.blocked ? 'blocked' : a.damaged ? 'damaged' : a.full ? 'full' : 'approval');
 
 /**
  * The folders linked by the harness folder `rootReal`, and each link that was not read, with its reason. A root inside another root is read by the outer one, and each folder is returned once.
  */
-export function linkedRootsOf(rootReal: string, home: string, approvals: ReturnType<typeof approvalsOf>, budget: Budget, tally: Tally): { roots: LinkedRoot[]; problems: LinkProblem[] } {
+export function linkedRootsOf(rootReal: string, home: string, approvals: Approvals, budget: Budget, tally: Tally): { roots: LinkedRoot[]; problems: LinkProblem[] } {
   const none = { roots: [], problems: [] };
   const harness = realFolder(join(rootReal, '.bowerloom'));
   if (harness === null) return none;
@@ -121,7 +124,7 @@ export function linkedRootsOf(rootReal: string, home: string, approvals: ReturnT
     const got = resolveStored(link.path, rootReal, home);
     if (!got.ok) { problems.push({ reason: got.why, label: label(link.path) }); continue; }
     const stored = link.path as string;
-    if (stored.startsWith('~/') && !approvals.approved.has(approvalKey(got.real))) { problems.push({ reason: approvals.damaged ? 'damaged' : 'approval', label: label(stored) }); continue; }
+    if (stored.startsWith('~/') && !approvals.approved.has(approvalKey(got.real))) { problems.push({ reason: whyNoApproval(approvals), label: label(stored) }); continue; }
     if (roots.some(r => r.real === got.real)) continue;
     roots.push({ real: got.real, stored });
   }
@@ -142,7 +145,7 @@ function namesOf(roots: readonly LinkedRoot[]): string[] {
 }
 
 /** Walks the linked folders of one harness folder under the caps it shares with its own notes. Used by the read and by the check, so the two cannot disagree. */
-export function collectLinked(rootReal: string, home: string, approvals: ReturnType<typeof approvalsOf>, limits: LinkedLimits, budget: Budget, tally: Tally): Collected {
+export function collectLinked(rootReal: string, home: string, approvals: Approvals, limits: LinkedLimits, budget: Budget, tally: Tally): Collected {
   const found = linkedRootsOf(rootReal, home, approvals, budget, tally);
   const problems = [...found.problems], groups: LinkedGroup[] = [];
   if (found.roots.length === 0) return { problems, groups, leftOut: 0 };
@@ -207,7 +210,7 @@ function harnessFolderOf(place: RealPlace, home: string): string | null {
  * Adds the pages of the linked notes folders to a result, and the problems of the links that were not read to its harness places. The place's own notes are in the result already (the reader
  * made them). A set of notes of its own, "<place> linked notes", holds the linked pages. Nothing else of the result changes.
  */
-export function addLinkedNotes(result: RealResult, chosen: readonly RealPlace[], deps: LinkedDeps): RealResult {
+function addLinkedNotesNow(result: RealResult, chosen: readonly RealPlace[], deps: LinkedDeps): RealResult {
   const harnessPlaces = result.harnessPlaces;
   if (harnessPlaces === undefined || harnessPlaces.length === 0) return result;
   const limits = deps.limits ?? REAL_LIMITS, budget = makeBudget(deps.now ?? (() => Date.now())), tally = newTally();
@@ -255,10 +258,10 @@ export function addLinkedNotes(result: RealResult, chosen: readonly RealPlace[],
 // ---------------------------------------------------------------------------------------------------------------------- the check
 
 /** What the check of the saved read adds: for each watched place with a harness folder, its approvals, the links that fail, and the linked files under the same room as the read. */
-export function linkedWatchText(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): { readonly text: string; readonly complete: boolean } {
+function linkedWatchTextNow(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): { readonly text: string; readonly complete: boolean } {
   const limits = deps.limits ?? REAL_LIMITS, budget = makeBudget(deps.now ?? (() => Date.now())), tally = newTally();
   const approvals = approvalsOf(deps.stateRoot), lines: string[] = [];
-  if (approvals.approved.size > 0 || approvals.damaged) lines.push(`approvals|${approvals.damaged ? 'damaged' : hashText([...approvals.approved].sort().join(','))}`);
+  if (approvals.approved.size > 0 || approvals.damaged || approvals.blocked) lines.push(`approvals|${approvals.blocked ? 'blocked' : approvals.damaged ? 'damaged' : hashText([...approvals.approved].sort().join(','))}`);
   let complete = true;
   for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     if (w.kind === 'home') continue;
@@ -286,3 +289,25 @@ export const withLinkedNotes = (base: Fingerprinter, deps: Omit<LinkedDeps, 'hom
   const first = await base(home, watched, now, budgetMs), linked = linkedWatchText(home, watched, deps);
   return { fingerprint: linked.text === '' ? first.fingerprint : createHash('sha256').update(`${first.fingerprint}\n${linked.text}`).digest('hex'), complete: first.complete && linked.complete };
 };
+
+/**
+ * Adds the linked notes to a result. Anything unexpected that is thrown while they are read leaves the result as the reader made it, and says so: each harness place gets an `unreadable` problem,
+ * so a failure is never a silent loss of pages. The class of the error goes to the log, never its message, which can hold a path.
+ */
+export function addLinkedNotes(result: RealResult, chosen: readonly RealPlace[], deps: LinkedDeps): RealResult {
+  try { return addLinkedNotesNow(result, chosen, deps); } catch (error) {
+    console.error(`Bowerloom could not read the linked notes folders (${error instanceof Error ? error.constructor.name : typeof error}).`);
+    const places = result.harnessPlaces;
+    if (places === undefined || places.length === 0) return result;
+    const problem: LinkProblem = { reason: 'unreadable', label: '' };
+    return { ...result, harnessPlaces: places.map(h => ({ ...h, harness: { ...h.harness, linkProblems: [problem] } as RealHarness })) };
+  }
+}
+
+/** The check of the linked notes folders for the saved read. An unexpected throw makes the check unresolved, so the saved read is never called "same" on a check that failed. */
+export function linkedWatchText(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): { readonly text: string; readonly complete: boolean } {
+  try { return linkedWatchTextNow(home, watched, deps); } catch (error) {
+    console.error(`Bowerloom could not check the linked notes folders (${error instanceof Error ? error.constructor.name : typeof error}).`);
+    return { text: 'linked|unreadable', complete: false };
+  }
+}

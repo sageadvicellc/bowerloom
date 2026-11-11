@@ -4,7 +4,7 @@
 // A `~/` link is read only for a folder the person picked: the approval is recorded by packages/notes-source (`approveFolder`) at the pick, by the real path of the folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { createScanner } from '../main/real-scan.js';
@@ -313,15 +313,36 @@ test('two places that each have the same problem get two rows with two keys', as
   assert.equal(new Set(rows.map(r => `${r.place}|${r.reason}|${r.label}`)).size, 2);
 });
 
-test('a damaged record of approvals is never written over, and the Library names the damage instead of "needs approval"', async t => {
+test('a damaged record of approvals is named by the Library, and the next pick moves it aside and starts a new list instead of writing over it', async t => {
   const home = setup(t, h => { proj(h, [wiki('~/journal', 'j')]); put(join(h, 'journal', 'one.md'), page('One')); });
   mkdirSync(join(stateOf(home), 'linked-notes'), { recursive: true });
   writeFileSync(approvalsFileOf(stateOf(home)), '{ damaged');
-  assert.equal(approveFolder(stateOf(home), join(home, 'journal')), 'damaged');
-  assert.equal(readFileSync(approvalsFileOf(stateOf(home)), 'utf8'), '{ damaged');
   const got = await read(home);
   assert.deepEqual(problemsOf(got), ['damaged:~/journal']);
   assert.deepEqual(titles(got), []);
+  assert.equal(approveFolder(stateOf(home), join(home, 'journal')), 'kept');
+  assert.deepEqual(readdirSync(join(stateOf(home), 'linked-notes')).filter(n => n.startsWith('approved.json.damaged-')).length, 1);
+  assert.deepEqual(titles(await read(home)), ['One']);
+});
+
+test('an unexpected throw while the linked notes are read leaves the result as the reader made it and says so; the check becomes unresolved', async t => {
+  const home = setup(t, h => { proj(h, [wiki('docs')]); put(join(h, 'work', 'proj', 'docs', 'd.md'), page('D')); });
+  const scanner = createScanner({ home });
+  const found = await scanner.addFolder(join(home, 'work'));
+  const batch = await scanner.read(found.places.map(p => p.id));
+  const built = buildRealResult(batch.reads, batch.tally, { nowMs: NOW_MS, foldExtraApps: true });
+  const boom = { get filesPerPlace(): number { throw new Error('made-up failure'); }, pagesPerPlace: 4 };
+  const lines: string[] = [], original = console.error;
+  console.error = (line: string): void => { lines.push(String(line)); };
+  try {
+    const got = addLinkedNotes(built, found.places, { home, stateRoot: stateOf(home), limits: boom });
+    assert.deepEqual(got.world.wikiPages, built.world.wikiPages, 'the result is as the reader made it');
+    assert.deepEqual((got.harnessPlaces ?? []).flatMap(h => (h.harness as { linkProblems?: unknown[] }).linkProblems ?? []), [{ reason: 'unreadable', label: '' }]);
+    const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
+    assert.deepEqual(linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: boom }), { text: 'linked|unreadable', complete: false });
+  } finally { console.error = original; }
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every(l => /\(Error\)\.$/.test(l) && !l.includes('made-up failure') && !l.includes(home)), 'the class only, never the message or a path');
 });
 
 test('a change in a linked folder shows as a change of the place, a link that is gone is unresolved, and the approvals are part of the check', async t => {

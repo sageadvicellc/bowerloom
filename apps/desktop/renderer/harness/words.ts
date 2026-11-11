@@ -115,7 +115,7 @@ export const willUse = (names: readonly string[]): string => `${names.join(', ')
 /** The line for a linked notes folder that was not read: the folder that links it, then why. `label` is the stored path, or empty. */
 export function linkProblemWords(folder: string, reason: LinkProblem['reason'], label: string): string {
   const what = label === '' ? '' : `: ${label}`;
-  const why = reason === 'gone' ? `Linked folder not found${what}` : reason === 'form' ? `Linked folder path not read${what}` : reason === 'approval' ? `Needs approval${what}. Link it again to approve.` : reason === 'damaged' ? `Saved approvals could not be read${what}`
+  const why = reason === 'gone' ? `Linked folder not found${what}` : reason === 'form' ? `Linked folder path not read${what}` : reason === 'approval' ? `Needs approval${what}. Link it again to approve.` : reason === 'damaged' ? `Saved approvals could not be read${what}. Pick the folder again to start a new list.` : reason === 'blocked' ? `Bowerloom could not save approvals on this computer${what}` : reason === 'full' ? `Bowerloom keeps at most 2000 approved folders${what}`
     : reason === 'unreadable' ? 'The list of linked folders could not be read.' : `More folders are linked than are read${what}`;
   return `${folder}: ${why}`;
 }

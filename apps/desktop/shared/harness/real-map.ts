@@ -305,7 +305,7 @@ export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
 function linkProblemsOf(harness: object): { linkProblems?: LinkProblem[] } {
   const list = (harness as { linkProblems?: unknown }).linkProblems;
   if (!Array.isArray(list)) return {};
-  const out = list.filter((p): p is LinkProblem => typeof p === 'object' && p !== null && typeof (p as LinkProblem).label === 'string' && ['gone', 'form', 'approval', 'damaged', 'unreadable', 'limit'].includes((p as LinkProblem).reason)).map(p => ({ reason: p.reason, label: plain(p.label) }));
+  const out = list.filter((p): p is LinkProblem => typeof p === 'object' && p !== null && typeof (p as LinkProblem).label === 'string' && ['gone', 'form', 'approval', 'damaged', 'blocked', 'full', 'unreadable', 'limit'].includes((p as LinkProblem).reason)).map(p => ({ reason: p.reason, label: plain(p.label) }));
   return out.length === 0 ? {} : { linkProblems: out };
 }
 

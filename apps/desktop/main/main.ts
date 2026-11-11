@@ -13,7 +13,7 @@ import { registerLocalModelsIpc } from './local-models-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createScanSession } from './scan-session.js';
 import { addLinkedNotes, withLinkedNotes } from './linked-notes.js';
-import { approveFolder } from '../../../packages/notes-source/src/index.js';
+import { pickNotesFolder } from './notes-pick.js';
 import { fingerprintOf } from './scan-session.js';
 import { createRecorder } from './engine-events.js';
 import { shippedKits } from './kit.js';
@@ -266,16 +266,20 @@ app.whenReady().then(async () => {
           return result.canceled || result.filePath === undefined || result.filePath === '' ? null : result.filePath;
         },
         // Main's own notes chooser: its words come from main, never from the window. "Start fresh" lets the person make a new folder in it.
-        chooseNotesFolder: async purpose => {
-          const words = NOTES_DIALOG[purpose];
-          const options: Electron.OpenDialogOptions = { title: words.title, message: words.message, buttonLabel: words.button, properties: purpose === 'start' ? ['openDirectory', 'createDirectory'] : ['openDirectory'] };
-          const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
-          const picked = result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
-          // The pick is the person's approval to read that folder when a harness links it in `~/` form (packages/notes-source/src/approvals.ts). A record that cannot be kept is told here by one fixed line,
-          // and the Library names the link as one that needs approval, or the record as damaged.
-          if (picked !== null) { const kept = approveFolder(stateRoot, picked); if (kept !== 'kept') console.error(`Bowerloom could not keep the approval of a notes folder (${kept}).`); }
-          return picked;
-        },
+        chooseNotesFolder: purpose => pickNotesFolder({
+          purpose, stateRoot,
+          show: async () => {
+            const words = NOTES_DIALOG[purpose];
+            const options: Electron.OpenDialogOptions = { title: words.title, message: words.message, buttonLabel: words.button, properties: purpose === 'start' ? ['openDirectory', 'createDirectory'] : ['openDirectory'] };
+            const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
+            return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+          },
+          tell: line => console.error(line),
+          warn: async notice => {
+            const box: Electron.MessageBoxOptions = { type: 'warning', title: 'Notes folder', message: notice.message, detail: notice.detail, buttons: ['OK'], noLink: true };
+            if (window === null) await dialog.showMessageBox(box); else await dialog.showMessageBox(window, box);
+          },
+        }),
         // The ready-made kits ship read-only: from the repository in development, from the app's resources in a packaged build. A broken kit is told on
         // the console now, and every call that needs it refuses with words; it is never replaced by an empty kit.
         kitsDir: shippedKits({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appRoot: root }),

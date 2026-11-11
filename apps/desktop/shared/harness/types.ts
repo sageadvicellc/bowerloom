@@ -171,8 +171,8 @@ export interface ScanSource {
   readonly harnessPlaceId?: string;
 }
 
-/** A notes folder a harness links that was not read, and why: the folder is gone, its stored path is not a form the reader takes, it needs the person's approval on this computer, the record of approvals is damaged, its `knowledge.json` cannot be read, or more is linked than is read. `label` is the stored path, or empty. */
-export interface LinkProblem { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }
+/** A notes folder a harness links that was not read, and why: the folder is gone, its stored path is not a form the reader takes, it needs the person's approval on this computer, the record of approvals is damaged, cannot be used on this computer (blocked) or is full, its `knowledge.json` cannot be read, or more is linked than is read. `label` is the stored path, or empty. */
+export interface LinkProblem { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'blocked' | 'full' | 'unreadable' | 'limit'; readonly label: string }
 
 /** A folder that holds a harness, read through the harness loader (real mode). The Overview shows it as a place; no screen of the read lists it. `label` is the folder in `~` form. */
 export interface HarnessPlace {
