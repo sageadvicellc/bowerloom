@@ -91,7 +91,7 @@ test('the rating is locked until the run is marked done, then unlocks; a saved r
   await expect(claude).toContainText('Mark the run as done to rate it.');
   const better = claude.getByRole('button', { name: 'Better', exact: true });
   await expect(better).toHaveAttribute('aria-disabled', 'true');
-  await better.click();
+  await better.click({ force: true });
   await expect(better, 'a locked rating does not take a press').toHaveAttribute('aria-pressed', 'false');
   await claude.locator('[data-toggle-done]').click();
   await expect(claude).toHaveAttribute('data-status', 'done');
