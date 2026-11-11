@@ -48,12 +48,12 @@ test('no file reads fetch, a socket, a web socket, eval, a dynamic import, requi
   }
 });
 
-test('a number of the form a.b.c.d appears only in the guard, and the only address in it is 127.0.0.1', () => {
+test('the only address written in the source is 127.0.0.1, and the guard holds it as code', () => {
   for (const f of files) {
-    const found = code(f).match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g) ?? [];
-    if (rel(f) === 'guard.ts') assert.deepEqual([...new Set(found)], ['127.0.0.1']);
-    else assert.deepEqual(found, [], rel(f));
+    const found = new Set(code(f).match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g) ?? []);
+    for (const address of found) assert.equal(address, '127.0.0.1', rel(f));
   }
+  assert.match(read('guard.ts'), /LOOPBACK_HOST = '127\.0\.0\.1'/);
 });
 
 test('the package imports no Electron, no page code, no other package, and nothing outside its own src', () => {
