@@ -289,7 +289,7 @@ test('more than the most linked folders, an unreadable list, a missing folder an
 });
 
 test('a problem reaches the Library: the rows name the folder and the reason, an empty tab with a problem shows it before any action, and the words are plain', async t => {
-  const home = setup(t, h => proj(h, [wiki('~/Notes', 'notes')]));
+  const home = setup(t, h => { proj(h, [wiki('~/Notes', 'notes')]); put(join(h, 'Notes', 'n.md'), page('N')); });
   const got = await read(home);
   const state = realToHarnessState(got.result, got.places);
   const rows = linkProblems(state);
