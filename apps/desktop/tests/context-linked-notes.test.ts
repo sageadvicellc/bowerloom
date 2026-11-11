@@ -3,13 +3,15 @@
 // Cause 1: the automatic notes walk never runs for the home folder and stops at any subfolder with a tool folder, and a linked folder (knowledge.json) was never walked at all.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { createScanner, findPlacesUnder, readPlace, watchTextOf } from '../main/real-scan.js';
 import { approvalKey } from '../shared/real/linked-approvals.js';
+import { hashText } from '../shared/world/sample.js';
 import { approvalsFileOf, isApproved, recordApprovals } from '../main/linked-approvals.js';
 import { makeBudget, newTally } from '../main/real-fs.js';
+import { readdirSync } from 'node:fs';
 import { storedKnowledgePath } from '../../../packages/harness-definition/src/index.js';
 import { realToHarnessState } from '../shared/harness/real-map.js';
 import { contextEmpty, linkProblems } from '../shared/harness/library-add.js';
@@ -29,7 +31,9 @@ const link = (path: string, name = 'journal'): string => json({ sources: [{ name
 const stateOf = (home: string): string => join(home, '.made-up-state');
 /** `approved` lists `[harness folder below home, stored path]`: what the person approved in the link flow. */
 type Approved = readonly (readonly [string, string])[];
-const approve = (home: string, approved: Approved): void => { for (const [folder, stored] of approved) assert.equal(recordApprovals(stateOf(home), join(home, folder), [stored]), true); };
+/** The folder a stored `~/` path leads to now, as the link flow records it; empty when there is none. */
+const targetOf = (home: string, stored: string): string => { try { return realpathSync(join(home, stored.startsWith('~/') ? stored.slice(2) : stored)); } catch { return ''; } };
+const approve = (home: string, approved: Approved): void => { for (const [folder, stored] of approved) assert.equal(recordApprovals(stateOf(home), join(home, folder), [{ stored, target: targetOf(home, stored) }]), 'kept'); };
 async function read(home: string, approved: Approved = []): Promise<{ result: RealResult; places: readonly RealPlace[]; reads: Awaited<ReturnType<ReturnType<typeof createScanner>['read']>>['reads'] }> {
   approve(home, approved);
   const scanner = createScanner({ home, approvalsFile: approvalsFileOf(stateOf(home)) });
@@ -147,8 +151,8 @@ test('a link in ~/ form is read only after the person approved it for that folde
   assert.deepEqual(titles(before.result), []);
   assert.deepEqual(problemsOf(before), ['approval:~/journal']);
   // Approved for another harness folder, or for another path, is not approved here.
-  assert.equal(recordApprovals(stateOf(home), join(home, 'work'), ['~/journal']), true);
-  assert.equal(recordApprovals(stateOf(home), join(home, 'work', 'proj'), ['~/other']), true);
+  assert.equal(recordApprovals(stateOf(home), join(home, 'work'), [{ stored: '~/journal', target: targetOf(home, '~/journal') }]), 'kept');
+  assert.equal(recordApprovals(stateOf(home), join(home, 'work', 'proj'), [{ stored: '~/other', target: join(home, 'other') }]), 'kept');
   assert.deepEqual(problemsOf(await read(home)), ['approval:~/journal']);
   const after = await read(home, [['work/proj', '~/journal']]);
   assert.deepEqual(titles(after.result), ['One']);
@@ -261,7 +265,7 @@ test('the caps hold for a place and its linked folders together; a folder that d
   const budget = makeBudget(() => Date.now()), tally = newTally();
   const place = findPlacesUnder(join(home, 'work'), home, budget, tally).find(p => p.label === 'proj')!;
   assert.ok(place, 'the harness folder is a place');
-  const approved = new Set(['~/a', '~/b', '~/c'].map(x => approvalKey(place.realRoot, x)));
+  const approved = new Set(['~/a', '~/b', '~/c'].map(x => approvalKey(place.realRoot, x, targetOf(home, x))));
   const got = readPlace(place, home, true, budget, { approved, limits: { filesPerPlace: 5, pagesPerPlace: 4 } });
   // Own pages: 2 files, so room 3 for files and room 2 for pages. a: 2 pages, room 1. b: asked for room + 1 = 2 files, cut: 1 file fits but no page room is left. c: no room, not walked.
   assert.equal(got.notes.length, 4);
@@ -304,16 +308,60 @@ test('a problem reaches the Library: the rows name the folder and the reason, an
   assert.equal(contextEmpty({ ...empty, kind: 'skill', problems: 1 }), 'none');
 });
 
-test('the approval record: kept per harness folder and path, read back, and a damaged or missing record approves nothing', async t => {
-  const home = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); });
-  const state = stateOf(home), proj1 = join(home, 'work', 'proj');
-  assert.equal(isApproved(state, proj1, '~/a'), false);
-  assert.equal(recordApprovals(state, proj1, ['~/a', '~/b']), true);
-  assert.equal(recordApprovals(state, proj1, ['~/c']), true);
-  assert.deepEqual(['~/a', '~/b', '~/c', '~/d'].map(p => isApproved(state, proj1, p)), [true, true, true, false]);
-  assert.equal(isApproved(state, join(home, 'work'), '~/a'), false);
-  writeFileSync(approvalsFileOf(state), '{ damaged');
-  assert.equal(isApproved(state, proj1, '~/a'), false);
+test('the approval record: kept per harness folder, path and target, read back, and a damaged or missing record approves nothing', async t => {
+  const home = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); for (const n of ['a', 'b', 'c', 'd']) put(join(h, n, 'x.md'), page(n)); });
+  const state = stateOf(home), proj1 = join(home, 'work', 'proj'), entry = (n: string): { stored: string; target: string } => ({ stored: `~/${n}`, target: join(home, n) });
+  assert.equal(isApproved(state, proj1, entry('a')), false);
+  assert.equal(recordApprovals(state, proj1, [entry('a'), entry('b')]), 'kept');
+  assert.equal(recordApprovals(state, proj1, [entry('c')]), 'kept');
+  assert.deepEqual(['a', 'b', 'c', 'd'].map(n => isApproved(state, proj1, entry(n))), [true, true, true, false]);
+  assert.equal(isApproved(state, join(home, 'work'), entry('a')), false, 'another harness folder');
+  assert.equal(isApproved(state, proj1, { stored: '~/a', target: join(home, 'b') }), false, 'the same stored path leading somewhere else needs a new approval');
+  assert.match(readFileSync(approvalsFileOf(state), 'utf8'), /^\{"version":1,"keys":\["[0-9a-f]{32}"/, 'keys are 32 hex characters of a SHA-256');
+});
+
+test('a swapped shortcut needs a new approval: the stored path is the same, the folder it leads to is not', async t => {
+  const home = setup(t, h => { proj(h, [wiki('~/notes', 'n')]); put(join(h, 'real-one', 'one.md'), page('One')); put(join(h, 'real-two', 'two.md'), page('Two')); symlinkSync(join(h, 'real-one'), join(h, 'notes')); });
+  assert.deepEqual(titles((await read(home, [['work/proj', '~/notes']])).result), ['One']);
+  rmSync(join(home, 'notes')); symlinkSync(join(home, 'real-two'), join(home, 'notes'));
+  const got = await read(home);
+  assert.deepEqual(titles(got.result), []);
+  assert.deepEqual(problemsOf(got), ['approval:~/notes']);
+});
+
+test('a record that is damaged, a link, or too big is never written over; the write says so, and the Library names the damage instead of "needs approval"', async t => {
+  const home = setup(t, h => { proj(h, [wiki('~/journal', 'j')]); put(join(h, 'journal', 'one.md'), page('One')); });
+  const state = stateOf(home), proj1 = join(home, 'work', 'proj'), entry = { stored: '~/journal', target: join(home, 'journal') };
+  mkdirSync(join(state, 'linked-notes'), { recursive: true });
+  const file = approvalsFileOf(state);
+  for (const [name, make] of [['not json', () => writeFileSync(file, '{ damaged')], ['wrong version', () => writeFileSync(file, '{"version":9,"keys":[]}')], ['bad keys', () => writeFileSync(file, '{"version":1,"keys":["x"]}')],
+    ['too big', () => writeFileSync(file, ' '.repeat(300 * 1024))], ['a link', () => { writeFileSync(join(home, 'real.json'), '{"version":1,"keys":[]}'); rmSync(file, { force: true }); symlinkSync(join(home, 'real.json'), file); }]] as const) {
+    rmSync(file, { force: true }); make();
+    const before = readFileSync(file);
+    assert.equal(recordApprovals(state, proj1, [entry]), 'damaged', name);
+    assert.deepEqual(readFileSync(file), before, `${name}: the record is untouched`);
+    const got = await read(home);
+    assert.deepEqual(problemsOf(got), ['damaged:~/journal'], name);
+    assert.deepEqual(titles(got.result), [], name);
+  }
+});
+
+test('recordApprovals refuses a folder that is a link, a path that cannot be made, and more approvals than the record holds', async t => {
+  const home = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); mkdirSync(join(h, 'elsewhere'), { recursive: true }); });
+  const proj1 = join(home, 'work', 'proj'), entry = { stored: '~/a', target: join(home, 'a') };
+  // The folder of the record is a link.
+  const linked = join(home, 'state-linked');
+  mkdirSync(linked, { recursive: true }); symlinkSync(join(home, 'elsewhere'), join(linked, 'linked-notes'));
+  assert.equal(recordApprovals(linked, proj1, [entry]), 'failed');
+  assert.deepEqual(readdirOf(join(home, 'elsewhere')), [], 'nothing was written through the link');
+  // The folder of the record cannot be made: a plain file stands where it should be.
+  const blocked = join(home, 'state-blocked');
+  mkdirSync(blocked, { recursive: true }); writeFileSync(join(blocked, 'linked-notes'), 'x');
+  assert.equal(recordApprovals(blocked, proj1, [entry]), 'failed');
+  // More approvals than the record holds.
+  const many = Array.from({ length: 2001 }, (_, i) => ({ stored: `~/n${i}`, target: join(home, `n${i}`) }));
+  assert.equal(recordApprovals(join(home, 'state-many'), proj1, many), 'failed');
+  assert.equal(isApproved(join(home, 'state-many'), proj1, many[0]!), false, 'a refused write approves nothing');
 });
 
 test('a change in a linked folder shows as a change of the place, a link that is gone is unresolved, and a missing record changes nothing', async t => {
@@ -329,4 +377,52 @@ test('a change in a linked folder shows as a change of the place, a link that is
   const second = await watchTextOf(home, watched, undefined, undefined, approvalsFileOf(stateOf(home)));
   assert.notEqual(first.text.replace(/unfinished\|[^\n]*/g, ''), second.text.replace(/unfinished\|[^\n]*/g, ''));
   assert.match(second.text, /l\|[0-9a-f]+\|two\.md\|/);
+});
+
+const readdirOf = (dir: string): string[] => readdirSync(dir);
+
+test('refused shape, ~/x as a shortcut to the home folder itself, to an ancestor of the home folder, and a hidden name written in another case', async t => {
+  const home = setup(t, h => {
+    proj(h, [wiki('~/self', 'a'), wiki('~/up', 'b'), wiki('~/.HIDDEN', 'c')]);
+    symlinkSync(h, join(h, 'self')); symlinkSync(dirname(h), join(h, 'up'));
+    put(join(h, 'top.md'), page('Top')); put(join(h, '.hidden', 'secret.md'), page('Secret'));
+  });
+  const got = await read(home, [['work/proj', '~/self'], ['work/proj', '~/up'], ['work/proj', '~/.HIDDEN']]);
+  assert.deepEqual(titles(got.result).filter(x => ['Top', 'Secret'].includes(x)), []);
+  assert.deepEqual(problemsOf(got), ['form:~/self', 'form:~/up', 'form:~/.HIDDEN']);
+});
+
+test('the check and the read agree under low caps: a cut and a link with no room both show as cut, and a change past the cap leaves the fingerprint as it was', async t => {
+  const home = setup(t, h => {
+    proj(h, [wiki('~/a', 'a'), wiki('~/b', 'b'), wiki('~/c', 'c')]);
+    for (const n of ['o1', 'o2']) put(join(h, 'work', 'proj', `${n}.md`), page(n));
+    for (const n of ['a1', 'a2']) put(join(h, 'a', `${n}.md`), page(n));
+    for (const n of ['b1', 'b2', 'b3', 'b4']) put(join(h, 'b', `${n}.md`), page(n));
+    put(join(h, 'c', 'c1.md'), page('c1'));
+  });
+  approve(home, [['work/proj', '~/a'], ['work/proj', '~/b'], ['work/proj', '~/c']]);
+  const file = approvalsFileOf(stateOf(home)), limits = { filesPerPlace: 5, pagesPerPlace: 4 };
+  const scanner = createScanner({ home, approvalsFile: file });
+  const found = await scanner.addFolder(join(home, 'work'));
+  const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
+  const text = async (): Promise<string> => (await watchTextOf(home, watched, undefined, undefined, file, limits)).text;
+  const tag = (name: string): string => hashText(realpathSync(join(home, name))).slice(0, 8);
+  const first = await text();
+  // Room is 3 after the place's own two files: a takes 2, b is cut at the one file left, c has no room and is not walked. The read says the same.
+  assert.match(first, new RegExp(`l\\|${tag('b')}\\|cut`), 'b is cut');
+  assert.match(first, new RegExp(`l\\|${tag('c')}\\|cut`), 'c is starved');
+  assert.doesNotMatch(first, new RegExp(`l\\|${tag('a')}\\|cut`), 'a fits');
+  assert.equal(first.includes(`l|${tag('c')}|c1.md`), false, 'a starved folder is not walked');
+  const budget = makeBudget(() => Date.now()), tally = newTally();
+  const place = findPlacesUnder(join(home, 'work'), home, budget, tally).find(p => p.label === 'proj')!;
+  const read1 = readPlace(place, home, true, budget, { approved: new Set(['~/a', '~/b', '~/c'].map(x => approvalKey(place.realRoot, x, targetOf(home, x)))), limits });
+  assert.deepEqual(read1.harness?.linkProblems?.map(p => p.label), ['~/b', '~/c'], 'the read names the same two folders');
+  // A change to a file of b that is past the cap does not change the fingerprint; a change to the one that fits does.
+  const kept = [...first.matchAll(/l\|[0-9a-f]+\|(b\d)\.md\|/g)].map(m => m[1]!);
+  assert.equal(kept.length, 1, `one file of b fits: ${kept.join(',')}`);
+  const past = ['b1', 'b2', 'b3', 'b4'].find(n => n !== kept[0])!;
+  writeFileSync(join(home, 'b', `${past}.md`), `${page(past)}\nMore text that changes the size.\n`);
+  assert.equal(await text(), first, 'a change past the cap changes nothing');
+  writeFileSync(join(home, 'b', `${kept[0]!}.md`), `${page('x')}\nMore text that changes the size.\n`);
+  assert.notEqual(await text(), first, 'a change inside the cap shows');
 });

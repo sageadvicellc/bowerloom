@@ -88,6 +88,10 @@ test.describe('Link a notes folder', () => {
     await expect(s.locator('[data-link-needs-harness]')).toContainText('Choose that folder again');
     await h.pick(dir);
     await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    // The folder is suggested by its name and never picked for the person: it stays unpicked until it is pressed.
+    await expect(s.locator('[data-folder]', { hasText: 'wiki' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(s.getByRole('button', { name: 'Review the change', exact: true })).toBeDisabled();
+    await s.locator('[data-folder]', { hasText: 'wiki' }).click();
     await expect(s.locator('[data-folder]', { hasText: 'wiki' })).toHaveAttribute('aria-pressed', 'true');
     await expect(s.locator('[data-link-needs-harness]')).toHaveCount(0);
     await shot(p, 'context-link.png');

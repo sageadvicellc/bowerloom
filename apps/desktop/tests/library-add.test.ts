@@ -160,9 +160,9 @@ test('the empty Context tab offers to link a notes folder, and no other tab or s
   for (const kind of ['skill', 'agent', 'tool'] as const) assert.equal(showLinkAction({ ...base, kind }), false, kind);
 });
 
-test('a notes folder goes to the folder of the same label: ready with a harness, or it needs one started', () => {
+test('a notes folder is matched to the folder of the same label as a hint only: listed with a harness, or it needs one started', () => {
   const list = [folder('a', { label: '~/Documents/wiki' }), folder('b', { label: '~/Documents/bare', hasDefinition: false }), folder('c', { label: '~/Documents/broken', problem: 'harness.json is not valid.' }), folder('d', { label: '~/Documents/stopped', unfinished: { projection: false, adoption: true } })];
-  assert.deepEqual(linkTarget(list, { label: '~/Documents/wiki' }), { kind: 'ready', folder: list[0] });
+  assert.deepEqual(linkTarget(list, { label: '~/Documents/wiki' }), { kind: 'listed', folder: list[0] }, 'a label match is a hint: it never says ready');
   assert.deepEqual(linkTarget(list, { label: '~/Documents/bare' }), { kind: 'needs-harness', folder: list[1] }, 'a folder with no harness can be linked through the new flow');
   assert.deepEqual(linkTarget(list, { label: '~/Documents/elsewhere' }), { kind: 'needs-harness', folder: null }, 'a folder main does not list yet: the new flow picks it');
   assert.deepEqual(linkTarget(list, { label: '~/Documents/broken' }), { kind: 'blocked', folder: list[2], why: 'harness.json is not valid.' });
@@ -180,5 +180,5 @@ test('the new words of the link flow are short plain lines', () => {
 test('two folders with the label of the notes are not guessed between: the person is asked which one', () => {
   const list = [folder('a', { label: '~/Documents/notes' }), folder('b', { label: '~/Work/notes' }), folder('c', { label: '~/Documents/notes' })];
   assert.deepEqual(linkTarget(list, { label: '~/Documents/notes' }), { kind: 'blocked', folder: list[0], why: 'Which one? Several folders share that name.' });
-  assert.deepEqual(linkTarget(list, { label: '~/Work/notes' }), { kind: 'ready', folder: list[1] }, 'one match is still one match');
+  assert.deepEqual(linkTarget(list, { label: '~/Work/notes' }), { kind: 'listed', folder: list[1] }, 'one match is still a hint, and never picks');
 });
