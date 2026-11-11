@@ -107,8 +107,8 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 cd "$repo" || exit 2
-image_built=1
 "${build_cmd[@]}" || { echo "run-gates: the image did not build" >&2; exit 4; }
+image_built=1
 
 marker="$(mktemp "${TMPDIR:-/tmp}/bowerloom-sandbox-timeout.XXXXXX")" || { echo "run-gates: could not make a temporary file" >&2; exit 2; }
 "${run_cmd[@]}" &

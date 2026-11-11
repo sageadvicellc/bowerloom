@@ -237,3 +237,11 @@ test('the response-headers test stays a recorded machine-dependent skip on Node 
   assert.match(header.reason, /Node 24\.21\.0/);
   assert.equal(skips.some(s => s.file === 'tools/cli-distribution/test/installed-container.test.mjs'), false);
 });
+
+test('a re-record keeps the group of a skip, and adds none to a skip that has none', () => {
+  const kinds = { 'a.js::g': { kind: MACHINE_DEPENDENT, reason: 'root', group: 'sandbox-work' }, 'a.js::p': { kind: MACHINE_DEPENDENT, reason: 'case' } };
+  const suite = buildSuite({ runner: 'r', command: '', cwd: '', kinds, run: run(['a.js', 'g', 'skip'], ['a.js', 'p', 'skip']) });
+  assert.equal(suite.skips.find(s => s.name === 'g').group, 'sandbox-work');
+  assert.equal('group' in suite.skips.find(s => s.name === 'p'), false);
+  assert.equal(skipKind({ file: 'a.js', name: 'g', status: 'skip' }, kinds).group, 'sandbox-work');
+});

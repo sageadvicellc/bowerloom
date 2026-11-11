@@ -459,7 +459,7 @@ test('BOWERLOOM_SANDBOX_IMAGE overrides the tag', () => {
 
 function fakeDockerCalls(env) {
   const dir = tmp(), log = path.join(dir, 'calls.log');
-  fs.writeFileSync(path.join(dir, 'docker'), `#!/bin/sh\necho "$*" >> "${log}"\ncase "$1" in inspect) exit 1;; esac\nexit 0\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'docker'), `#!/bin/sh\necho "$*" >> "${log}"\ncase "$1" in inspect) exit 1;; build) [ -n "$FAKE_DOCKER_BUILD_FAIL" ] && exit 1;; esac\nexit 0\n`, { mode: 0o755 });
   const result = spawnSync('bash', [runner], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, ...env } });
   return { result, calls: fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
 }
@@ -473,5 +473,11 @@ test('the run removes its own image when it ends, and no other tag', () => {
 
 test('a tag given by BOWERLOOM_SANDBOX_IMAGE belongs to the caller, so the run does not remove it', () => {
   const { calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: 'bowerloom-sandbox:mine' });
+  assert.equal(calls.some(c => c.startsWith('rmi ') || c.startsWith('image rm')), false);
+});
+
+test('a build that fails leaves no image to remove, so the run does not call rmi', () => {
+  const { result, calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: '', FAKE_DOCKER_BUILD_FAIL: '1' });
+  assert.equal(result.status, 4);
   assert.equal(calls.some(c => c.startsWith('rmi ') || c.startsWith('image rm')), false);
 });

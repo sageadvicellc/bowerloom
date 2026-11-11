@@ -36,6 +36,8 @@ The scope sorts every skip into two kinds. This inventory adds two more, because
 
 The 137 machine-dependent skips beyond the four of the base come from the sandbox work (`sandbox-tests.md`, "Every skip this work added"): they skip as root, off macOS, or on a file system with coarse times. The inventory also lists the tests that work split or added, and the two desktop tests that PR 173 renamed, under their new titles.
 
+Those 137 skips carry `"group": "sandbox-work"`. No run checks that they pass. In the container they skip, and `tools/sandbox/machine-dependent.mjs` leaves them out. On a Mac they would run, but tests never run there. The inventory check accepts a pass or a skip of each one on any machine, and only the sandbox skip ceilings count them (`sandbox-tests.md`, "What a green sandbox run does not cover"). A pass as a user who is not root, or a run on a Mac, would close the gap. `record` keeps the group when the kinds file names it.
+
 The 40 root `never-runs-in-gate` skips come from files that read these variables: the `TRELLIS_*_PROOF` set, the `BOWERLOOM_MCP_*_PROOF` set, `BOWERLOOM_LIVE_ENGINES`, `BOWERLOOM_PACK_INSTALL_PROOF`, `BOWERLOOM_PACK_ONLINE_PROOF` and `BOWERLOOM_RELEASE_GATE`. The end-to-end ones come from `docs-shots`, `landing-shots` and `screen-tour-shots` (17 tests, flags `DOCS_SHOTS`, `LANDING_SHOTS`, `SCREEN_SHOTS`) and two `fixme` tests in journeys 1 and 5.
 
 ### Skips that must run on the gate machine
