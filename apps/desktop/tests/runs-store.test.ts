@@ -173,3 +173,15 @@ test('a hostile value in the file (a prototype key, a long text, a bad time) mak
   writeFileSync(runsFile(state), make(run));
   assert.equal(createRunStore({ stateRoot: state }).list().length, 1);
 });
+
+test('the store writes only inside <state>/runs: a sibling folder and the parent are untouched, and everything made is below the runs folder', t => {
+  const wrapper = tempDir(t), state = join(wrapper, 'state'), sibling = join(wrapper, 'sibling');
+  mkdirSync(sibling); writeFileSync(join(sibling, 'keep.txt'), 'x');
+  const s = createRunStore({ stateRoot: state });
+  const a = s.add(folder()); s.update(a.id, { status: 'done', rating: 'same', notes: 'n' }); s.add(folder({ engine: 'codex' }));
+  writeFileSync(runsFile(state), 'broken'); s.startNewList(); s.add(folder());
+  const all = (dir: string, rel = ''): string[] => readdirSync(join(dir, rel), { withFileTypes: true }).flatMap(e => (e.isDirectory() ? [`${rel}${e.name}/`, ...all(dir, `${rel}${e.name}/`)] : [`${rel}${e.name}`]));
+  const made = all(wrapper).filter(p => !p.startsWith('sibling'));
+  assert.equal(made.every(p => p === 'state/' || p === 'state/runs/' || /^state\/runs\/(runs\.json|runs\.damaged-[0-9TZ-]+\.json)$/.test(p)), true, made.join(', '));
+  assert.deepEqual(readdirSync(sibling), ['keep.txt']);
+});

@@ -3,9 +3,9 @@
  * output counts were found, the model's name, and whether the log ends in a finished turn. It never returns, stores or logs a line of a chat, and it reads only what those figures need from each line.
  *
  * What was observed, on 2026-11-11, on one computer (key names only, no text):
- *  - Claude Code: `<config home>/projects/<project path with "/" and " " written as "-">/<session id>.jsonl`. A line is a JSON object with `timestamp` (ISO), `cwd`, and, for an assistant line, `message` holding
+ *  - Claude Code: `<home>/.claude/projects/<project path with "/" and " " written as "-">/<session id>.jsonl`. A line is a JSON object with `timestamp` (ISO), `cwd`, and, for an assistant line, `message` holding
  *    `id`, `model`, `stop_reason` and `usage` (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`). The same message id can repeat across lines, so the counts are kept once for each id.
- *  - Codex: `<codex home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`. A line is a JSON object with `timestamp`, `type` and `payload`. `session_meta` holds `cwd`, `turn_context` holds `model`, and an `event_msg`
+ *  - Codex: `<home>/.codex/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`. A line is a JSON object with `timestamp`, `type` and `payload`. `session_meta` holds `cwd`, `turn_context` holds `model`, and an `event_msg`
  *    payload of type `token_count` holds `info.total_token_usage` (cumulative: the last one counts, they are not added), `task_complete` or `turn_aborted`.
  * Still NOT verified: how Claude Code writes a folder name that holds non-ASCII characters or is very long (here every character that is not a letter or a digit becomes a dash, which matches what was observed for
  * "/" and " " only), and which time zone the Codex day folders use (the reader looks one day either side of the start, so either is found). A log that does not have these shapes is not an error: a figure it
@@ -16,7 +16,7 @@
  * most one run: the runs of one engine in one project are matched together, the smallest gap first. A run with no log of its own has no figures. When another log in the folder also fits, the run says so (`ambiguous`)
  * and reads none, because a wrong log is worse than none.
  *
- * Safety: only files under the two engine homes are opened; each home is resolved to its real place once (`CLAUDE_CONFIG_DIR`, `CODEX_HOME` and the home folder may be links), and below it a link is never followed;
+ * Safety: only files under the two engine homes are opened; each home is resolved to its real place once (the home folder and the engine home may be links), and below it a link is never followed;
  * a file is opened without following a link and checked as a plain file after it is open; a file over the size cap is "too large"; a line over the line cap is skipped and counted; only the newest few hundred logs
  * of a folder that are new enough are looked at; `history.jsonl` is never read. All reads are asynchronous, so the main process is never held.
  */
@@ -34,8 +34,6 @@ export interface FigureQuery {
 }
 export interface LogReaderDeps {
   readonly home: string;
-  /** `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, when set. Only an absolute path is used. */
-  readonly env?: { readonly CLAUDE_CONFIG_DIR?: string | undefined; readonly CODEX_HOME?: string | undefined };
   /** The most bytes a log may hold to be read. Default 64 MB. */
   readonly maxBytes?: number;
   /** For a test: the call that opens a file. */
@@ -246,18 +244,17 @@ export async function readFigures(deps: LogReaderDeps, query: FigureQuery): Prom
     const projectReal = await real(query.projectDir);
     if (projectReal === null) return NO_FIGURES('not-found');
     const project = trimSlash(projectReal);
-    const configured = (v: string | undefined, fallback: string): string => (typeof v === 'string' && ok(v) ? v : fallback);
     const starts = [startMs, ...(query.siblings ?? []).map(s => Date.parse(s.startedAt)).filter(Number.isFinite)];
     const earliest = Math.min(...starts) - WINDOW_MS;
     let found: Candidate[];
     if (query.engine === 'claude-code') {
-      const root = await real(configured(deps.env?.CLAUDE_CONFIG_DIR, join(deps.home, '.claude')));
+      const root = await real(join(deps.home, '.claude'));
       if (root === null) return NO_FIGURES('not-found');
       const projects = join(root, 'projects'), folder = join(projects, claudeFolderName(project));
       if (!(await isFolder(projects)) || !(await isFolder(folder))) return NO_FIGURES('not-found');
       found = await logsIn(folder);
     } else {
-      const root = await real(configured(deps.env?.CODEX_HOME, join(deps.home, '.codex')));
+      const root = await real(join(deps.home, '.codex'));
       if (root === null) return NO_FIGURES('not-found');
       const sessions = join(root, 'sessions');
       if (!(await isFolder(sessions))) return NO_FIGURES('not-found');

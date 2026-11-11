@@ -121,10 +121,20 @@ test('the loader guard accepts the loader\'s own shape and rejects a write name,
   for (const [what, [source, problem]] of Object.entries(holes)) assert.deepEqual(loaderProblems(source), [problem], what);
 });
 
-test('the app\'s source writes a file in only five modules of main (the extension loader only opens a manifest for reading): the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, and the saved read in the private state folder', () => {
+test('the app\'s source writes a file in only six modules of main (the extension loader only opens a manifest for reading): the usage summary the person saves, the private copy of a tidy-up report, the undo of the empty harness an import makes, the saved read in the private state folder, and the record of runs in the private state folder', () => {
   const all = [...sourceFiles('main'), ...sourceFiles('shared'), ...sourceFiles('preload'), ...sourceFiles('renderer')];
   const writers = all.filter(f => WRITE.test(read(f)) || (/^renderer\//.test(f) && /node:fs/.test(readFileSync(join(DESKTOP, f), 'utf8')))).sort();
-  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/extension-loader.ts', 'main/notes-report.ts', 'main/scan-cache.ts']);
+  assert.deepEqual(writers, ['main/diagnostics-dialogs.ts', 'main/engine-bundle-work.ts', 'main/extension-loader.ts', 'main/notes-report.ts', 'main/run-store.ts', 'main/scan-cache.ts']);
+  // The record of runs (the sixth) writes only inside `<state>/runs`: runs.json, its temporary file, and the damaged file moved aside (runs.damaged-<time>.json); it also makes the state folder when that is absent. Every path it builds starts from that one folder.
+  const runs = read('main/run-store.ts');
+  assert.match(runs, /export const runsDir = \(stateRoot: string\): string => join\(stateRoot, FOLDER\)/);
+  assert.match(runs, /export const runsFile = \(stateRoot: string\): string => join\(runsDir\(stateRoot\), FILE\)/);
+  assert.match(runs, /openSync\(temp, constants\.O_WRONLY \| constants\.O_CREAT \| constants\.O_EXCL \| constants\.O_NOFOLLOW, 0o600\)/);
+  assert.match(runs, /const temp = join\(dir, `runs\.\$\{process\.pid\}\.\$\{randomBytes\(6\)\.toString\('hex'\)\}\.tmp`\)/);
+  assert.match(runs, /move\(file, join\(dir, name\)\)/);
+  for (const call of runs.match(/\b(?:renameSync|unlinkSync|mkdirSync|chmodSync|openSync|move|lstatSync)\(([^)]*)\)/g) ?? []) assert.match(call, /\b(?:dir|file|temp|name|from|to|deps\.stateRoot|join\(dir, name\)|join\(dir, [a-z]+\))\b/, `${call} names a path other than the runs folder`);
+  assert.doesNotMatch(runs, /homedir|process\.cwd|tmpdir/, 'no path outside the state root');
+  assert.doesNotMatch(runs, /\b(writeFileSync|copyFileSync|cpSync|symlinkSync|appendFileSync|rmSync|rmdirSync)\b/);
   // The extension loader matches the scan only for its one openSync, which opens a manifest for reading: the string flag 'r', and no name that changes a file.
   const loader = read('main/extension-loader.ts');
   assert.deepEqual(loaderProblems(loader), []);

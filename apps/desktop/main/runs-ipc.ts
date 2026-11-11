@@ -33,8 +33,6 @@ export interface RunsIpcDeps {
   readonly stateRoot: string;
   /** The folder main gave out under that id, or null. Async: main asks the engine service for its list of folders. */
   readonly folder: (id: string) => Promise<FolderRef | FolderProblemRef | null>;
-  /** `CLAUDE_CONFIG_DIR` and `CODEX_HOME` of the main process, for the log reader. */
-  readonly env?: { readonly CLAUDE_CONFIG_DIR?: string | undefined; readonly CODEX_HOME?: string | undefined };
   readonly now?: () => number;
   /** Where a failure is logged. Main passes its stderr line writer. The default writes to stderr. */
   readonly tell?: (line: string) => void;
@@ -88,7 +86,7 @@ export function registerRunsIpc(deps: RunsIpcDeps): void {
   const now = deps.now ?? ((): number => Date.now());
   const tell = deps.tell ?? ((line: string): void => { try { process.stderr.write(`${line}\n`); } catch { /* a closed stderr never stops a call */ } });
   const store = deps.store ?? createRunStore({ stateRoot: deps.stateRoot });
-  const figures = deps.figures ?? ((query: FigureQuery): Promise<RunFigures> => readFigures({ home: deps.home, ...(deps.env === undefined ? {} : { env: deps.env }) }, query));
+  const figures = deps.figures ?? ((query: FigureQuery): Promise<RunFigures> => readFigures({ home: deps.home }, query));
   const refuse = (code: string): never => { throw new Refusal(code); };
 
   const answers: Readonly<Record<RunCall, (...args: unknown[]) => Promise<unknown>>> = {

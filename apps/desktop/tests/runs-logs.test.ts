@@ -351,23 +351,12 @@ test('a project reached through a link is matched by its real place, and a log t
   assert.equal((await readFigures({ home: codex.home }, { engine: 'codex', projectDir: codex.project, startedAt: START })).state, 'found', 'a cwd that is a link to the folder is the folder');
 });
 
-test('a home that is itself reached through a link is read, and a link below the engine home is still not followed', async t => {
+test('a home that is itself reached through a link is read, and so is an engine home that is a link: each is resolved once, and below it nothing is followed', async t => {
   const r = rig(t); claudeLog(r);
   const other = tempDir(t); const homeLink = join(other, 'home-link'); symlinkSync(r.home, homeLink);
   assert.equal((await readFigures({ home: homeLink }, q(r, 'claude-code'))).state, 'found');
-  const dotfiles = tempDir(t); mkdirSync(join(dotfiles, 'cfg'), { recursive: true }); symlinkSync(join(r.home, '.claude'), join(dotfiles, 'cfg', 'claude'));
-  assert.equal((await readFigures({ home: dotfiles, env: { CLAUDE_CONFIG_DIR: join(dotfiles, 'cfg', 'claude') } }, q(r, 'claude-code'))).state, 'found', 'the engine home itself may be a link: it is resolved once');
-});
-
-test('CLAUDE_CONFIG_DIR and CODEX_HOME are honored when absolute, and ignored when relative', async t => {
-  const r = rig(t); const elsewhere = tempDir(t);
-  claudeLog({ home: elsewhere, project: r.project }); codexLog({ home: elsewhere, project: r.project }, 'rollout-a.jsonl');
-  mkdirSync(join(elsewhere, '.claude'), { recursive: true });
-  const claudeAt = join(elsewhere, '.claude'), codexAt = join(elsewhere, '.codex');
-  assert.equal((await readFigures({ home: r.home }, q(r, 'claude-code'))).state, 'not-found');
-  assert.equal((await readFigures({ home: r.home, env: { CLAUDE_CONFIG_DIR: claudeAt } }, q(r, 'claude-code'))).state, 'found');
-  assert.equal((await readFigures({ home: r.home, env: { CODEX_HOME: codexAt } }, q(r, 'codex'))).state, 'found');
-  assert.equal((await readFigures({ home: r.home, env: { CLAUDE_CONFIG_DIR: 'relative/dir' } }, q(r, 'claude-code'))).state, 'not-found');
+  const dotfiles = tempDir(t); symlinkSync(join(r.home, '.claude'), join(dotfiles, '.claude'));
+  assert.equal((await readFigures({ home: dotfiles }, q(r, 'claude-code'))).state, 'found');
 });
 
 test('a folder name with non-ASCII characters is matched through the same rule, and a very long one is not cut', async t => {
