@@ -1,7 +1,7 @@
 {
   "base": "release/0.8.0-beta.2",
   "baseCommit": "5ca6df04",
-  "note": "Route-to-spec matrix of the v0.9 parity item. Paths are relative to the repository root. e2e lists the specs that visit or assert the row, by the mode of the spec; it does not say that every assertion of the row is covered. newSpec names the spec written for a route that had none.",
+  "note": "Route-to-spec matrix of the v0.9 parity item. Paths are relative to the repository root. e2e lists the specs that visit or assert the row, by the mode of the spec; it does not say that every assertion of the row is covered. newSpec names the spec written for a route that had none. extensionRoutes lists the routes of bundled extensions apart from rows, so the 15 base routes stay exact.",
   "modes": [
     "sample",
     "real",
@@ -1218,6 +1218,43 @@
         "apps/desktop/tests/share-contract.test.ts"
       ],
       "notes": ""
+    }
+  ],
+  "extensionRoutes": [
+    {
+      "id": "extension-route:local-models",
+      "kind": "route",
+      "route": "local-models",
+      "params": [],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "no-bridge"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/local-models/LocalModels.tsx",
+        "apps/desktop/renderer/harness/local-models/useLocalReport.ts",
+        "apps/desktop/renderer/harness/bundled-extensions.ts",
+        "apps/desktop/shared/local-models/view-model.ts",
+        "apps/desktop/extensions/local-models/manifest.json"
+      ],
+      "targetExtension": "local-models",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-local-models.spec.ts"
+        ],
+        "real": [],
+        "noBridge": [
+          "apps/desktop/e2e/harness-local-models-no-bridge.spec.ts"
+        ]
+      },
+      "unit": [
+        "apps/desktop/tests/local-models-view-model.test.ts",
+        "apps/desktop/tests/local-models-screen.test.ts",
+        "apps/desktop/tests/extensions-host.test.ts"
+      ],
+      "newSpec": null,
+      "notes": "A bundled extension, not a base route. The screen follows listExtensions. Real mode has no spec yet: it needs a fixture server inside the sandbox."
     }
   ]
 }

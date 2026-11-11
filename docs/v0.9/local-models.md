@@ -56,6 +56,20 @@ A row that is not `up` carries a short reason code, such as `CONNECTION_REFUSED`
 
 A figure the server did not give is shown as "not reported". It is never shown as 0.
 
+## The screen
+
+Local models is a bundled UI extension. Its manifest is `apps/desktop/extensions/local-models/manifest.json`. It is not protected, and it ships in the app resources.
+
+- The screen follows `listExtensions`. If main did not load the extension, the route and the navigation entry do not exist. If the call fails at launch, before the extension host starts, the screen waits and asks again every 3 seconds. It shows no error.
+- The screen asks `localModels` every 3 seconds while the window is visible. It also has a Refresh button. It stores nothing.
+- One row for each server: state, model file name, quantization, size, context size, speed, requests, context use and port. Memory and uptime read "not reported".
+- A server that is down, starting or not answering is a row with a state and a sentence. A figure that is missing reads "not reported", never 0.
+- A note such as `PARTIAL_READ` shows as its sentence. A row shows its own notes too, when the report has them.
+- If the probe itself failed (`PROBE_FAILED`), the report has no rows and a count of 0. The screen shows the note's sentence. It does not say "no servers are set up", and it shows no count.
+- If the last read failed, the screen keeps the last figures and says they are old. After 10 seconds without a good read they are marked old too.
+- The sample launch shows made-up servers and says so.
+- All display logic is in `apps/desktop/shared/local-models/view-model.ts`. A terminal view can use it.
+
 ## Not reported yet
 
 Process memory and uptime are "not reported" until a later PR. This version reads no process.
