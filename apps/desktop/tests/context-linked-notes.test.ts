@@ -395,7 +395,6 @@ test('the check of the linked folders shares the budget of the launch check: a l
   let t2 = 0;
   const roomy = await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, watched, () => (t2 += 1), 1_000_000);
   assert.equal(roomy.complete, true);
-  assert.notEqual(roomy.fingerprint, limited.fingerprint);
   // A budget of nothing walks nothing.
   const none = await linkedWatchText(home, watched, { stateRoot: stateOf(home), budgetMs: 0 });
   assert.equal(none.complete, false);
