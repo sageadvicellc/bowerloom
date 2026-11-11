@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { RunFigures, RunPatch, RunView, RunsBridge } from '../../../shared/api/runs.js';
-import { runsCodeOf } from '../../api/client.js';
+import { runsCode as runsCodeOf } from '../../../shared/api/runs-shape.js';
 
 const Context = createContext<RunsBridge | null>(null);
 

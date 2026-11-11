@@ -38,6 +38,8 @@ export interface LogReaderDeps {
   readonly env?: { readonly CLAUDE_CONFIG_DIR?: string | undefined; readonly CODEX_HOME?: string | undefined };
   /** The most bytes a log may hold to be read. Default 64 MB. */
   readonly maxBytes?: number;
+  /** For a test: the call that opens a file. */
+  readonly openFile?: typeof open;
 }
 
 const WINDOW_MS = LOG_WINDOW_MINUTES * 60_000;
@@ -68,8 +70,8 @@ const real = async (path: string): Promise<string | null> => { try { return awai
 async function isFolder(path: string): Promise<boolean> { try { const s = await lstat(path); return !s.isSymbolicLink() && s.isDirectory(); } catch { return false; } }
 
 /** Opens a file without following a link, and checks it is a plain file once it is open. */
-async function openPlain(path: string): Promise<FileHandle> {
-  const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+async function openPlain(path: string, opener: typeof open = open): Promise<FileHandle> {
+  const fh = await opener(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try { if (!(await fh.stat()).isFile()) throw new Error('not a plain file'); } catch (error) { await fh.close(); throw error; }
   return fh;
 }
@@ -126,11 +128,11 @@ const trimSlash = (p: string): string => p.normalize('NFC').replace(/\/+$/, '');
 type Head = { readonly kind: 'placed'; readonly firstMs: number } | { readonly kind: 'other-folder' } | { readonly kind: 'unplaced' } | { readonly kind: 'no-permission' };
 
 /** The first time and the folder a log names, from its first lines. */
-async function head(path: string, project: string, engine: string): Promise<Head> {
+async function head(path: string, project: string, engine: string, opener: typeof open): Promise<Head> {
   let firstMs: number | null = null, cwd: string | null = null, seen = 0, kept = 0;
   let fh: FileHandle | null = null;
   try {
-    fh = await openPlain(path);
+    fh = await openPlain(path, opener);
     await scanLines(fh, HEAD_HARD_CAP, line => {
       const o = parseLine(line);
       if (o !== null) { firstMs ??= timeOf(o.timestamp); cwd ??= cwdOf(o); }
@@ -198,10 +200,10 @@ function summed(t: Tally, parts: readonly number[]): number | null {
   return sum;
 }
 
-async function figuresOf(path: string, engine: string, maxBytes: number): Promise<RunFigures> {
+async function figuresOf(path: string, engine: string, maxBytes: number, opener: typeof open): Promise<RunFigures> {
   let fh: FileHandle | null = null;
   try {
-    fh = await openPlain(path);
+    fh = await openPlain(path, opener);
     // The size is checked on the open file, and the same file is read, with the same cap, so a file that grows is never read past it.
     if ((await fh.stat()).size > maxBytes) return NO_FIGURES('unreadable', 'too-large');
     const t: Tally = { firstMs: null, lastMs: null, model: null, outcome: 'unknown', lastStop: null, byMessage: new Map(), tokenBroken: false, bad: 0, totalIn: null, totalOut: null, sawEvent: false };
@@ -274,7 +276,7 @@ export async function readFigures(deps: LogReaderDeps, query: FigureQuery): Prom
     const placed: { path: string; firstMs: number }[] = [];
     let unplaced = 0, denied = 0;
     for (const c of looked) {
-      const h = await head(c.path, project, query.engine);
+      const h = await head(c.path, project, query.engine, deps.openFile ?? open);
       if (h.kind === 'placed') placed.push({ path: c.path, firstMs: h.firstMs });
       else if (h.kind === 'unplaced') unplaced += 1;
       else if (h.kind === 'no-permission') denied += 1;
@@ -291,7 +293,7 @@ export async function readFigures(deps: LogReaderDeps, query: FigureQuery): Prom
     if (mine !== undefined) {
       // Another log that fits this run and belongs to no recorded run, or a file that could not be placed beside it, means the choice is a guess.
       if (fitsMe.some(p => p.path !== mine && !runOf.has(p.path)) || unplaced + denied > 0) return NO_FIGURES('ambiguous');
-      return await figuresOf(mine, query.engine, maxBytes);
+      return await figuresOf(mine, query.engine, maxBytes, deps.openFile ?? open);
     }
     if (fitsMe.length > 0) return NO_FIGURES('not-found');
     if (denied > 0) return NO_FIGURES('unreadable', 'no-permission');

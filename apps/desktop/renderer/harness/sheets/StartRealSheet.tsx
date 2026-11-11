@@ -20,7 +20,7 @@ import { HIcon } from '../icons.js';
 import { useEngine } from '../engine.js';
 import { go } from '../router.js';
 import { useRuns } from '../runs-real/runs-session.js';
-import { runsCodeOf } from '../../api/client.js';
+import { runsCode as runsCodeOf } from '../../../shared/api/runs-shape.js';
 import { runsRefusalWords } from '../../../shared/harness/runs-real.js';
 import { RUNS_REAL } from '../runs-real-words.js';
 import { useUi } from '../ui.js';

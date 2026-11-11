@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import { NO_FIGURES } from '../shared/api/runs.js';
 import type { RunFigures, RunView } from '../shared/api/runs.js';
 import {
-  canRateReal, countWords, runsRefusalWords, saveReportWords, durationWords, figureRows, figuresStateWords, isoToLocalInput, localInputToIso, modelWords, outcomeWords, realCompareGroupOf, realGroupById, realGroups, realRateQuestion, realRunById,
-  realRunName, realStatusWords, startedAtWords,
+  canRateReal, countWords, runsRefusalWords, saveReportWords, durationWords, figureRows, figuresStateWords, modelWords, outcomeWords, realCompareGroupOf, realGroupById, realGroups, realRateQuestion, realRunById,
+  realRunName, realStatusWords,
 } from '../shared/harness/runs-real.js';
+import { isoToLocalInput, localInputToIso, startedAtWords } from '../renderer/harness/clock.js';
 import { RUNS_REAL, recordedToast, runsHintReal } from '../renderer/harness/runs-real-words.js';
 import { noRunsWords } from '../renderer/harness/runs-words.js';
 import { bannedHere, LIMITS, countWords as wordCount } from '../shared/harness/words.js';

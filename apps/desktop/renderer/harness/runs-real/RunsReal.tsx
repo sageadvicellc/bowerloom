@@ -7,10 +7,11 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import type { RunView } from '../../../shared/api/runs.js';
-import { engineName, realCompareGroupOf, runsRefusalWords, realGroups, realRunById, realRunName, realStatusWords, startedAtWords } from '../../../shared/harness/runs-real.js';
+import { engineName, realCompareGroupOf, runsRefusalWords, realGroups, realRunById, realRunName, realStatusWords } from '../../../shared/harness/runs-real.js';
 import type { RealGroup } from '../../../shared/harness/runs-real.js';
 import { Screen } from '../Screen.js';
 import { go } from '../router.js';
+import { startedAtWords } from '../clock.js';
 import { useUi } from '../ui.js';
 import type { Ui } from '../ui.js';
 import { HButton, StateDot } from '../parts/controls.js';

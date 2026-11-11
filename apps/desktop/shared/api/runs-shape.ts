@@ -4,8 +4,8 @@
  */
 import { ENGINE_IDS } from '../engine/engines.js';
 import type { EngineId } from '../engine/types.js';
-import { RECORDED_STATUSES, RUN_INSTRUCTION_LIMIT, RUN_NOTES_LIMIT, RUN_RATINGS } from './runs.js';
-import type { RecordRunInput, RecordedStatus, RunPatch, RunRating } from './runs.js';
+import { RECORDED_STATUSES, RUN_INSTRUCTION_LIMIT, RUN_NOTES_LIMIT, RUN_RATINGS, RUN_REFUSAL_CODES } from './runs.js';
+import type { RecordRunInput, RecordedStatus, RunPatch, RunRating, RunRefusalCode } from './runs.js';
 
 export const RUN_ID = /^run-[0-9]{1,6}$/;
 export const FOLDER_ID = /^folder-[0-9]{1,6}$/;
@@ -15,6 +15,13 @@ const onlyKeys = (value: Record<string, unknown>, keys: readonly string[]): bool
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 const cleanText = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max && !CONTROL.test(value) && !LONE_SURROGATE.test(value);
+
+/** The short code in an error from a runs call, or 'FAILED'. The same rule as `runsCodeOf` of the client (renderer/api/client.ts), here so a screen can read a code without reaching the client. */
+const CODE_PATTERN = new RegExp(`\\b(${RUN_REFUSAL_CODES.filter(c => c !== 'FAILED').join('|')})\\b`);
+export function runsCode(error: unknown): RunRefusalCode {
+  const found = String(error instanceof Error ? error.message : error).match(CODE_PATTERN);
+  return found === null ? 'FAILED' : (found[1] as RunRefusalCode);
+}
 
 export const isRunId = (value: unknown): value is string => typeof value === 'string' && RUN_ID.test(value);
 export const isEngineIdValue = (value: unknown): value is EngineId => typeof value === 'string' && (ENGINE_IDS as readonly string[]).includes(value);

@@ -7,7 +7,7 @@ import type { Locator, Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { claudeFolderName } from '../main/run-logs.js';
-import { isoToLocalInput } from '../shared/harness/runs-real.js';
+import { isoToLocalInput } from '../renderer/harness/clock.js';
 import type { RealHarness } from './harness-real-page.js';
 
 /** Text that is in every made-up log, as if it were a prompt or a reply. It must never reach the window, the saved file or the log of the app. */

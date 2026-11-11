@@ -3,7 +3,7 @@
 // A prompt or a reply in a log never reaches the answer: the answer is numbers and short words, and the tests look for a marker text that is in every log.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TestContext } from 'node:test';
 import { claudeFolderName, readFigures } from '../main/run-logs.js';
@@ -213,13 +213,6 @@ test('files that are not .jsonl logs in the folder are ignored, and so is the hi
   assert.equal((await readFigures({ home: r.home }, q(r, 'claude-code'))).state, 'not-found');
 });
 
-test('a log that cannot be opened for its mode is "unreadable" (skipped when the tests run as root)', async t => {
-  if (process.getuid?.() === 0) { t.skip('root can open any file'); return; }
-  const r = rig(t); const file = claudeLog(r); chmodSync(file, 0o000);
-  const f = await readFigures({ home: r.home }, q(r, 'claude-code'));
-  assert.equal(f.state, 'unreadable'); assert.equal(f.durationMs, null);
-});
-
 const manyLogs = (r: Rig, n: number): string => {
   const folder = join(r.home, '.claude', 'projects', claudeFolderName(r.project)); mkdirSync(folder, { recursive: true });
   for (let i = 0; i < n; i += 1) { const f = join(folder, `other-${i}.jsonl`); writeFileSync(f, lines(claudeRows(r.project, 300 + i))); utimesSync(f, CHANGED, CHANGED); }
@@ -399,11 +392,15 @@ test('a log that ends on a tool call, or has no finished turn in Codex, says it 
   assert.deepEqual([f.state, f.reason, f.durationMs, f.model, f.inputTokens], ['found', 'no-figures', null, null, null]);
 });
 
-test('a log nobody may open is "unreadable: no permission" (skipped when the tests run as root)', async t => {
-  if (process.getuid?.() === 0) { t.skip('root can open any file'); return; }
-  const r = rig(t); const file = claudeLog(r); chmodSync(file, 0o000);
-  const f = await readFigures({ home: r.home }, q(r, 'claude-code'));
-  assert.deepEqual([f.state, f.reason], ['unreadable', 'no-permission']);
+test('a log that cannot be opened for its mode is "unreadable: no permission", whether it fails when it is placed or when it is read (the open call is replaced, so root and others run it the same)', async t => {
+  const r = rig(t); claudeLog(r);
+  const denied = (): never => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); };
+  const f = await readFigures({ home: r.home, openFile: denied as never }, q(r, 'claude-code'));
+  assert.deepEqual([f.state, f.reason, f.durationMs], ['unreadable', 'no-permission', null]);
+  let calls = 0; const realOpen = (await import('node:fs/promises')).open;
+  const late = (async (...args: Parameters<typeof realOpen>) => { calls += 1; if (calls > 1) throw Object.assign(new Error('denied'), { code: 'EPERM' }); return realOpen(...args); }) as typeof realOpen;
+  const g = await readFigures({ home: r.home, openFile: late }, q(r, 'claude-code'));
+  assert.deepEqual([g.state, g.reason], ['unreadable', 'no-permission']);
 });
 
 test('the reads are asynchronous: the answer is a promise, and the caller can do other work while a log is read', async t => {

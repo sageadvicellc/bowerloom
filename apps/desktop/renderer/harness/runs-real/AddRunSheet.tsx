@@ -8,13 +8,13 @@ import { ENGINE_NAMES } from '../../../shared/engine/types.js';
 import type { EngineId, FolderInfo } from '../../../shared/engine/types.js';
 import { ENGINE_IDS } from '../../../shared/engine/engines.js';
 import { RUN_INSTRUCTION_LIMIT } from '../../../shared/api/runs.js';
-import { parseRecordInput } from '../../../shared/api/runs-shape.js';
+import { parseRecordInput, runsCode as runsCodeOf } from '../../../shared/api/runs-shape.js';
 import type { RunView } from '../../../shared/api/runs.js';
-import { isoToLocalInput, localInputToIso, runsRefusalWords } from '../../../shared/harness/runs-real.js';
+import { runsRefusalWords } from '../../../shared/harness/runs-real.js';
 import { Sheet } from '../parts/Sheet.js';
 import { HButton } from '../parts/controls.js';
 import { useEngine } from '../engine.js';
-import { runsCodeOf } from '../../api/client.js';
+import { isoToLocalInput, localInputToIso, realNowMs } from '../clock.js';
 import { START } from '../words-start.js';
 import { RUNS_REAL } from '../runs-real-words.js';
 import { useRuns } from './runs-session.js';
@@ -34,7 +34,7 @@ export function AddRunSheet({ open, onClose, onRecorded }: AddRunSheetProps): Re
   // Each time the form opens it starts again: the folder list is read, and the time is now.
   useEffect(() => {
     if (!open) return;
-    setFolder(''); setWhich('claude-code'); setInstruction(''); setWhen(isoToLocalInput(Date.now())); setBusy(false); setFailed(null); setFolders(null); setFoldersFailed(false);
+    setFolder(''); setWhich('claude-code'); setInstruction(''); setWhen(isoToLocalInput(realNowMs())); setBusy(false); setFailed(null); setFolders(null); setFoldersFailed(false);
     if (engine === null) return;
     let live = true;
     engine.folders().then(list => { if (live) setFolders(list); }, () => { if (live) setFoldersFailed(true); });
@@ -42,7 +42,7 @@ export function AddRunSheet({ open, onClose, onRecorded }: AddRunSheetProps): Re
   }, [open, engine, attempt]);
 
   const startedAt = localInputToIso(when);
-  const checked = parseRecordInput({ folderId: folder, engine: which, instruction, startedAt }, Date.now());
+  const checked = parseRecordInput({ folderId: folder, engine: which, instruction, startedAt }, realNowMs());
   const why = folder === '' ? RUNS_REAL.hint.needProject : instruction.trim() === '' ? RUNS_REAL.hint.needInstruction : startedAt === null || checked === null ? RUNS_REAL.hint.needTime : null;
   const save = (): void => {
     if (runs === null || checked === null || busy) return;

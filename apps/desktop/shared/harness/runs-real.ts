@@ -59,28 +59,6 @@ export const countWords = (n: number | null): string => (n === null ? 'Not read'
 /** A model name, or "Not read". */
 export const modelWords = (model: string | null): string => model ?? 'Not read';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
-/** "Nov 11, 10:30", in the computer's own time zone. An unreadable time is "Unknown time". */
-export function startedAtWords(iso: string): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return 'Unknown time';
-  const two = (n: number): string => String(n).padStart(2, '0');
-  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${two(d.getHours())}:${two(d.getMinutes())}`;
-}
-
-/** The value of a `datetime-local` field ("2026-11-11T10:30", in the computer's time zone) as the ISO time main takes, or null. */
-export function localInputToIso(value: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (m === null) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
-  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
-}
-/** The value for a `datetime-local` field for a moment, in the computer's time zone. */
-export function isoToLocalInput(ms: number): string {
-  const d = new Date(ms), two = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`;
-}
-
 /**
  * The line that says why a figure is missing, or null when the log was read whole. Each reason has its own words. `label` is the folder written with `~`, never a full path: with it the line says where Bowerloom
  * looked and how near the start the log had to begin.
