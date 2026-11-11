@@ -15,6 +15,7 @@ import { harnessStateDirs, planPortable } from '../packages/project-sync/src/ind
 import { withProjectLock } from '../packages/project-context/src/index.js';
 import { renderRefusal } from '../apps/cli/src/human.js';
 import { resultLines, runHarnessDefCommand } from '../apps/cli/src/harness-def.js';
+import { skipAsRoot } from './support/machine-skips.js';
 
 const FIXTURE = JSON.parse(readFileSync(fileURLToPath(new URL('../../tests/fixtures/harness-08/project.json', import.meta.url)), 'utf8')) as { files: Record<string, string> };
 const ENGINES = ['--engine', 'claude-code@2.1.310', '--engine', 'codex@0.157.0', '--engine', 'opencode@1.18.30'];
@@ -230,7 +231,7 @@ test('item 5: resultLines prints one line per left-behind folder, kept path, and
 
 // ---- item 7 -----------------------------------------------------------------------------------------------------------------
 
-test('item 7: a draft that cannot be cleared after a good install is a warning in the result, not a failure', t => {
+test('item 7: a draft that cannot be cleared after a good install is a warning in the result, not a failure', { skip: skipAsRoot('a drafts file in a folder at mode 500 cannot be kept') }, t => {
   const w = world(t);
   adopt(w);
   const first = json<{ refused: Refused[] }>(bl(w, ['install', '--json']).stdout);

@@ -12,6 +12,7 @@ import { JOURNAL, saveStopped as journalSaveStopped } from '../../../dist/packag
 import { MERGE_JOURNAL, planInstructionMerge, refuseWhileStopped } from '../../../dist/packages/adoption/src/merge.js';
 import { INSTRUCTIONS, json, project, skill } from '../../project-sync/test/portable-fixture.mjs';
 import { code, sha, snapshot } from './fixture.mjs';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const { SAVE_JOURNAL, SAVE_REFUSAL_CODES, planSaveRecovery, refuseWhileSaveStopped, runSaveRecovery, saveStopped } = save;
 const signal = () => new AbortController().signal;
@@ -163,7 +164,7 @@ test('apply writes creates, updates, and deletes, harness.json last, then clears
   assert.equal(await lockIsFree(p.dir), 'free', 'the project lock is released');
 });
 
-test('a journal that cannot be removed after a finished save is reported, and the save is not undone', async t => {
+test('a journal that cannot be removed after a finished save is reported, and the save is not undone', { skip: skipAsRoot('a state folder at mode 500 cannot lose its journal file') }, async t => {
   const p = saving(t);
   const target = mixed(p);
   const plan = planSave(p.save(), target);
@@ -451,7 +452,7 @@ test('recovery keeps a file that changed after the crash, and then refuses to fi
   assert.equal(fs.existsSync(journalAt(p)), false);
 });
 
-test('under umask 002, an undo that stopped part way and is run again finishes cleanly', async t => {
+test('under umask 002, an undo that stopped part way and is run again finishes cleanly', { skip: skipAsRoot('a folder at mode 555 cannot lose a file') }, async t => {
   const old = process.umask(0o002);
   t.after(() => process.umask(old));
   const p = saving(t);
@@ -482,7 +483,7 @@ test('under umask 002, an undo that stopped part way and is run again finishes c
   for (const rel of originals) assert.equal(fs.readFileSync(path.join(p.def, rel), 'utf8'), before[rel], rel);
 });
 
-test('under umask 002, a finish after an undo that stopped part way writes the steps it lists', async t => {
+test('under umask 002, a finish after an undo that stopped part way writes the steps it lists', { skip: skipAsRoot('a folder at mode 555 cannot lose a file') }, async t => {
   const old = process.umask(0o002);
   t.after(() => process.umask(old));
   const p = saving(t);

@@ -9,6 +9,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import '../../../dist/tests/support/isolate-home.js';
 import { isSharedProject } from '../../../dist/packages/project-config/src/shared.js';
 import { discoverProject } from '../../../dist/packages/project-context/src/index.js';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const HOME = process.env.HOME;
 const CONFIG = '[core]\n\trepositoryformatversion = 0\n[remote "origin"]\n\turl = https://github.com/sageadvicellc/app.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n';
@@ -115,7 +116,7 @@ test('5d. a header such as [REMOTE "origin"] and a key such as URL = x match', t
   assert.deepEqual(isSharedProject(projectAt(repo)), { shared: true, reason: 'origin' });
 });
 
-test('7. an unreadable config counts as shared and does not throw', t => {
+test('7. an unreadable config counts as shared and does not throw', { skip: skipAsRoot('a git config at mode 000 cannot be read') }, t => {
   const dir = folder(t), repo = path.join(dir, 'repo'); gitFolder(repo);
   fs.chmodSync(path.join(repo, '.git', 'config'), 0o000);
   assert.deepEqual(isSharedProject(projectAt(repo)), UNKNOWN('.git/config'));

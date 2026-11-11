@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Test tooling, never shipped. Prints the counts of a `playwright test --reporter=json` file, and the title of each failed test.
-//   node tools/sandbox/summarize-e2e.mjs <e2e.json> [--exit-code N] [--inventory <test-inventory.json>]
+//   node tools/sandbox/summarize-e2e.mjs <e2e.json> [--exit-code N] [--inventory <test-inventory.json>] [--ceilings <skip-ceilings.json>]
 // Exit 0 only when: Playwright exited 0 (when --exit-code is given), the report has no top-level error, no test was interrupted,
 // no test failed, at least one passed, and the report holds at least as many tests as the frozen e2e suite (and the frozen count must be readable).
-// Exit 1 otherwise, and on a missing or unreadable file. A skipped count is printed as a warning.
+// It also fails when more tests skipped than the desktop-e2e ceiling of skip-ceilings.json. Exit 1 otherwise, and on a missing or unreadable file. A skipped count is printed as a warning.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readRun } from '../test-inventory.mjs';
 
+const DEFAULT_CEILINGS = fileURLToPath(new URL('./skip-ceilings.json', import.meta.url));
 const DEFAULT_INVENTORY = fileURLToPath(new URL('../../docs/v0.9/test-inventory.json', import.meta.url));
 
 function interruptedCount(report) {
@@ -20,7 +21,7 @@ function interruptedCount(report) {
   return n;
 }
 
-export function summarizeE2e(report, { exitCode = null, frozenTests = null } = {}) {
+export function summarizeE2e(report, { exitCode = null, frozenTests = null, skipCeiling = null } = {}) {
   const { expected = 0, unexpected = 0, flaky = 0, skipped = 0 } = report.stats ?? {};
   const failed = readRun(JSON.stringify(report), 'playwright').filter(t => t.status === 'fail');
   const problems = [];
@@ -31,6 +32,7 @@ export function summarizeE2e(report, { exitCode = null, frozenTests = null } = {
   const total = expected + unexpected + flaky + skipped;
   if (frozenTests === null) problems.push('frozen count unavailable (docs/v0.9/test-inventory.json has no e2e test count)');
   if (frozenTests !== null && total < frozenTests) problems.push(`the report has ${total} tests, fewer than the ${frozenTests} of the frozen e2e suite`);
+  if (skipCeiling !== null && skipped > skipCeiling) problems.push(`${skipped} tests skipped, above the ceiling of ${skipCeiling} (tools/sandbox/skip-ceilings.json)`);
   const ok = unexpected === 0 && expected > 0 && problems.length === 0;
   const lines = [`desktop-e2e        ${ok ? 'passed' : 'FAILED'}  pass ${expected}, fail ${unexpected}, flaky ${flaky}, skipped ${skipped}, total ${total}`];
   if (skipped > 0) lines.push(`  warning: ${skipped} skipped (macOS-only, env-flag and fixme tests); the skip kinds are in docs/v0.9/test-inventory.json`);
@@ -46,11 +48,15 @@ function main(argv) {
   if (codeAt >= 0 && !/^\d+$/.test(args[codeAt + 1] ?? '')) { process.stdout.write('--exit-code needs a number\n'); return 1; }
   const codeText = take('--exit-code');
   const inventoryPath = take('--inventory') ?? DEFAULT_INVENTORY;
+  const ceilingsPath = take('--ceilings') ?? DEFAULT_CEILINGS;
+  let skipCeiling = null;
+  try { const value = JSON.parse(fs.readFileSync(ceilingsPath, 'utf8'))['desktop-e2e']; skipCeiling = Number.isInteger(value) ? value : null; } catch (error) { process.stdout.write(`cannot read the skip ceilings ${ceilingsPath}: ${error.message}\n`); return 1; }
+  if (skipCeiling === null) { process.stdout.write(`cannot read the skip ceilings ${ceilingsPath}: no whole number for desktop-e2e\n`); return 1; }
   let frozenTests = null;
   try { frozenTests = JSON.parse(fs.readFileSync(inventoryPath, 'utf8')).suites?.e2e?.counts?.tests ?? null; } catch { frozenTests = null; }
   let report;
   try { report = JSON.parse(fs.readFileSync(args[0], 'utf8')); } catch (error) { process.stdout.write(`cannot read the e2e record: ${error.message}\n`); return 1; }
-  const { ok, lines } = summarizeE2e(report, { exitCode: codeText === null ? null : Number(codeText), frozenTests });
+  const { ok, lines } = summarizeE2e(report, { exitCode: codeText === null ? null : Number(codeText), frozenTests, skipCeiling });
   process.stdout.write(lines.join('\n') + '\n');
   return ok ? 0 : 1;
 }

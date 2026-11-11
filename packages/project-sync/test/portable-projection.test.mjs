@@ -12,6 +12,7 @@ import {
 import { applyPortableWith } from '../../../dist/packages/project-sync/src/portable-run.js';
 import { ENGINE_IDS, checkFidelity } from '../../../dist/packages/harness-definition/src/index.js';
 import { FIVE, INSTRUCTIONS, code, json, project, projectNow as project_, sha, skill, snapshot, stamp, written } from './portable-fixture.mjs';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 // ---- check 2: the drift report ---------------------------------------------------------------------------------------------
 
@@ -303,7 +304,7 @@ test('a skill folder Bowerloom did not project, and a linked .claude folder, are
   assert.throws(() => planPortable(p.input({ stateDir: path.join(p.dir, 'state') })), code('PORTABLE_STATE_UNSAFE'));
 });
 
-test('a failure part way rolls back every step, and leaves no receipt and no marker', async t => {
+test('a failure part way rolls back every step, and leaves no receipt and no marker', { skip: skipAsRoot('a write into a folder at mode 555 cannot fail') }, async t => {
   const p = project(t);
   fs.mkdirSync(path.join(p.dir, '.claude')); fs.mkdirSync(path.join(p.dir, '.agents'));
   fs.writeFileSync(path.join(p.dir, 'AGENTS.md'), 'Old shared rules.\n');

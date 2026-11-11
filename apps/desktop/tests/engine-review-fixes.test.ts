@@ -16,6 +16,7 @@ import type { EngineService } from '../main/engine-service.js';
 import type { Answer, ProjectAnswer, ProjectInput } from '../shared/engine/types.js';
 import { tempDir } from './support.js';
 import { definedFolder, filesOf, homeFolder } from './helpers-engine/folders.js';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 const WHEN = new Date('2026-10-28T12:00:00Z');
 const INPUT: ProjectInput = { engines: ['claude-code', 'codex'], reconcile: 'accept-agents', writeClaudeMd: false, approve: [] };
@@ -108,7 +109,7 @@ test('item 8: a draft the command line accepted counts in the app without a tick
   assert.equal(shared.kind, 'plan', 'no line to approve: the drafts on disk count');
 });
 
-test('item 7: approval drafts that cannot be cleared after an install or a removal are a warning the window gets, and the write stays done', async t => {
+test('item 7: approval drafts that cannot be cleared after an install or a removal are a warning the window gets, and the write stays done', { skip: skipAsRoot('a drafts file in a folder at mode 500 cannot be kept') }, async t => {
   const s = setup(t), dir = definedFolder(s.home);
   const { service, id, dirs } = await chosen(s, dir);
   // An install and a removal first, to learn the lines the command line would have accepted.

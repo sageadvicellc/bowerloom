@@ -23,10 +23,16 @@ cp .trellis/gates/*.log "$OUT/logs/" || echo "warning: could not copy the gates 
 # shellcheck disable=SC2086
 node tools/sandbox/summarize-gates.mjs $files || failed=1
 
+echo "== file system probes (they decide which tests skip)"
+node tools/sandbox/probe-report.mjs > "$OUT/logs/probes.log" 2>&1 || { echo "FAILED: the probe report is not available, so the log cannot say why tests skipped"; failed=1; }
+cat "$OUT/logs/probes.log"
+
 echo "== desktop e2e, on a virtual screen"
 pw=1
 if (cd apps/desktop && timeout -k 30 1800 npm run bundle > "$OUT/logs/desktop-e2e-bundle.log" 2>&1); then
-  (cd apps/desktop && PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/e2e.json" timeout -k 30 10800 xvfb-run -a --server-args="-screen 0 1280x1024x24" \
+  # The specs hide every window by default, so that a run never shows a window on a person's screen. On Linux a hidden window under X11 gets no frames, so
+  # a screenshot and the mouse wheel and hover of Playwright never finish. The screen here exists only in this container, so the windows are shown on it.
+  (cd apps/desktop && BOWERLOOM_E2E_SHOW=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/e2e.json" timeout -k 30 10800 xvfb-run -a --server-args="-screen 0 1280x1024x24" \
     npx playwright test --config playwright.config.ts --reporter=list,json > "$OUT/logs/desktop-e2e.log" 2>&1)
   pw=$?
 else

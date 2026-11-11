@@ -18,6 +18,7 @@ import { ENGINE_ARITY, ENGINE_CALLS, SAVE_MAIN_WORDS } from '../shared/engine/ty
 import * as types from '../shared/engine/types.js';
 import { tempDir } from './support.js';
 import { filesOf, homeFolder, sourceFolder, teamFolder } from './helpers-engine/folders.js';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 const WHEN = new Date('2026-10-30T12:00:00Z');
 const value = <T>(a: Answer<T> | null): T => { assert.ok(a !== null, 'an answer'); if (!a.ok) assert.fail(`refused: ${a.refusal.code} ${a.refusal.message}`); return a.value; };
@@ -133,7 +134,7 @@ test('add-skill loads each source folder once per call, and only the last copy o
 
 // ---- finding 5: a save point that could not be kept -------------------------------------------------------------------------
 
-test('a save point that cannot be kept after a save is a warning in words that Go back has no entry for it, and is logged', async t => {
+test('a save point that cannot be kept after a save is a warning in words that Go back has no entry for it, and is logged', { skip: skipAsRoot('a folder at mode 500 cannot take a write') }, async t => {
   const s = setup(t);
   const dir = teamFolder(s.home);
   const f = await choose(s, dir);
@@ -358,7 +359,7 @@ async function finishASaveAndLeaveItsJournal(s: Setup, dir: string, target = EVE
   assert.ok(existsSync(join(dirs.adoption, 'save-pending.json')));
 }
 
-test('a save that finished but left its journal is kept by the recovery: every file stays, the note is cleared, and the save points do not change', async t => {
+test('a save that finished but left its journal is kept by the recovery: every file stays, the note is cleared, and the save points do not change', { skip: skipAsRoot('a state folder at mode 500 cannot lose its journal file') }, async t => {
   const s = setup(t);
   const dir = teamFolder(s.home);
   const f = await choose(s, dir);
@@ -412,7 +413,7 @@ test('a save stopped part way is still taken back: its plan is not done, it asks
   assert.deepEqual(filesOf(dir), before);
 });
 
-test('a save whose files are all written is taken back, not finished, when a file outside it changed since, so the recovery can never refuse for good', async t => {
+test('a save whose files are all written is taken back, not finished, when a file outside it changed since, so the recovery can never refuse for good', { skip: skipAsRoot('a state folder at mode 500 cannot lose its journal file') }, async t => {
   const s = setup(t);
   const dir = teamFolder(s.home);
   const f = await choose(s, dir);
@@ -436,7 +437,7 @@ test('the warning of a left journal says the save stays when the note is cleared
   assert.doesNotMatch(journal!, /takes this save back/);
 });
 
-test('the mode of a save recovery is part of the plan shown: when a file outside the save changes after the plan, the run is refused as not the shown plan, and nothing changes', async t => {
+test('the mode of a save recovery is part of the plan shown: when a file outside the save changes after the plan, the run is refused as not the shown plan, and nothing changes', { skip: skipAsRoot('a state folder at mode 500 cannot lose its journal file') }, async t => {
   const s = setup(t);
   const dir = teamFolder(s.home);
   const f = await choose(s, dir);
@@ -473,7 +474,7 @@ test('the mode of a save recovery is part of the plan shown: when a file outside
   assert.equal(existsSync(journal), false);
 });
 
-test('a finished save whose emptied folder came back with a .DS_Store is taken back, so the recovery never refuses for good, and no journal is left', async t => {
+test('a finished save whose emptied folder came back with a .DS_Store is taken back, so the recovery never refuses for good, and no journal is left', { skip: skipAsRoot('a state folder at mode 500 cannot lose its journal file') }, async t => {
   const s = setup(t);
   const dir = teamFolder(s.home);
   put(dir, '.bowerloom/skills/outline/references/notes.md', 'Notes.\n');
