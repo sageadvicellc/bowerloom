@@ -5,15 +5,71 @@
    "command": "",
    "cwd": "",
    "counts": {
-    "files": 264,
-    "tests": 6065,
-    "pass": 6014,
+    "files": 265,
+    "tests": 6074,
+    "pass": 5906,
     "fail": 0,
-    "skip": 45,
+    "skip": 162,
     "todo": 6,
     "fixme": 0
    },
    "skips": [
+    {
+     "file": "dist/packages/codex-adapter/test/protocol.test.js",
+     "name": "invalid routes, cancelled signals, aliases and unpinned installation reject without any launch",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/packages/codex-adapter/test/protocol.test.js",
+     "name": "on a platform other than macOS arm64, start refuses UNSUPPORTED_PLATFORM before the pin check, and still refuses invalid routes and cancelled signals",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips on the platform it does not check",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/packages/codex-adapter/test/startup-deadline.test.js",
+     "name": "controlled guardian rejects changed prompt and still reaps only its owned child",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/packages/codex-adapter/test/startup-deadline.test.js",
+     "name": "real guardian refuses expired, future-parent, wrong runtime/boot, tampered and duplicate startup before fixture spawn",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/packages/codex-adapter/test/startup-deadline.test.js",
+     "name": "real private guardian accepts one correctly bound synthetic Node fixture and verifies its acknowledgment",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/packages/codex-adapter/test/startup-deadline.test.js",
+     "name": "supervisor refuses a missing or mismatched controlled started acknowledgment and cleans its guardian",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/packages/codex-adapter/test/startup-deadline.test.js",
+     "name": "supervisor sends final post-fork parent sample and binds that exact transferred snapshot",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
     {
      "file": "dist/tests/alpha-cli-postgres.test.js",
      "name": "CLI sessions compose real PostgreSQL, DBOS, exact approval and retained admission without native/model execution",
@@ -43,6 +99,54 @@
      "reason": "skips unless the environment variable TRELLIS_RECIPE_PROOF is set"
     },
     {
+     "file": "dist/tests/skills-cli.test.js",
+     "name": "a parent folder that changes during the check before dispatch is read again once, and the same value dispatches",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (the parent folder change when a file is added)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/skills-cli.test.js",
+     "name": "a parent folder that changes once during the first read is read again once, then the command dispatches",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (the parent folder change when a file is added)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/skills-cli.test.js",
+     "name": "a parent folder that keeps changing still refuses SKILLS_CHANGED after exactly one more read, with no dispatch",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (the parent folder change when a file is added)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/skills-cli.test.js",
+     "name": "the record file changing during the first read refuses at once: only a parent change is read again",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (the record file change when it is rewritten)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/store-foundation-cli.test.js",
+     "name": "16. store status with the home folder at mode 0 prints Store: refused (STORE_UNREADABLE) and exits 0",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a home folder at mode 0 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "14. readSliceTree throws MANAGED_SKILL_STALE_APPROVAL when a file changes during the read",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (a folder change when a file is added, or a file change when it is appended to)",
+     "group": "sandbox-work"
+    },
+    {
      "file": "dist/tests/support/lock-slot-retry.js",
      "name": "20. a path of more than 1024 bytes below home refuses FOLDER_UNSAFE",
      "status": "skip",
@@ -51,10 +155,170 @@
     },
     {
      "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "23. folder add refuses STALE_APPROVAL, and writes nothing, when the folder was replaced after the plan",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system reuses folder identity (a replaced folder from the one it replaced)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "29. F6: a seed that fails after the pin is written says so in plain words for the store",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot take a write)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "34. F5: a store team folder that cannot be read is not \"not found\"",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a team folder at mode 000 cannot be listed)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "36. folder allow refuses an unknown name, a folder that is gone or unsafe, and a stale plan",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system reuses folder identity (a replaced folder from the one it replaced)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "B10. planning refuses when the folder was replaced between the request and the read",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system reuses folder identity (a replaced wiki folder from the one it replaced)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "B5. a registered folder replaced by a new folder at the same path denies every call with GUARD_ROOT_MISSING",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system reuses folder identity (a registered folder replaced by a new folder from the one it replaced)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "F8. the stale check rethrows a store item it cannot read",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a store item at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "H2. a read error of the recovery check propagates, and TEAM_EXISTS on the unlisted path names a next step",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a team folder at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "L-1 (round 5). a delete-step refusal gives a bare command as next and fix; run in a shell, it changes only the leftover",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a leftover folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "L-2 (round 5). a blocked .prune- leftover goes after every leftover that can be deleted",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "L3 (round 4). a .tmp- leftover that fails at the delete step names the .prune- folder it became",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes last, and its refusal and cache list name the fix",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "M2. an unknown shared state that causes a refusal says so honestly",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a git config at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
      "name": "P6: two definition files that differ only in case are refused (case-sensitive file systems only)",
      "status": "skip",
      "kind": "machine-dependent",
      "reason": "skips when the file system is case-insensitive (it folds case, so the pair of names cannot exist)"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "a failure part way rolls back every step, and leaves no receipt and no marker",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a write into a folder at mode 555 cannot fail)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "a journal that cannot be removed after a finished save is reported, and the save is not undone",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a state folder at mode 500 cannot lose its journal file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "item 7: a draft that cannot be cleared after a good install is a warning in the result, not a failure",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a drafts file in a folder at mode 500 cannot be kept)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "round 2. a store item file this user cannot read refuses lock update with its own Next: line",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a file at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "round 4. store migrate: an unreadable item has its own sentence",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a skill file at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "under umask 002, a finish after an undo that stopped part way writes the steps it lists",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 555 cannot lose a file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "dist/tests/support/lock-slot-retry.js",
+     "name": "under umask 002, an undo that stopped part way and is run again finishes cleanly",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 555 cannot lose a file)",
+     "group": "sandbox-work"
     },
     {
      "file": "packages/admission/test/postgres.test.mjs",
@@ -92,6 +356,14 @@
      "reason": "skips unless the environment variable TRELLIS_GRAPH_PROOF is set"
     },
     {
+     "file": "packages/harness-definition/test/load.test.mjs",
+     "name": "silent 2: a file or folder that cannot be read is a problem, not a throw",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a file and a folder at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
      "file": "packages/mcp-connections/test/authority-postgres.test.mjs",
      "name": "dedicated PostgreSQL discovery authority proof",
      "status": "skip",
@@ -104,6 +376,566 @@
      "status": "skip",
      "kind": "never-runs-in-gate",
      "reason": "skips unless the environment variable BOWERLOOM_MCP_CONTAINER_PROOF is set"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "checkpoint chain pins exact signed bytes, monotonic sequence and prior revision",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "fresh versioned inspection and private operator receipt preserve authority and falsify every effect flag",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "inspector fences changed database evidence and never accepts fabricated observations",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "lost final COMMIT acknowledgement returns uncertainty while immutable closure remains readable without changing authority",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "normal PostgreSQL checkpoint compares all authority bytes and invokes live checks under lock; reads create nothing",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "normal schema, async authorization, late commit acknowledgement and terminal audit remain fail closed",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "rollback, checkpoint equality and newer local snapshots never assert latest state",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "seal is domain separated and exact clean owned incarnation is required",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-checkpoint.test.mjs",
+     "name": "terminal CAS refuses unseen normal commit, is exactly idempotent and prevents higher signed checkpoints",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "actual file and kernel boot inspection verifies historical signatures without freshness or PID authority",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "authority/binding drift, file change, cross scope and database failure refuse",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "binding refuses unavailable schema, live callback drift/async/mutation, corruption and lost commit acknowledgement",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "binding uses full authority lock, immutable exact identity and explicit schema without authority update",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "body, signature, operation and substituted key corruption refuse",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "boot command is fixed and failed/ambiguous output cannot establish boot identity",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "different boot and unknown attach process remain held despite valid signature",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "even signed malformed body shapes do not pass the verifier",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian-provenance.test.mjs",
+     "name": "legacy and missing journal/binding never receive retroactive provenance",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "IPC forwarding checks absolute deadline even before the scheduled timer runs",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "corrupt persisted journal prevents rewriting ownership and prevents cleanup by guessed identity",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "existing name collision is never adopted or removed, even when public labels can match",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "existing operation directory never resumes or retries creation",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "journal replaced by symlink is refused without touching its target",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "live container loses authority when renewal stops, with exact owned cleanup and no redispatch",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "mismatched inspected container identity never starts or removes that container",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "missing or delayed initial authority creates no container",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "missing or wrong binding acknowledgement permits no Docker command",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "missing, stopped and late checkpoint acknowledgements cannot create or resume",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "monotonic lease is checked at IPC forwarding before a delayed expiry timer can run",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "queued renewal after its challenge expired is rejected before the expiry timer can run",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "real child-generated journal signature binds exact operation and independent public key",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "repeated valid renewals cannot extend the original absolute deadline",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "replayed and wrong-session renewal frames fail closed without extending authority",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "stop during CREATING fsync drains the write, seals CANCELLED and never requests create",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "stop or lease expiry while STARTED checkpoint awaits acknowledgement cleans up without forwarding",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-guardian.test.mjs",
+     "name": "unknown create result stays uncertain and never discovers or removes a container by name",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "Docker errors, wrong IDs, invalid text, flood and timeout never mean absence",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "active durable authority and external observation overrides are rejected",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "actual ps observes this live test process without signaling it",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "collector persistence error, corrupt acknowledgement or post-commit journal change returns uncertainty",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "collector reads actual private bytes and exact process/container queries while holding provenance unknown",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "collector timeout cannot turn a late persistence completion into success",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "collector-owned persistence takes only fresh observations and retains uncertainty",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "file content, file identity, and ancestor replacement during observations invalidate the report",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "final full-authority comparison detects concurrent changes and DB failure without clearing holds",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "journal tampering and exact authority/launch mismatch refuse before Docker contact",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "missing operation directory and missing journal yield held reports and no read commands",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "new journal appearance after an initial missing observation invalidates the report",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "present or failed process observations remain distinct and non-authorizing",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "symlink files, hardlinks, symlink operation ancestors and unsafe modes refuse before subprocesses",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "unresponsive trusted store has a bounded collection deadline and cannot resume host reads later",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container-recovery-collector.test.mjs",
+     "name": "v2 envelope normalization does not promote signature-shaped bytes into origin or host trust",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "abort before or during queued filesystem preflight starts nothing",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "binding completion after cancellation cannot start lease or protocol",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "checkpoint callback getters are inert before guardian fork",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "checkpoint failure and delayed acknowledgement after stop never forward or reopen",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "container factory pins exact launch and deadline while exposing discovery only",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "failed initial durable renewal opens no protocol session and cancels the owned guardian",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "launch changes, missing deadline, secrets and unsupported effects cannot fork a guardian",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "method order and overlapping requests fail without tool calls or retry",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "missing durable binding capability or failed acknowledgement never reaches a lease or protocol",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "options and context getters stay inert; explicit trust and private canonical state root required",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "renewal completion after cancellation never sends an authority response or protocol request",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "request timeout and local close observe pending rejection and require guardian closure",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "stale connected IPC callback and synchronous errors never recursively cancel or leak",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "terminal received with pending normal callback uses last acknowledged head and does not rebase",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "uncertain container absence or unreaped attach prevents successful close",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/container.test.mjs",
+     "name": "unsolicited data, invalid UTF8, duplicate keys, wrong IDs, extra envelopes and flood close safely",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the code it checks reads the macOS boot session and refuses every other platform",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/darwin-boot-session.test.mjs",
+     "name": "a platform other than macOS never reports a boot session: it refuses MCP_GUARDIAN_BOOT_UNKNOWN",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips on the platform it does not check",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/mcp-connections/test/darwin-boot-session.test.mjs",
+     "name": "on macOS the boot session is one valid UUID, and the same on every read",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips on the platform it does not check",
+     "group": "sandbox-work"
     },
     {
      "file": "packages/mcp-connections/test/guardian-postgres.test.mjs",
@@ -127,11 +959,59 @@
      "reason": "skips unless the environment variable BOWERLOOM_MCP_STDIO_PROOF is set"
     },
     {
+     "file": "packages/notes-source/test/summary.test.mjs",
+     "name": "a folder that cannot be listed leaves the count incomplete, not wrong",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be listed)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/project-config/test/shared.test.mjs",
+     "name": "7. an unreadable config counts as shared and does not throw",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a git config at mode 000 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
      "file": "packages/project-context/test/discovery.test.mjs",
      "name": "L5: an alias of .bowerloom beside the pinned folder is refused when the pins are checked",
      "status": "skip",
      "kind": "machine-dependent",
      "reason": "skips when the disk is case-insensitive (the second name .BOWERLOOM cannot exist beside .bowerloom)"
+    },
+    {
+     "file": "packages/project-context/test/discovery.test.mjs",
+     "name": "an unreadable folder on the way up refuses PROJECT_UNREADABLE instead of being skipped",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 311 cannot be listed)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/project-context/test/discovery.test.mjs",
+     "name": "checkProjectPath refuses when macOS or permissions block the marker: lstat or realpath EACCES",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be searched)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/project-context/test/store.test.mjs",
+     "name": "18. a home folder at mode 0 throws STORE_UNREADABLE",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a home folder at mode 0 cannot be read)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/project-context/test/store.test.mjs",
+     "name": "S2: verifyStorePins re-checks the change time of store.json",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (store.json change when it is rewritten in place)",
+     "group": "sandbox-work"
     },
     {
      "file": "packages/project-sync/test/locked-live.test.mjs",
@@ -254,10 +1134,66 @@
     },
     {
      "file": "packages/skill-sources/test/remove-cache.test.mjs",
+     "name": "11. a folder that cannot be deleted refuses at the delete step, names the leftover and the inner path, and says how to fix it",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/skill-sources/test/remove-cache.test.mjs",
+     "name": "14. a leftover whose name holds a control character gets guidance, not a command",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/skill-sources/test/remove-cache.test.mjs",
      "name": "3 (real owner). an entry that another user owns refuses CACHE_PRUNE_FAILED",
      "status": "skip",
      "kind": "machine-dependent",
      "reason": "skips unless the user is root (only root can make a folder that another user owns); the gate user is not root"
+    },
+    {
+     "file": "packages/skill-sources/test/remove-cache.test.mjs",
+     "name": "a cache entry holding a bidi-named folder that cannot be deleted names it on one line",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/skill-sources/test/response-headers.test.mjs",
+     "name": "a guarded repeat after 1000 padding headers refuses, including when Node dropped the repeat",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips while it runs on Node 24.21.0: Node keeps only 1000 of the 1004 header pairs, so the repeat never reaches the guard",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/team/test/review.test.mjs",
+     "name": "T12: a file that cleanup cannot remove is reported with its path, and no success is claimed",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 555 cannot lose a file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/team/test/review.test.mjs",
+     "name": "T14: a member folder that is unreadable is told apart",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be listed)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/team/test/review.test.mjs",
+     "name": "T14: an unreadable team folder is told apart",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be listed)",
+     "group": "sandbox-work"
     },
     {
      "file": "packages/team/test/start.test.mjs",
@@ -444,6 +1380,7 @@
     ],
     "dist/packages/codex-adapter/test/protocol.test.js": [
      "invalid routes, cancelled signals, aliases and unpinned installation reject without any launch",
+     "on a platform other than macOS arm64, start refuses UNSUPPORTED_PLATFORM before the pin check, and still refuses invalid routes and cancelled signals",
      "public controls preserve homes and remove injected environment",
      "single strict proposal is broker-compatible across arbitrary byte chunks",
      "tools agents effects errors extra turns and duplicate keys are refused",
@@ -2563,6 +3500,7 @@
      "rollback interrupted after rollback-new-moved stays latched and resumes only rollback",
      "rollback interrupted after rollback-old-restored stays latched and resumes only rollback",
      "round 2. SKILLS_OFFLINE on a network failure: apply --frozen and use print the network step; plain apply keeps its hold",
+     "round 2. a store item file this user cannot read refuses lock update with its own Next: line",
      "round 2. each fault of a store item refuses lock update with its own Next: line, naming the file or folder",
      "round 2. every cause of STORE_ITEM_NOT_SHAREABLE has a true Next: line, and only a plain path is named",
      "round 2. lock update in a project that is not shared does not say the project is shared",
@@ -2578,7 +3516,8 @@
      "round 4. apply and skills sync with --max-github-requests and nothing to fetch print the no-effect note",
      "round 4. apply keeps a store fault with its next step; a content change is STALE_APPROVAL",
      "round 4. at apply, a store fault keeps its code and next step; a content change is STALE_APPROVAL",
-     "round 4. store migrate from a subfolder says to run the command in the project folder; an unreadable item has its own sentence",
+     "round 4. store migrate from a subfolder says to run the command in the project folder",
+     "round 4. store migrate: an unreadable item has its own sentence",
      "round 5. store migrate --all names a true reason for each fault kind of a project item",
      "round 5. store migrate --approve with a fault: the step ends with the approval note, and the same --approve then applies",
      "round 5. the no-effect note: an npm-only plan, a warm cache, and an empty config print it; a plan that reads GitHub does not",
@@ -5313,7 +6252,8 @@
      "8. a home given through a symbolic link finds the store at the real path",
      "9. a store inside an iCloud folder throws STORE_IN_CLOUD_FOLDER",
      "L7: verifyStorePins uses the uid hook when one is given",
-     "S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json",
+     "S2: verifyStorePins re-checks owner and mode, and the size of store.json",
+     "S2: verifyStorePins re-checks the change time of store.json",
      "S3: a store folder swapped while the inspection runs is refused",
      "S4: a home folder that others can write, without the sticky bit, throws STORE_UNSAFE",
      "S7: a link or file at <home>/.bowerloom is no store for pathInsideStore, and an unreadable one refuses",
@@ -6157,8 +7097,10 @@
      "T11: every derived value is listed, and unenforced 0.7 restrictions need an acknowledgement",
      "T12: a file that cleanup cannot remove is reported with its path, and no success is claimed",
      "T13: a failed write keeps its error code, file label, and cause",
-     "T14: a member folder that is missing, unreadable, or a link is told apart",
-     "T14: a missing team folder, an unreadable folder, and a link are told apart",
+     "T14: a member folder that is missing is told apart",
+     "T14: a member folder that is unreadable is told apart",
+     "T14: a missing team folder is told apart",
+     "T14: an unreadable team folder is told apart",
      "T15: a capped problem list says how many more problems there are",
      "T16: apply returns a problem, not an exception, when the target parent goes away",
      "T17: an answer fault is reported while other questions are open",
@@ -6966,6 +7908,11 @@
      "the refine skill writes one report under reports/ and nothing else",
      "the skills and the agent load through the harness definition loader",
      "the starter wiki states folders, frontmatter, links, and the log in plain words"
+    ],
+    "packages/mcp-connections/test/darwin-boot-session.test.mjs": [
+     "a platform other than macOS never reports a boot session: it refuses MCP_GUARDIAN_BOOT_UNKNOWN",
+     "on macOS the boot session is one valid UUID, and the same on every read",
+     "validBootSession accepts one upper-case UUID and nothing else"
     ]
    }
   },
@@ -6975,14 +7922,127 @@
    "cwd": "",
    "counts": {
     "files": 149,
-    "tests": 1957,
-    "pass": 1955,
+    "tests": 1958,
+    "pass": 1942,
     "fail": 0,
-    "skip": 2,
+    "skip": 16,
     "todo": 0,
     "fixme": 0
    },
-   "skips": [],
+   "skips": [
+    {
+     "file": ".build/tests/engine-review-fixes.test.mjs",
+     "name": "item 7: approval drafts that cannot be cleared after an install or a removal are a warning the window gets, and the write stays done",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a drafts file in a folder at mode 500 cannot be kept)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/engine-save-review.test.mjs",
+     "name": "a finished save whose emptied folder came back with a .DS_Store is taken back, so the recovery never refuses for good, and no journal is left",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a state folder at mode 500 cannot lose its journal file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/engine-save-review.test.mjs",
+     "name": "a save point that cannot be kept after a save is a warning in words that Go back has no entry for it, and is logged",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot take a write)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/engine-save-review.test.mjs",
+     "name": "a save that finished but left its journal is kept by the recovery: every file stays, the note is cleared, and the save points do not change",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a state folder at mode 500 cannot lose its journal file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/engine-save-review.test.mjs",
+     "name": "a save whose files are all written is taken back, not finished, when a file outside it changed since, so the recovery can never refuse for good",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a state folder at mode 500 cannot lose its journal file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/engine-save-review.test.mjs",
+     "name": "the mode of a save recovery is part of the plan shown: when a file outside the save changes after the plan, the run is refused as not the shown plan, and nothing changes",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a state folder at mode 500 cannot lose its journal file)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/real-scan.test.mjs",
+     "name": "step one counts what it could not read",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be opened)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/real-tool-home.test.mjs",
+     "name": "a link that leads outside, a folder that will not open, a file over 2 MB and a file that is not text are named too; five names at most, each one plain line of at most 80 characters",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be opened)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/real-tool-home.test.mjs",
+     "name": "rootDirs: only the named top-level folders are entered (any case), top-level files still count, and a folder left out is neither listed nor flagged",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 000 cannot be opened)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/scan-cache.test.mjs",
+     "name": "a file that is a folder, or cannot be opened, is damaged and never throws",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a cache file at mode 000 cannot be opened)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/scan-cache.test.mjs",
+     "name": "a save keeps only the newest of the folders it moved aside, and leaves everything that is not one of them",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (which of several folders was made last)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/scan-cache.test.mjs",
+     "name": "an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/scan-cache.test.mjs",
+     "name": "an aside entry that vanishes between the listing and the look does not stop the sweep of the others",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips when the file system has coarse file times (which of several folders was made last)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": ".build/tests/scan-fingerprint.test.mjs",
+     "name": "a parent folder that cannot be listed cannot be told apart from its neighbours, so the check says it is not complete",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips as root: root ignores file modes (a parent folder at mode 311 cannot be listed)",
+     "group": "sandbox-work"
+    }
+   ],
    "observedMustRun": [
     {
      "file": ".build/tests/launch.test.mjs",
@@ -7811,7 +8871,7 @@
     ".build/tests/harness-boundary.test.mjs": [
      "main.ts: the app on the person's own folders gets the read-only bridge and the engine calls; a failed bridge stops the start; the sample never has either",
      "main.ts: the sample launch has no preload, no IPC, a temporary data folder and its own address; the others have the one bridge",
-     "only the real screens, the mount file and the call lanes of the preview import the call client, none imports the transport, and nothing in the shared or sample code names the bridge",
+     "only the real screens, the mount file, the root of the preview (for its fallback engine) and the call lanes of the preview import the call client, none imports the transport, and nothing in the shared or sample code names the bridge",
      "the launcher and the root scripts: no flag opens the app on the person's own folders, --sample opens the sample, one mode at a time, and a real home folder is needed for the first",
      "the mode comes from the address, not from the bridge: the mount asks the address, and a real address without its bridge is an error, not the sample",
      "the page mounts the harness-first app on its own addresses, a bare address is the app on the person's own folders, and the old viewer bridge is gone",
@@ -8752,6 +9812,7 @@
      "no more than the place cap are listed",
      "one call at a time: a second call while the first runs is refused",
      "reading changes nothing: the fixture is the same before and after every call",
+     "step one counts what it could not read",
      "step one finds one place for each program under the home folder, and counts by structure",
      "step one gives no file name, no text and no key value; the only paths are in the details field",
      "step two reads text only for the places that were chosen, and hides what looks like a key",
@@ -8849,7 +9910,7 @@
      "a sample world made with the switch on has it on in every folder",
      "main marks the page only when asked: the attribute is added to the body once, and never when off",
      "the default sample world locks the preview engines in every folder, and weekly-report still lists OpenCode",
-     "the page reads the attribute once, to make its sample world",
+     "the page reads the attribute once, to make its sample world, and only the API client does it",
      "the sample source no longer explains a switch that is on",
      "the shipped page does not carry the attribute, and main reads the launch argument for the sample launch only"
     ],
@@ -9264,9 +10325,9 @@
    "counts": {
     "files": 48,
     "tests": 285,
-    "pass": 265,
+    "pass": 259,
     "fail": 0,
-    "skip": 18,
+    "skip": 24,
     "todo": 0,
     "fixme": 2
    },
@@ -9340,6 +10401,54 @@
      "status": "skip",
      "kind": "never-runs-in-gate",
      "reason": "skips unless the environment variable DOCS_SHOTS is set"
+    },
+    {
+     "file": "apps/desktop/e2e/harness-close-guard.spec.ts",
+     "name": "Quit from the application menu (Cmd+Q) with a change asks, and no quit happens while the window refuses to close",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the spec needs macOS window and quit behavior",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "apps/desktop/e2e/harness-close-guard.spec.ts",
+     "name": "Quit from the application menu (Cmd+Q) with no change quits at once and asks nothing",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the spec needs macOS window and quit behavior",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "apps/desktop/e2e/harness-close-guard.spec.ts",
+     "name": "a change that was undone asks nothing when the window closes",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the spec needs macOS window and quit behavior",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "apps/desktop/e2e/harness-close-guard.spec.ts",
+     "name": "a window that stayed after Keep editing asks again at the next close, and Discard closes it",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the spec needs macOS window and quit behavior",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "apps/desktop/e2e/harness-close-guard.spec.ts",
+     "name": "closing the window with a change: Discard closes it",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the spec needs macOS window and quit behavior",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "apps/desktop/e2e/harness-close-guard.spec.ts",
+     "name": "with no change, the window closes and no box appears",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips off macOS: the spec needs macOS window and quit behavior",
+     "group": "sandbox-work"
     },
     {
      "file": "apps/desktop/e2e/journey-1-cold-start-and-adopt.spec.ts",
