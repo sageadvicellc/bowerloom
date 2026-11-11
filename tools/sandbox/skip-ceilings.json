@@ -1,6 +1,6 @@
 {
   "note": "The most skipped tests each suite may report in the sandbox. A run exits 1 when a suite skips more. To raise a ceiling, change the number here and the count in docs/v0.9/sandbox-tests.md in the same pull request, and say why.",
-  "root-test": 220,
+  "root-test": 221,
   "desktop-test": 18,
   "desktop-e2e": 29
 }

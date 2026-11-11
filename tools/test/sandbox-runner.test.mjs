@@ -432,3 +432,46 @@ test('the machine-dependent check ignores the frozen skips of the sandbox work, 
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /1 machine-dependent tests: all passed/);
 });
+
+// Each run has its own image tag, so two runs on one machine never overwrite each other's image.
+const imageOf = (line, verb) => (verb === 'build' ? /(?:^| )-t (\S+)/.exec(line)?.[1] : line.trim().split(/\s+/).at(-1));
+const tagsOf = env => {
+  const result = runOut([], env);
+  assert.equal(result.status, 0, result.stderr);
+  const lines = result.stdout.split('\n').filter(line => line.startsWith('docker '));
+  return { build: imageOf(lines.find(l => l.startsWith('docker build ')), 'build'), run: imageOf(lines.find(l => l.startsWith('docker run ')), 'run') };
+};
+
+test('each run builds and runs its own image tag, and never the shared :local tag', () => {
+  const env = { BOWERLOOM_SANDBOX_IMAGE: '' };
+  const first = tagsOf(env), second = tagsOf(env);
+  for (const tags of [first, second]) {
+    assert.match(tags.build, /^bowerloom-sandbox:run-\d+-\d+$/);
+    assert.equal(tags.run, tags.build, 'the run uses the image it built');
+  }
+  assert.notEqual(first.build, second.build, 'two runs get two tags');
+});
+
+test('BOWERLOOM_SANDBOX_IMAGE overrides the tag', () => {
+  const tags = tagsOf({ BOWERLOOM_SANDBOX_IMAGE: 'bowerloom-sandbox:mine' });
+  assert.deepEqual(tags, { build: 'bowerloom-sandbox:mine', run: 'bowerloom-sandbox:mine' });
+});
+
+function fakeDockerCalls(env) {
+  const dir = tmp(), log = path.join(dir, 'calls.log');
+  fs.writeFileSync(path.join(dir, 'docker'), `#!/bin/sh\necho "$*" >> "${log}"\ncase "$1" in inspect) exit 1;; esac\nexit 0\n`, { mode: 0o755 });
+  const result = spawnSync('bash', [runner], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, ...env } });
+  return { result, calls: fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+}
+
+test('the run removes its own image when it ends, and no other tag', () => {
+  const { calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: '' });
+  const built = /-t (\S+)/.exec(calls.find(c => c.startsWith('build ')))[1];
+  assert.match(built, /^bowerloom-sandbox:run-\d+-\d+$/);
+  assert.deepEqual(calls.filter(c => c.startsWith('rmi ') || c.startsWith('image rm')), [`rmi ${built}`]);
+});
+
+test('a tag given by BOWERLOOM_SANDBOX_IMAGE belongs to the caller, so the run does not remove it', () => {
+  const { calls } = fakeDockerCalls({ BOWERLOOM_SANDBOX_IMAGE: 'bowerloom-sandbox:mine' });
+  assert.equal(calls.some(c => c.startsWith('rmi ') || c.startsWith('image rm')), false);
+});

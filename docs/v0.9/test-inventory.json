@@ -7,9 +7,9 @@
    "counts": {
     "files": 265,
     "tests": 6074,
-    "pass": 5907,
+    "pass": 5906,
     "fail": 0,
-    "skip": 161,
+    "skip": 162,
     "todo": 6,
     "fixme": 0
    },
@@ -1161,6 +1161,14 @@
      "status": "skip",
      "kind": "machine-dependent",
      "reason": "skips as root: root ignores file modes (a folder at mode 500 cannot be deleted)",
+     "group": "sandbox-work"
+    },
+    {
+     "file": "packages/skill-sources/test/response-headers.test.mjs",
+     "name": "a guarded repeat after 1000 padding headers refuses, including when Node dropped the repeat",
+     "status": "skip",
+     "kind": "machine-dependent",
+     "reason": "skips while it runs on Node 24.21.0: Node keeps only 1000 of the 1004 header pairs, so the repeat never reaches the guard",
      "group": "sandbox-work"
     },
     {

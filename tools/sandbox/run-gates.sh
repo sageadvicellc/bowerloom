@@ -5,7 +5,11 @@
 set -u
 script="${BASH_SOURCE[0]}"
 repo="$(cd "${script%/*}/../.." && pwd -P)"
-image="bowerloom-sandbox:local"
+# Each run has its own image tag, so two runs on one machine never replace each other's image. BOWERLOOM_SANDBOX_IMAGE overrides it,
+# and a tag given that way belongs to the caller: the run does not remove it.
+image_owned=0
+if [ -n "${BOWERLOOM_SANDBOX_IMAGE:-}" ]; then image="$BOWERLOOM_SANDBOX_IMAGE"; else image="bowerloom-sandbox:run-$$-$RANDOM"; image_owned=1; fi
+image_built=0
 name="bowerloom-sandbox-$$"
 out=""
 out_given=0
@@ -87,17 +91,23 @@ cleanup() {
   [ -n "$run_pid" ] && kill "$run_pid" 2>/dev/null
   [ -n "$stage" ] && rm -rf -- "$stage"
   [ -n "$marker" ] && rm -f -- "$marker"
-  docker inspect "$name" >/dev/null 2>&1 || return 0
-  local err
-  if ! err="$(docker rm -f "$name" 2>&1 >/dev/null)"; then
-    echo "run-gates: warning: could not remove the container $name: $err" >&2
-    echo "run-gates: remove it yourself with: docker rm -f $name" >&2
+  if docker inspect "$name" >/dev/null 2>&1; then
+    local err
+    if ! err="$(docker rm -f "$name" 2>&1 >/dev/null)"; then
+      echo "run-gates: warning: could not remove the container $name: $err" >&2
+      echo "run-gates: remove it yourself with: docker rm -f $name" >&2
+    fi
+  fi
+  # The image goes last, because it cannot be removed while the container exists.
+  if [ "$image_owned" = "1" ] && [ "$image_built" = "1" ]; then
+    docker rmi "$image" >/dev/null 2>&1 || echo "run-gates: warning: could not remove the image $image. Remove it yourself with: docker rmi $image" >&2
   fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 cd "$repo" || exit 2
+image_built=1
 "${build_cmd[@]}" || { echo "run-gates: the image did not build" >&2; exit 4; }
 
 marker="$(mktemp "${TMPDIR:-/tmp}/bowerloom-sandbox-timeout.XXXXXX")" || { echo "run-gates: could not make a temporary file" >&2; exit 2; }

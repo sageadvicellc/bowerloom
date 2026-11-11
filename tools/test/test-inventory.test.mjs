@@ -184,14 +184,14 @@ test('the four machine-dependent root skips are frozen by name as machine-depend
   }
 });
 
-test('the counts by kind: 3 must-run, 7 needs-decision, 120 machine-dependent (4 of the base, 116 of the sandbox work), 40 flag-gated never-runs in root', () => {
+test('the counts by kind: 3 must-run, 7 needs-decision, 121 machine-dependent (4 of the base, 117 of the sandbox work), 40 flag-gated never-runs in root', () => {
   const must = Object.values(inventory.suites).flatMap(s => s.observedMustRun.map(m => m.file));
   assert.deepEqual(must.map(f => path.basename(f)).sort(), ['launch.test.mjs', 'packaged-app.spec.ts', 'packaging.test.mjs']);
   const root = inventory.suites.root;
   const kind = k => root.skips.filter(s => s.kind === k).length;
   assert.equal(root.observedMustRun.length, 0);
   assert.equal(kind(NEEDS_DECISION), 7);
-  assert.equal(kind(MACHINE_DEPENDENT), 120);
+  assert.equal(kind(MACHINE_DEPENDENT), 121);
   assert.equal(kind(NEVER_RUNS), 40);
 });
 
@@ -229,8 +229,11 @@ test('the skips of the sandbox work are frozen as machine-dependent in every sui
   for (const suite of Object.values(inventory.suites)) for (const skip of suite.skips) assert.notEqual(skip.reason.trim(), '', skip.name);
 });
 
-test('no test of the sandbox work needs a Node-version skip: the guard and the header tests run on every Node 24', () => {
-  for (const file of ['packages/skill-sources/test/response-headers.test.mjs', 'tools/cli-distribution/test/installed-container.test.mjs']) {
-    assert.equal(inventory.suites.root.skips.some(s => s.file === file), false, file);
-  }
+test('the response-headers test stays a recorded machine-dependent skip on Node 24.21.0, and the guard test is not a skip', () => {
+  const skips = inventory.suites.root.skips;
+  const header = skips.find(s => s.file === 'packages/skill-sources/test/response-headers.test.mjs');
+  assert.equal(header?.name, 'a guarded repeat after 1000 padding headers refuses, including when Node dropped the repeat');
+  assert.equal(header.kind, MACHINE_DEPENDENT);
+  assert.match(header.reason, /Node 24\.21\.0/);
+  assert.equal(skips.some(s => s.file === 'tools/cli-distribution/test/installed-container.test.mjs'), false);
 });

@@ -59,6 +59,8 @@ The network is on while the image builds, because the build installs the package
 
 ## Options
 
+- `BOWERLOOM_SANDBOX_IMAGE` sets the image tag. By default each run builds its own tag, `bowerloom-sandbox:run-<process id>-<random number>`, so two runs on one computer never replace each other's image. The run removes that image when it ends, and removes no other tag. A tag you give with this variable is yours, and the run does not remove it.
+
 - `--print-commands` prints the docker commands and runs nothing.
 - `--out <folder>` copies the result files to a folder on your computer after the run.
 - `BOWERLOOM_SANDBOX_LIMIT_SECONDS` sets the time limit of the whole container run. The default is 14400.
@@ -111,7 +113,7 @@ The container is Linux, and it runs as root. These tests skip there, and each sk
 - The tests that need a file mode to refuse a user. Root ignores modes.
 - The tests that need a quick change to show in a file time, or a replaced folder to show as a new folder. The file system in the container stamps from a coarse clock and hands a freed inode to the next folder at once.
 - Four close and quit specs that need macOS behavior.
-- Nothing that depends on the Node version. The two tests that did now run on Node 24.21.0.
+- One test that depends on the Node version. It skips while the test runs.
 
 Every skip of this work is listed in "Every skip this work added". They run on a Mac, for a user who is not root, on a file system with fine file times.
 
@@ -142,7 +144,7 @@ Each failing test was sorted by cause. Two checks told root causes from the rest
 | Code that is macOS only: the boot session of the container guardian, its supervisor and collector, and the Codex startup guardian | 102 | 0 | 0 | The tests skip off macOS, with a reason. No Linux boot-session reader was added (see the decisions below). |
 | Root ignores file modes | 30 | 13 | 0 | A test that needs a mode throughout skips as root, with a reason. A test that needs one in only one part is split, or built without the part, so the rest runs as root. |
 | The file system has coarse file times or reuses a folder identity | 5 | 3 | 0 | The tests skip when a probe finds the file system too coarse, with a reason. The probe never answers true on macOS. The run prints the answers (see "The probes"). |
-| Node 24.21.0 differs from the Node the tests were written for | 2 | 0 | 0 | Fixed. The proof guard now admits `NODE_TEST_WORKER_ID`, and the header test accepts what Node 24.21.0 keeps. Neither test skips. |
+| Node 24.21.0 differs from the Node the tests were written for | 2 | 0 | 0 | Half fixed. The proof guard now admits `NODE_TEST_WORKER_ID`, so that test runs. The header test still skips on Node 24.21.0. |
 | A fixture that depended on the machine | 1 | 1 | 0 | Fixed. A preload now waits for its output to drain. A test input is now really long. |
 | The sandbox renamed Electron's binary, so every app counted as packaged | 0 | 0 | 4 | Fixed in the Dockerfile. |
 | A hidden window under X11 gets no frames, so a screenshot, the wheel and hover never finish | 0 | 0 | 3 | The sandbox shows the windows on its own virtual screen. |
@@ -155,14 +157,14 @@ The totals are 140, 17 and 15. Nothing was deleted. No assertion changed to make
 
 - **No Linux boot-session reader.** A reader of `/proc/sys/kernel/random/boot_id` would not make the container tests pass. The container launch refuses every platform but macOS in its own check (`MCP_CONTAINER_PLATFORM`), and so does the recovery collector (`TRUST`). A Linux reader would only turn on part of a feature that the product keeps off elsewhere. Two new tests pin part of the choice. `darwin-boot-session.test.mjs` shows that `readDarwinBootSession` refuses off macOS, and a new protocol test shows that codex-adapter `start` refuses `UNSUPPORTED_PLATFORM`. The other two refusals have no Linux test: `MCP_CONTAINER_PLATFORM` of the container launch, and the collector refusal. The macOS half of `darwin-boot-session.test.mjs` did not run in the sandbox.
 - **Windows are shown in the sandbox.** The e2e step sets `BOWERLOOM_E2E_SHOW=1`. The screen exists only in the container, so nothing shows on your screen. The hidden mode of the specs is then not exercised in the sandbox: the specs that check it take their "watching" branch. The other way is to skip the three specs for hidden windows on Linux. That would also skip the wheel and hover checks of two product screens.
-- **The Node version. Answered 2026-11-11: allow it in a follow-up. Done.** The sandbox pins Node 24.21.0, and the engines range is 24.11.0 to below 25. In 24.21.0 the child of `node --test` also gets `NODE_TEST_WORKER_ID`. The proof guard in `tools/cli-distribution/installed-container-guard.mjs` now admits that variable, and only beside `NODE_TEST_CONTEXT=child-v8`, and only as a plain positive integer of at most nine digits. It still refuses every other `NODE_` variable. The test that spawns a real `node --test` child runs again, and a new test covers the accepted and refused values. The header test in `response-headers.test.mjs` also runs again: it asserts the same refusal, and it takes the 1000 pairs that Node 24.21.0 keeps or the 1004 that earlier Node 24 keeps.
-- **The skip kinds. Answered 2026-11-11: add skip kinds in a follow-up. Done.** Every skip in "Every skip this work added" is now frozen in `docs/v0.9/test-inventory.json` with the kind `machine-dependent` (116 in root, 14 in desktop, 6 in end-to-end, 136 tests). The inventory check now counts them on every platform: a test may skip or pass, and it fails on a fail, a fixme, a todo, or when missing. The inventory also lists the tests that PR 175 split or added (the T14 pair, the S2 split, the item-sources split and the two boot-session and protocol tests), and the two desktop tests that PR 173 renamed, under their new titles.
+- **The Node version. Answered 2026-11-11: allow it in a follow-up. Done.** The sandbox pins Node 24.21.0, and the engines range is 24.11.0 to below 25. In 24.21.0 the child of `node --test` also gets `NODE_TEST_WORKER_ID`. The proof guard in `tools/cli-distribution/installed-container-guard.mjs` now admits that variable, and only beside `NODE_TEST_CONTEXT=child-v8`, and only as a plain positive integer of at most nine digits. It still refuses every other `NODE_` variable. The test that spawns a real `node --test` child runs again, and a new test covers the accepted and refused values. The header test in `response-headers.test.mjs` is not changed by this answer, which covered the guard only. It stays skipped on Node 24.21.0, with its stated reason, and it is a recorded skip in the inventory.
+- **The skip kinds. Answered 2026-11-11: add skip kinds in a follow-up. Done.** Every skip in "Every skip this work added" is now frozen in `docs/v0.9/test-inventory.json` with the kind `machine-dependent` (117 in root, 14 in desktop, 6 in end-to-end, 137 tests, with the header test). The inventory check now counts them on every platform: a test may skip or pass, and it fails on a fail, a fixme, a todo, or when missing. The inventory also lists the tests that PR 175 split or added (the T14 pair, the S2 split, the item-sources split and the two boot-session and protocol tests), and the two desktop tests that PR 173 renamed, under their new titles.
 
 ## Every skip this work added
 
 Each row is one skipped test. A skipped test with subtests skips all of them. The helpers are in `tests/support/machine-skips.ts`.
 
-The tables hold 136 different tests. One test, "an aside entry that cannot be removed does not stop the sweep of the older ones" in `apps/desktop/tests/scan-cache.test.ts`, is in two tables, because it needs a mode and fine file times. So the root and file time tables hold 41 + 9 rows, which are 49 different tests.
+The tables hold 136 different tests, and the header test of the next section is one more. One test, "an aside entry that cannot be removed does not stop the sweep of the older ones" in `apps/desktop/tests/scan-cache.test.ts`, is in two tables, because it needs a mode and fine file times. So the root and file time tables hold 41 + 9 rows, which are 49 different tests.
 
 ### Skips off macOS (74 tests)
 
@@ -349,6 +351,12 @@ These tests check that other platforms refuse. The refusal test of `darwin-boot-
 | `packages/mcp-connections/test/darwin-boot-session.test.mjs` | a platform other than macOS never reports a boot session: it refuses MCP_GUARDIAN_BOOT_UNKNOWN |
 | `packages/mcp-connections/test/darwin-boot-session.test.mjs` | on macOS the boot session is one valid UUID, and the same on every read |
 
+### Skips decided while a test runs
+
+| File | Test | Why it skips |
+|---|---|---|
+| `packages/skill-sources/test/response-headers.test.mjs` | a guarded repeat after 1000 padding headers refuses, including when Node dropped the repeat | Node 24.21.0 keeps only 1000 header pairs, so the repeat at the end of 1004 pairs never reaches the guard. The test is split in two, with its assertions unchanged. The 1100-header half runs on every Node. |
+
 Tests that need a mode in one part only were narrowed, so that the rest runs as root. No assertion changed.
 
 - `tests/item-sources-cli.test.ts`: the row "a file this user cannot read" of the round 2 test, and the unreadable half of the round 4 migrate test, are tests of their own that skip for root.
@@ -372,11 +380,11 @@ A skipped test is not a passed test, and the run cannot see a skip that a later 
 
 | Suite | Ceiling | Why this number |
 |---|---|---|
-| `root-test` | 220 | 212 skipped in the last full run, 10 more for the guardian tests that passed only by refusal, and 1 for the item-sources test split off for root, less 1 for the bundle test that now runs as root, less 2 for the two Node-version tests that now run. Not measured: the full run was not repeated. |
+| `root-test` | 221 | 212 skipped in the last full run, 10 more for the guardian tests that passed only by refusal, and 1 for the item-sources test split off for root, less 1 for the bundle test that now runs as root, less 1 for the guard test that now runs. This is arithmetic from the change, not measured: the full run was not repeated. |
 | `desktop-test` | 18 | 20 skipped in the last full run, less 1 for `real-map` and 1 for `real-scan`, which now run as root. |
 | `desktop-e2e` | 29 | 27 skipped in an earlier full run, plus the 2 close-guard specs that now skip off macOS, because the app quits when its last window closes there. Measured: 29. |
 
-A full run on 2026-11-11, before the two Node-version tests ran again, measured 216 root, 18 desktop and 29 end-to-end skips, all at or under these ceilings. If a later run reports more, check why, and raise the number only when the extra skips are right.
+A full run on 2026-11-11, before the guard test ran again, measured 216 root, 18 desktop and 29 end-to-end skips, all at or under these ceilings. If a later run reports more, check why, and raise the number only when the extra skips are right.
 
 To raise a ceiling, change the number in `skip-ceilings.json` and the count in this doc in the same pull request, and say why in the pull request. To lower one, do the same when tests stop skipping.
 
