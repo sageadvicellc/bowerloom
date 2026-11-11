@@ -48,8 +48,11 @@ const REFUSED_TEXT: Readonly<Record<string, string>> = Object.freeze({
 const frozen = (endpoints: EndpointSpec[], endpointsConfigured: number, notes: LocalModelsNote[], unreadable: boolean): EndpointConfig =>
   Object.freeze({ endpoints: Object.freeze(endpoints), endpointsConfigured, notes: Object.freeze(notes.map(n => Object.freeze(n))), unreadable });
 
-const unreadableConfig = (): EndpointConfig =>
-  frozen([], 0, [{ code: 'CONFIG_UNREADABLE', text: 'The local models file could not be read, so no server was probed.' }], true);
+/** Why the file could not be read. PARSE: not JSON. SHAPE: JSON of the wrong form. TOO_LARGE: over the size limit. NOT_FILE: a folder, a link, or a path through a file. IO: any other read error. */
+export type ConfigUnreadableReason = 'PARSE' | 'SHAPE' | 'TOO_LARGE' | 'NOT_FILE' | 'IO';
+
+const unreadableConfig = (reason: ConfigUnreadableReason): EndpointConfig =>
+  frozen([], 0, [{ code: 'CONFIG_UNREADABLE', text: 'The local models file could not be read, so no server was probed.', reason }], true);
 
 const withDefaults = (configured: EndpointSpec[], notes: LocalModelsNote[]): EndpointConfig => {
   const endpoints = [...configured];
@@ -62,22 +65,24 @@ const withDefaults = (configured: EndpointSpec[], notes: LocalModelsNote[]): End
 
 /** Reads the file in the state folder. It never throws. */
 export function readEndpointConfig(stateRoot: unknown): EndpointConfig {
-  if (typeof stateRoot !== 'string' || stateRoot === '') return unreadableConfig();
+  if (typeof stateRoot !== 'string' || stateRoot === '') return unreadableConfig('IO');
   const file = join(stateRoot, CONFIG_FILE_NAME);
   let text: string;
   try {
     const stat = lstatSync(file);
-    if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return unreadableConfig();
+    if (!stat.isFile()) return unreadableConfig('NOT_FILE');
+    if (stat.size > MAX_FILE_BYTES) return unreadableConfig('TOO_LARGE');
     text = readFileSync(file, 'utf8');
   } catch (error) {
     const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
-    return code === 'ENOENT' || code === 'ENOTDIR' ? withDefaults([], []) : unreadableConfig();
+    if (code === 'ENOENT') return withDefaults([], []);
+    return unreadableConfig(code === 'ENOTDIR' ? 'NOT_FILE' : 'IO');
   }
   let parsed: unknown;
-  try { parsed = JSON.parse(text.startsWith('﻿') ? text.slice(1) : text) as unknown; } catch { return unreadableConfig(); }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return unreadableConfig();
+  try { parsed = JSON.parse(text.startsWith('﻿') ? text.slice(1) : text) as unknown; } catch { return unreadableConfig('PARSE'); }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return unreadableConfig('SHAPE');
   const list = (parsed as { endpoints?: unknown }).endpoints;
-  if (!Array.isArray(list)) return unreadableConfig();
+  if (!Array.isArray(list)) return unreadableConfig('SHAPE');
 
   const configured: EndpointSpec[] = [];
   const notes: LocalModelsNote[] = [];

@@ -83,6 +83,16 @@ test('a call after an expired report starts one new probe, and a caller that com
   assert.equal(await p1, await p2);
 });
 
+test('PROBE_FAILED carries the error class as a code, and never the message', async () => {
+  const cases = [[new TypeError('SECRET_ONE'), 'TYPE_ERROR'], [new RangeError('SECRET_ONE'), 'RANGE_ERROR'], [new SyntaxError('SECRET_ONE'), 'SYNTAX_ERROR'], [new Error('SECRET_ONE'), 'ERROR'], ['SECRET_ONE', 'NOT_AN_ERROR'], [undefined, 'NOT_AN_ERROR']];
+  for (const [thrown, reason] of cases) {
+    const cache = createReportCache({ collect: () => Promise.reject(thrown), now: () => 1 });
+    const failed = await cache.get();
+    assert.deepEqual(failed.notes.map(n => n.reason), [reason]);
+    assert.ok(!JSON.stringify(failed).includes('SECRET'));
+  }
+});
+
 test('a probe that rejects, or throws, gives a report with PROBE_FAILED and no models, and is not cached', async () => {
   const clock = { t: 5000 };
   let mode = 'reject', calls = 0;
@@ -91,6 +101,7 @@ test('a probe that rejects, or throws, gives a report with PROBE_FAILED and no m
   const failed = await cache.get();
   assert.deepEqual(failed.models, []);
   assert.deepEqual(failed.notes.map(n => n.code), ['PROBE_FAILED']);
+  assert.deepEqual(failed.notes.map(n => n.reason), ['ERROR']);
   assert.equal(failed.sampledAt, new Date(5000).toISOString());
   assert.equal(failed.endpointsConfigured, 0);
   assert.ok(!JSON.stringify(failed).includes('boom'), 'the error text is not passed on');

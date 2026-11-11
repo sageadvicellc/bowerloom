@@ -38,7 +38,7 @@ test('two configured servers give two up rows, in the order of the file, with th
   assert.deepEqual({ ...a }, {
     id: 'llama-server:8091', provider: 'llama-server', port: 8091, state: 'up', stateReason: null, modelName: 'Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0',
     parameterCount: 8955900928, fileBytes: 9518764032, contextSize: 8192, contextTrain: 262144, contextUsedPeak: 0, slotsTotal: 4, activeRequests: 0, deferredRequests: 0, promptTokensPerSecond: 0,
-    generationTokensPerSecond: 0, processMemoryBytes: null, uptimeSeconds: null, build: 'b12110-cd959bae9', sampledAt: '2026-11-11T10:00:00.000Z',
+    generationTokensPerSecond: 0, processMemoryBytes: null, uptimeSeconds: null, build: 'b12110-cd959bae9', notes: [], sampledAt: '2026-11-11T10:00:00.000Z',
   });
   assert.equal(b.quantization, 'MXFP4 MoE');
   assert.equal(b.fileBytes, 12096558336);
@@ -86,7 +86,39 @@ test('a server with metrics off is up, its request and speed figures are null, a
   const off = { ...recorded('example-9b'), '/metrics': ok('off', 501) };
   const report = await collectReport(base(t, endpoints(8091, 8092), world({ 8091: off, 8092: off })));
   assert.deepEqual(report.notes.map(n => n.code), ['METRICS_OFF']);
-  for (const m of report.models) { assert.equal(m.state, 'up'); assert.equal(m.activeRequests, null); assert.equal(m.generationTokensPerSecond, null); assert.equal(m.slotsTotal, 4); }
+  for (const m of report.models) { assert.equal(m.state, 'up'); assert.equal(m.activeRequests, null); assert.equal(m.generationTokensPerSecond, null); assert.equal(m.slotsTotal, 4); assert.deepEqual(m.notes, [{ code: 'METRICS_OFF', paths: ['/metrics'] }]); }
+});
+
+test('each row carries its own notes: the report-level list is kept, and a row that was read in full has none', async t => {
+  const bad = { ...recorded('example-9b'), '/props': ok('not json'), '/metrics': ok('garbage') };
+  const report = await collectReport(base(t, endpoints(8091, 8092), world({ 8091: bad, 8092: recorded('example-9b') })));
+  assert.deepEqual(report.notes.map(n => n.code), ['PARTIAL_READ', 'METRICS_UNREADABLE']);
+  assert.ok(report.notes.every(n => typeof n.text === 'string' && n.text !== ''));
+  const [a, b] = report.models;
+  assert.deepEqual(a.notes, [{ code: 'PARTIAL_READ', paths: ['/props'] }, { code: 'METRICS_UNREADABLE', paths: ['/metrics'] }]);
+  assert.deepEqual(b.notes, []);
+  assert.ok(Object.isFrozen(a.notes) && Object.isFrozen(a.notes[0]) && Object.isFrozen(a.notes[0].paths));
+});
+
+test('a row note keeps only a code that matches the pattern and paths from the fixed list', async t => {
+  const probe = async () => ({ ok: true, notes: [], rows: [{ state: 'up', notes: [{ code: 'GOOD', paths: ['/props', '/etc/passwd', 5, '/props'] }, { code: 'bad code', paths: ['/slots'] }, null, 'x'] }, { state: 'up', notes: 'nope' }] });
+  const fake = { id: 'ollama', defaultPort: 11434, probe };
+  const report = await collectReport(base(t, { endpoints: [{ provider: 'ollama', port: 11434 }] }, world({}), { providers: [fake] }));
+  assert.deepEqual(report.models[0].notes, [{ code: 'GOOD', paths: ['/props'] }]);
+  assert.deepEqual(report.models[1].notes, []);
+});
+
+test('a provider that says ok with no rows, or rows that are not a list, is PROVIDER_ERROR and not an up row', async t => {
+  for (const result of [{ ok: true, notes: [] }, { ok: true, rows: 'x', notes: [] }, { ok: true, rows: null, notes: [] }, { ok: true, rows: { length: 1 }, notes: [] }]) {
+    const fake = { id: 'ollama', defaultPort: 11434, probe: async () => result };
+    const [m] = (await collectReport(base(t, { endpoints: [{ provider: 'ollama', port: 11434 }] }, world({}), { providers: [fake] }))).models;
+    assert.deepEqual([m.state, m.stateReason], ['unsupported', 'PROVIDER_ERROR'], JSON.stringify(result));
+  }
+});
+
+test('a config note keeps its reason code in the report', async t => {
+  const report = await collectReport(base(t, '{', world({})));
+  assert.deepEqual(report.notes.map(n => [n.code, n.reason]), [['CONFIG_UNREADABLE', 'PARSE']]);
 });
 
 test('with no file, a default that answers is shown and one that does not is left out', async t => {

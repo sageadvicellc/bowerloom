@@ -2,7 +2,7 @@
  * The provider seam. A provider reads one kind of local model server. It never sees a host, never builds a URL and never opens a socket: the engine gives it a `get(path)` that
  * is already bound to 127.0.0.1 and one port, with the time and size limits applied. A provider is then a pure reading of text, easy to test with a fixture and easy to audit.
  */
-import type { ProviderId } from './types.js';
+import type { LocalModelRowNote, ProviderId } from './types.js';
 
 /** Why a read failed before an answer came. REDIRECT: the server answered with a redirect, which is never followed. */
 export type GetFailure = 'CONNECTION_REFUSED' | 'CONNECTION_FAILED' | 'TIMEOUT' | 'TOO_LARGE' | 'REDIRECT' | 'BAD_PATH' | 'BAD_PORT';
@@ -31,6 +31,8 @@ export interface ProviderProbe {
   readonly promptTokensPerSecond?: number;
   readonly generationTokensPerSecond?: number;
   readonly build?: string;
+  /** The conditions of this row, with the paths that caused them. Left out when there are none. */
+  readonly notes?: readonly LocalModelRowNote[];
   readonly state: 'up' | 'starting';
   /** For `starting`: why, as a short code. */
   readonly reason?: string;
