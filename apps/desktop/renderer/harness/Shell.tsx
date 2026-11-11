@@ -11,6 +11,7 @@ import { keyShortcuts, navModeOf, onMac, shellKey, toggleTip } from '../home/she
 import type { NavMode } from '../home/shell/shell-state.js';
 import { useWindowWidth } from '../home/shell/useWindowWidth.js';
 import { IconButton } from '../home/kit/IconButton.js';
+import type { ExtensionManifest } from '../../shared/extensions/types.js';
 import { navKeyOf } from '../../shared/harness/route.js';
 import type { Route } from '../../shared/harness/route.js';
 import { Navigation } from './Navigation.js';
@@ -40,7 +41,7 @@ export function useShell(): ShellValue {
   return value;
 }
 
-export function Shell({ route, children, overlays }: { route: Route; children?: ReactNode; overlays?: ReactNode }): ReactElement {
+export function Shell({ route, children, overlays, extensions }: { route: Route; children?: ReactNode; overlays?: ReactNode; extensions?: readonly ExtensionManifest[] }): ReactElement {
   const ui = useUi();
   const width = useWindowWidth(), mac = onMac();
   const [navChosen, setNavChosen] = useState<boolean | null>(null);
@@ -98,7 +99,8 @@ export function Shell({ route, children, overlays }: { route: Route; children?: 
         <Navigation mode={mode} overlay={mode === 'hidden' && overlay} current={navKeyOf(route)} onToggle={toggleNav}
           onNewHarness={() => { ui.showToast(BUILDER_REFUSALS['new-harness']); ui.openAdopt({}); }}
           onHarnesses={() => go({ name: 'harnesses' })} onLibrary={kind => go({ name: 'library', kind: kind ?? 'skill' })} onProjects={() => go({ name: 'projects' })} onRuns={() => go({ name: 'runs' })}
-          onInterfaces={() => go({ name: 'interfaces' })} onHistory={() => go({ name: 'history' })} onHelp={() => go({ name: 'help' })} />
+          onInterfaces={() => go({ name: 'interfaces' })} onHistory={() => go({ name: 'history' })} onHelp={() => go({ name: 'help' })}
+          extensions={(extensions ?? []).flatMap(x => (x.id === 'local-models' ? [{ id: x.id, title: x.title, icon: 'chip' as const, onOpen: () => go({ name: 'local-models' }) }] : []))} />
         {mode === 'hidden' && overlay ? <div className="hm-nav-scrim" data-nav-scrim="" aria-hidden="true" onClick={() => { setOverlay(false); requestAnimationFrame(() => topToggle.current?.focus()); }} /> : null}
         {children}
         <div id="hx-layer" />

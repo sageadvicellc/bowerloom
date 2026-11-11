@@ -37,6 +37,8 @@ export interface NavigationProps {
   onInterfaces(): void;
   onHistory(): void;
   onHelp(): void;
+  /** The bundled extensions that have a screen (renderer/harness/bundled-extensions.ts), each drawn after Runs. Left out, none. The id is also the nav key of its route. */
+  extensions?: readonly { readonly id: string; readonly title: string; readonly icon: HarnessIconName; readonly onOpen: () => void }[];
 }
 
 interface ItemProps {
@@ -84,7 +86,7 @@ export function Navigation(p: NavigationProps): ReactElement {
   const [workShut, setWorkShut] = useState(false);
   useEffect(() => { if (current !== null && current.startsWith('library')) setLibOpen(true); }, [current]);
   const workOpen = rail || !workShut;
-  const keys = ['new', ...(rail ? [] : ['sec-work']), ...(workOpen ? ['overview', 'harnesses', 'library', ...(libOpen ? PART_KINDS.map(k => `lib-${k}`) : []), 'projects', 'runs'] : []), 'interfaces', 'history', 'help'];
+  const keys = ['new', ...(rail ? [] : ['sec-work']), ...(workOpen ? ['overview', 'harnesses', 'library', ...(libOpen ? PART_KINDS.map(k => `lib-${k}`) : []), 'projects', 'runs', ...(p.extensions ?? []).map(x => x.id)] : []), 'interfaces', 'history', 'help'];
   const here = current === null ? null : current.startsWith('library') ? 'library' : current;
   const stop = last !== null && keys.includes(last) ? last : here !== null && keys.includes(here) ? here : 'new';
   const seen = (e: ReactFocusEvent<HTMLElement>): void => { const key = e.target instanceof HTMLElement ? e.target.getAttribute('data-nav-key') : null; if (key !== null) setLast(key); };
@@ -155,6 +157,7 @@ export function Navigation(p: NavigationProps): ReactElement {
               </li>
               <li><Item {...item} navKey="projects" icon="folder" label={WORDS.label.projects} current={here === 'projects'} onClick={p.onProjects} /></li>
               <li><Item {...item} navKey="runs" icon="play" label={WORDS.label.runs} current={here === 'runs'} onClick={p.onRuns} /></li>
+              {(p.extensions ?? []).map(x => <li key={x.id}><Item {...item} navKey={x.id} icon={x.icon} label={x.title} current={here === x.id} onClick={x.onOpen} /></li>)}
             </ul>
           </Fold>
         </div>

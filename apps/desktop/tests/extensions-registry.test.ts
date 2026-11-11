@@ -9,7 +9,7 @@ import { BASE_ROUTES, DEFAULT_EXTENSIONS, DEFAULT_IDS, ROUTE_OWNERS } from '../s
 import type { DefaultId } from '../shared/extensions/defaults.js';
 import type { Registry } from '../shared/extensions/registry.js';
 import { FIRST_RUN } from '../shared/harness/route.js';
-import type { RouteName } from '../shared/harness/route.js';
+import type { BaseRouteName, RouteName } from '../shared/harness/route.js';
 import { DESKTOP } from './support.js';
 
 const mountOf = (id: string): string => `mount:${id}`;
@@ -109,10 +109,10 @@ test('uninstall of an unknown id is refused as UNKNOWN_EXTENSION, and an unprote
 
 // Type-level check: every route name has an owner. A new Route member is a type error until ROUTE_OWNERS names its owner. A key that is not a route is caught at run time, below.
 type OwnedKeys = keyof typeof ROUTE_OWNERS;
-const noMissingRoute: [Exclude<RouteName, OwnedKeys>] extends [never] ? true : never = true;
-const ownersAreDefaults: [(typeof ROUTE_OWNERS)[RouteName]] extends [DefaultId] ? true : never = true;
+const noMissingRoute: [Exclude<BaseRouteName, OwnedKeys>] extends [never] ? true : never = true;
+const ownersAreDefaults: [(typeof ROUTE_OWNERS)[BaseRouteName]] extends [DefaultId] ? true : never = true;
 
-const ROUTE_NAMES_EXPECTED: readonly RouteName[] = ['welcome', 'choose', 'read', 'notes', 'overview', 'harnesses', 'builder', 'file', 'library', 'projects', 'runs', 'compare', 'interfaces', 'history', 'help'];
+const ROUTE_NAMES_EXPECTED: readonly BaseRouteName[] = ['welcome', 'choose', 'read', 'notes', 'overview', 'harnesses', 'builder', 'file', 'library', 'projects', 'runs', 'compare', 'interfaces', 'history', 'help'];
 
 test('the owner table covers exactly the routes of the Route union, and the first-run default owns exactly FIRST_RUN', () => {
   assert.deepEqual([noMissingRoute, ownersAreDefaults], [true, true]);
@@ -124,7 +124,7 @@ test('the owner table covers exactly the routes of the Route union, and the firs
   for (const owner of Object.values(ROUTE_OWNERS)) assert.ok((DEFAULT_IDS as readonly string[]).includes(owner), owner);
   const firstRun = DEFAULT_EXTENSIONS.find(m => m.id === 'first-run')!;
   assert.deepEqual([...firstRun.routes].sort(), [...FIRST_RUN].sort());
-  for (const manifest of DEFAULT_EXTENSIONS) for (const route of manifest.routes) assert.equal(ROUTE_OWNERS[route as RouteName], manifest.id, route);
+  for (const manifest of DEFAULT_EXTENSIONS) for (const route of manifest.routes) assert.equal(ROUTE_OWNERS[route as BaseRouteName], manifest.id, route);
 });
 
 test('the registry is the only route table: each of the 15 base routes is owned by exactly one default extension', () => {

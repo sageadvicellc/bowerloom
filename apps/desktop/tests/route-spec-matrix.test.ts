@@ -97,3 +97,25 @@ test('the five routes that had no spec at the base each name the spec written fo
     } else assert.equal(row.newSpec ?? null, null, `${row.id} had a spec at the base`);
   }
 });
+
+// ---- the routes of bundled extensions, listed apart from the 15 base routes
+
+const extensionRows = (JSON.parse(readFileSync(join(REPO, 'docs', 'v0.9', 'route-spec-matrix.json'), 'utf8')) as { extensionRoutes?: Row[] }).extensionRoutes ?? [];
+
+test('extensionRoutes lists local-models, owned by the bundled extension of that name and by no base route', () => {
+  assert.deepEqual(extensionRows.map(r => r.route), ['local-models']);
+  const row = extensionRows[0]!;
+  assert.equal(row.targetExtension, 'local-models');
+  assert.equal((DEFAULT_IDS as readonly string[]).includes(row.targetExtension!), false);
+  assert.equal((BASE_ROUTES as readonly string[]).includes(row.route!), false);
+  assert.ok(existsSync(join(DESKTOP, 'extensions', row.targetExtension!, 'manifest.json')));
+  assert.equal(rows.some(r => r.route === 'local-models'), false, 'the base rows are unchanged');
+});
+
+test('every file an extension route names exists, and it has an e2e spec in each of its modes', () => {
+  for (const row of extensionRows) {
+    for (const path of [...(row.screenFiles ?? []), ...row.unit, ...row.e2e.sample, ...row.e2e.real, ...row.e2e.noBridge]) assert.ok(existsSync(join(REPO, path)), `${row.id}: ${path}`);
+    for (const mode of row.modes) assert.ok(MODES.includes(mode), `${row.id}: ${mode}`);
+    for (const mode of row.modes) assert.ok(row.e2e[mode === 'no-bridge' ? 'noBridge' : (mode as 'sample' | 'real')].length > 0, `${row.id}: a spec in ${mode} mode`);
+  }
+});

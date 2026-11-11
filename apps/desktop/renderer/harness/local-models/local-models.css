@@ -1,0 +1,16 @@
+/*
+ * Local models. Every rule starts at [data-home] and uses the tokens of the app: no colour, font or motion of its own. A row is the shared row (.hx-row) with a tile, a name, a state dot and a list of facts. Text is 14 px or more.
+ */
+[data-home] .hxl-body { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.8125rem; }
+[data-home] .hxl-row { align-items: flex-start; cursor: default; }
+[data-home] .hxl-text { gap: var(--hm-space-2); }
+[data-home] .hxl-head { display: flex; align-items: center; gap: var(--hm-space-3); justify-content: space-between; min-width: 0; }
+[data-home] .hxl-name { margin: 0; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+[data-home] .hxl-why { margin: 0; }
+[data-home] .hxl-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--hm-space-2) var(--hm-space-4); }
+[data-home] .hxl-fact { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .hxl-fact dt { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.35; }
+[data-home] .hxl-fact dd { margin: 0; font-size: var(--hm-text-base); line-height: 1.35; overflow-wrap: anywhere; }
+[data-home] .hxl-fact:not([data-reported]) dd { color: var(--text-muted); }
+[data-home] .hxl-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

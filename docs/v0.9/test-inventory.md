@@ -61,6 +61,13 @@ The three below are build-dependent. The gate runs `npm run desktop:build` first
 - The tests that wrap their body in `tests/support/lock-slot-retry.ts` report that file as their file. The inventory keeps the reported file, so those names sit under `dist/tests/support/lock-slot-retry.js`.
 - The packaged-app spec skipped because no build was in `release/`. `desktop:build` was not run for the inventory. The spec stays in the must-run list.
 
+## Additions after the freeze
+
+The Local models screen adds tests. They are additions, so the check passes them. The counts above were not re-recorded, because no run was made for this change.
+
+- desktop: `tests/local-models-view-model.test.ts`, `tests/local-models-screen.test.ts`, and two tests added to `tests/extensions-host.test.ts`.
+- e2e: `e2e/harness-local-models.spec.ts` and `e2e/harness-local-models-no-bridge.spec.ts`.
+
 ## The check
 
 `tools/test-inventory.mjs` compares a run with the frozen inventory.

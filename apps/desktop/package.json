@@ -53,6 +53,10 @@
       {
         "from": "build/dock",
         "to": "dock"
+      },
+      {
+        "from": "extensions",
+        "to": "extensions"
       }
     ],
     "asar": true,

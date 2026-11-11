@@ -1,0 +1,7 @@
+{
+  "id": "local-models",
+  "title": "Local models",
+  "kind": "ui",
+  "routes": ["local-models"],
+  "protected": false
+}

@@ -15,6 +15,9 @@ export function realNow(): Stamp {
 /** Now, in milliseconds since 1970: the time shown as "Last read" after a read ends in this window. */
 export const realNowMs = (): number => Date.now();
 
+/** Now, as the ISO text of the sample bridge's reads. */
+export const realNowIso = (): string => new Date().toISOString();
+
 /** A moment as one plain line, such as "Nov 5, 2026, 3:12 PM", in the zone of this computer (or the zone given, for a test). Null for a time that is not a number. */
 export function clockText(atMs: number, timeZone?: string): string | null {
   if (!Number.isFinite(atMs) || Number.isNaN(new Date(atMs).getTime())) return null;

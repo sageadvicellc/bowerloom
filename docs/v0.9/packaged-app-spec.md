@@ -148,7 +148,7 @@ E1. A bundled extensions folder ships.
 - Statement: if `apps/desktop/extensions` holds a file, `package.json` copies it into the app resources.
 - Check: in PR 171, test `M2: if apps/desktop/extensions holds anything, package.json extraResources ships it into the app resources` in `tests/extensions-host.test.ts`. The test holds nothing while the folder is empty. Its comment says to add the entry `{ "from": "extensions", "to": "extensions" }` together with the first bundled extension. `tests/packaging.test.ts` pins `extraResources` to exactly the kits and the Dock icons. The first bundled extension must change both tests in one commit.
 - Runs: sandbox for the settings. Bundle part macOS only.
-- Status: pending PR 171. After PR 171 the test passes vacuously until the first bundled extension exists.
+- Status: pending PR 171. After PR 171 the test passes vacuously until the first bundled extension exists. Done in the Local models screen PR: `apps/desktop/extensions/local-models/manifest.json` is the first bundled extension, `package.json` ships the folder, and `tests/packaging.test.ts` pins the three entries. The M2 test now checks something.
 
 E2. Where the bundle root sits.
 
@@ -162,7 +162,7 @@ E3. A packaged build loads every bundled extension.
 - Statement: after the first bundled extension exists, the loader reports no skip in a packaged build. The count of loaded manifests equals the count of folders in the source `extensions/`. Before that, a bundle with no `extensions` folder is correct and not a failure.
 - Check: proposed. Run `loadBundledManifests` against `Contents/Resources` of the build and compare with the source count.
 - Runs: macOS only.
-- Status: proposed. The loader hands each skip to stderr, and to the usage log in a launch that keeps one. A Finder-launched app shows no stderr, so a person sees no word about a skipped extension in a launch with no usage log.
+- Status: proposed. The sandbox half is done in the Local models screen PR: test `E3: the app's own bundle loads the first bundled extension` in `tests/extensions-host.test.ts` loads the source folder with no skip. The packaged half still needs macOS. The loader hands each skip to stderr, and to the usage log in a launch that keeps one. A Finder-launched app shows no stderr, so a person sees no word about a skipped extension in a launch with no usage log.
 
 E4. The loader refuses hostile input.
 

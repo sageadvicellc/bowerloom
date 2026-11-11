@@ -148,6 +148,17 @@ Count: 37 rows. 15 routes, 4 route params, 8 sheets, 4 launches, 3 shell chrome 
   - unit: `harness-words`
   - new spec: `harness-help.spec.ts`
 
+### Extension routes
+
+These are routes of bundled extensions. They are not base routes, so the 15 above stay exact. The data is in the `extensionRoutes` list of `route-spec-matrix.json`.
+
+- **local-models** (`extension-route:local-models`)
+  - modes: sample, no-bridge
+  - owner: the bundled extension `local-models`
+  - e2e (sample): `apps/desktop/e2e/harness-local-models.spec.ts`
+  - e2e (no bridge): `apps/desktop/e2e/harness-local-models-no-bridge.spec.ts`
+  - real mode has no spec yet. It needs a fixture server inside the sandbox.
+
 ### Route params
 
 - **id** (`param:id`)
