@@ -1,5 +1,5 @@
 /**
- * The client of the page: the reader calls and the engine calls, each side given only when it is whole. The reader side needs its three functions. The engine side needs mode 'real' and
+ * The client of the page: the reader calls, the engine calls and the two local calls, each side given only when it is whole. The reader side needs its three functions. The engine side needs mode 'real' and
  * a function for each of the 39 engine calls. A missing or partial side is null, and the page then says so in plain words (renderer/harness/real/Nothing.tsx).
  * Nothing here reads the window: renderer/api/transport.ts does.
  */
@@ -9,6 +9,8 @@ import type { RealBridge } from '../../shared/real/types.js';
 import { ENGINE_CALLS } from '../../shared/engine/types.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
+import { LOCAL_CALLS } from '../../shared/api/local.js';
+import type { LocalBridge, LocalRefusalCode } from '../../shared/api/local.js';
 import { pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
@@ -17,6 +19,8 @@ export interface ApiClient {
   readonly reader: RealBridge | null;
   /** The calls of the adopt, install and save sheets, or null when this window has none, a partial set, or a mode other than 'real'. */
   readonly engine: EngineBridge | null;
+  /** The two read-only calls of the local models report and the extension list, or null when this window has none or a partial set. */
+  readonly local: LocalBridge | null;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -26,7 +30,8 @@ const hasAll = (found: Record<string, unknown>, calls: readonly string[]): boole
 export function createApiClient(raw: RawBridges): ApiClient {
   const reader = isObject(raw.reader) && hasAll(raw.reader, REAL_CALLS) ? (raw.reader as unknown as RealBridge) : null;
   const engine = isObject(raw.engine) && raw.engine.mode === 'real' && hasAll(raw.engine, ENGINE_CALLS) ? (raw.engine as unknown as EngineBridge) : null;
-  return { reader, engine };
+  const local = isObject(raw.local) && hasAll(raw.local, LOCAL_CALLS) ? (raw.local as unknown as LocalBridge) : null;
+  return { reader, engine, local };
 }
 
 /** The client of this window. */
@@ -46,3 +51,5 @@ export function fallbackEngine(realMode: boolean): EngineBridge | null {
 export const readerCodeOf = (error: unknown): string => refusalCode(error, 'reader');
 /** The short code in an error from an engine call ('BAD_ARGUMENT', 'UNKNOWN_FOLDER', ...), or 'FAILED'. */
 export const engineCodeOf = (error: unknown): string => refusalCode(error, 'engine');
+/** The short code in an error from a local call ('NOT_ALLOWED', 'BAD_ARGUMENT', 'HOST_NOT_STARTED'), or 'FAILED'. HOST_NOT_STARTED passes through, so a screen can say the extension host has not started. */
+export const localCodeOf = (error: unknown): LocalRefusalCode => refusalCode(error, 'local') as LocalRefusalCode;

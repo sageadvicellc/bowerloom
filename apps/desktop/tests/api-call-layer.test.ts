@@ -53,7 +53,7 @@ test('the preload exposes exactly API_CALLS: no call missing and no extra call',
   const exposed = new Map<string, Record<string, unknown>>();
   const electron = { contextBridge: { exposeInMainWorld: (name: string, api: Record<string, unknown>) => { exposed.set(name, api); } }, ipcRenderer: { invoke: () => Promise.resolve(null) } };
   new Function('require', 'module', 'exports', built.stdout)((id: string) => { assert.equal(id, 'electron'); return electron; }, { exports: {} }, {});
-  assert.deepEqual([...exposed.keys()].sort(), ['bowerloomEngine', 'bowerloomReal']);
+  assert.deepEqual([...exposed.keys()].sort(), ['bowerloomEngine', 'bowerloomLocal', 'bowerloomReal']);
   const reader = Object.keys(exposed.get('bowerloomReal')!), engine = Object.keys(exposed.get('bowerloomEngine')!).filter(name => name !== 'mode');
   assert.deepEqual(reader.sort(), [...REAL_CALLS].sort());
   assert.deepEqual(engine.sort(), [...ENGINE_CALLS].sort());
@@ -113,13 +113,13 @@ test('the reader side also reads the page\'s own no-bridge word, as the old read
 
 // ---- 5. static: one reader of the window globals, no electron and no node: module in the renderer
 
-test('only the transport adapter names window.bowerloomReal or window.bowerloomEngine', () => {
+test('only the transport adapter names window.bowerloomReal, window.bowerloomEngine or window.bowerloomLocal', () => {
   const files = sourcesUnder('renderer');
   assert.ok(files.length > 50, `${files.length} files`);
-  const naming = files.filter(file => /bowerloomReal|bowerloomEngine/.test(strip(read(file))));
+  const naming = files.filter(file => /bowerloomReal|bowerloomEngine|bowerloomLocal/.test(strip(read(file))));
   assert.deepEqual(naming, ['renderer/api/transport.ts']);
   const transport = strip(read('renderer/api/transport.ts'));
-  assert.match(transport, /bowerloomReal/); assert.match(transport, /bowerloomEngine/);
+  assert.match(transport, /bowerloomReal/); assert.match(transport, /bowerloomEngine/); assert.match(transport, /bowerloomLocal/);
 });
 
 test('no renderer file imports electron or a node: module', () => {
@@ -196,16 +196,16 @@ test('the transport reads the two globals of the window by name, and nothing whe
   const before = global.window;
   try {
     delete global.window;
-    assert.deepEqual(pageTransport(), { reader: undefined, engine: undefined });
+    assert.deepEqual(pageTransport(), { reader: undefined, engine: undefined, local: undefined });
     const api = getApiClient();
     assert.equal(api.reader, null); assert.equal(api.engine, null);
     const reader = fullReader(), engine = fullEngine();
     global.window = { bowerloomReal: reader, bowerloomEngine: engine, bowerloom: { other: noop } };
-    assert.deepEqual(pageTransport(), { reader, engine });
+    assert.deepEqual(pageTransport(), { reader, engine, local: undefined });
     const live = getApiClient();
     assert.equal(live.reader, reader as never); assert.equal(live.engine, engine as never);
     global.window = {};
-    assert.deepEqual(pageTransport(), { reader: undefined, engine: undefined });
+    assert.deepEqual(pageTransport(), { reader: undefined, engine: undefined, local: undefined });
   } finally {
     if (before === undefined) delete global.window; else global.window = before;
   }

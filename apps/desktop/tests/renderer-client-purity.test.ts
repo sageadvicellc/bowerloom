@@ -11,7 +11,7 @@ import type { Allowance, Problem } from './helpers-engine/client-purity.js';
 
 /** Every exception, one per line of reason. None is for a bridge, a channel, a file or the network: those have no exception. */
 const ALLOWANCES: readonly Allowance[] = Object.freeze([
-  { file: 'renderer/api/transport.ts', rule: 'bridge-name', detail: /bowerloom(?:Real|Engine)/, why: 'The transport is the one file that reads the two bridges from the window by name. The client checks what it finds.' },
+  { file: 'renderer/api/transport.ts', rule: 'bridge-name', detail: /bowerloom(?:Real|Engine|Local)/, why: 'The transport is the one file that reads the three bridges from the window by name. The client checks what it finds.' },
   { file: 'renderer/harness/real/Nothing.tsx', rule: 'side-channel', detail: /window\.close/, why: 'The screen of a window with no bridge has no engine call to use. It asks the window to close, and the close guard of main still runs on the unload.' },
   { file: 'renderer/harness/close-guard.ts', rule: 'side-channel', detail: /page title/, why: 'Owner decision Q1A: main reads the count of unsaved changes from the page title. No engine call carries it, and a new call changes the frozen contract, which is a decision for the maintainer.' },
   { file: 'renderer/harness/close-guard.ts', rule: 'side-channel', detail: /beforeunload/, why: 'Owner decision Q1A: the page holds its own unload while a folder has unsaved changes, and main asks the question in its own box.' },
@@ -69,7 +69,13 @@ test('the client is the one source of the engine: the transport is imported by t
   assert.deepEqual(importers('renderer/api/transport'), ['renderer/api/client.ts']);
   assert.deepEqual(importers('shared/engine/sample'), ['renderer/api/client.ts']);
   assert.deepEqual(importers('shared/engine/sample-switch'), ['renderer/api/transport.ts']);
-  assert.deepEqual(RESTRICTIONS.map(r => r.module), ['renderer/api/transport', 'shared/engine/sample', 'shared/engine/sample-switch', 'renderer/api/client']);
+  assert.deepEqual(RESTRICTIONS.map(r => r.module), ['renderer/api/transport', 'shared/engine/sample', 'shared/engine/sample-switch', 'shared/api/local', 'renderer/api/client']);
+});
+
+test('the bowerloomLocal bridge is reached through the client alone: the client alone imports its call list, and no renderer file imports its channel table', () => {
+  const importers = checked.files.filter(f => specifiersOf(checked.raw[f]!).some(s => resolveSpecifier(f, s) === 'shared/api/local'));
+  assert.deepEqual(importers, ['renderer/api/client.ts']);
+  assert.doesNotMatch(checked.js['renderer/api/client.ts']!, /LOCAL_CHANNELS/, 'the client holds no channel name');
 });
 
 test('the renderer imports from shared/engine and shared/real only the modules on the pure list', () => {
@@ -112,6 +118,11 @@ test('the checker rejects each way a screen could bypass the client', () => {
     bridgeProperty: ['renderer/harness/A.tsx', "export const a = window.bowerloomFuture;\n", /\[bridge-name\] reads window\.bowerloomFuture/],
     bridgeOptional: ['renderer/harness/A.tsx', "export const a = globalThis?.bowerloomX;\n", /\[bridge-name\] reads globalThis\.bowerloomX/],
     bridgeString: ['renderer/harness/A.tsx', "export const a = (window as never)['bowerloomReal'];\n", /\[bridge-name\] has the text "bowerloomReal"/],
+    localBridgeName: ['renderer/harness/A.tsx', "export const a = (window as unknown as { bowerloomLocal: unknown }).bowerloomLocal;\n", /\[bridge-name\] names bowerloomLocal/],
+    localBridgeProperty: ['renderer/harness/A.tsx', "export const a = globalThis.bowerloomLocal;\n", /\[bridge-name\] reads globalThis\.bowerloomLocal/],
+    localBridgeString: ['renderer/harness/A.tsx', "export const a = (window as never)['bowerloomLocal'];\n", /\[bridge-name\] has the text "bowerloomLocal"/],
+    localChannel: ['renderer/harness/A.tsx', "export const a = 'bowerloom-local:localModels';\n", /\[bridge-name\] has the text "bowerloom-local:localModels"/],
+    localChannelTable: ['renderer/harness/A.tsx', "import { LOCAL_CHANNELS } from '../../shared/api/local.js';\nexport const a = LOCAL_CHANNELS;\n", /\[client-only\] imports LOCAL_CHANNELS from shared\/api\/local/],
     channel: ['renderer/harness/A.tsx', "export const a = 'bowerloom-engine:run-save';\n", /\[bridge-name\] has the text "bowerloom-engine:run-save"/],
     ipc: ['renderer/harness/A.tsx', "export const a = (x: { ipcRenderer: { invoke(c: string): void } }) => x.ipcRenderer.invoke('c');\nexport const b = ipcRenderer;\n", /\[ipc-name\] uses ipcRenderer/],
     windowElectron: ['renderer/harness/A.tsx', "export const a = window.electron;\n", /\[ipc-name\] reads window\.electron/],
@@ -132,6 +143,7 @@ test('the checker rejects each way a screen could bypass the client', () => {
 
 test('the checker lets the client make the pieces it is meant to make', () => {
   assert.deepEqual(problemsOf('renderer/api/client.ts', "import { pageTransport } from './transport.js';\nimport { createSampleEngine } from '../../shared/engine/sample.js';\nexport const a = [pageTransport, createSampleEngine];\n"), []);
+  assert.deepEqual(problemsOf('renderer/api/client.ts', "import { LOCAL_CALLS } from '../../shared/api/local.js';\nimport type { LocalBridge } from '../../shared/api/local.js';\nexport const a = (b: LocalBridge): readonly string[] => LOCAL_CALLS.map(c => typeof b[c]);\n"), []);
   assert.deepEqual(problemsOf('renderer/harness/mount.tsx', "import { getApiClient } from '../api/client.js';\nexport const a = getApiClient;\n"), []);
 });
 
