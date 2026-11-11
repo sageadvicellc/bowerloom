@@ -158,7 +158,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
       <ul className="hx-rows" aria-label={KIND_PLURAL[kind]}>
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
-      {problems.map(p => <p key={`${p.place}|${p.reason}|${p.label}`} className="kit-hint hx-hint" role="status" data-link-problem={p.reason}>{linkProblemWords(p.folder, p.reason, p.label)}</p>)}
+      {problems.map((p, i) => <p key={`${p.place}|${p.reason}|${p.label}|${i}`} className="kit-hint hx-hint" role="status" data-link-problem={p.reason}>{linkProblemWords(p.folder, p.reason, p.label)}</p>)}
       {empty !== 'none' ? (
         <div className="hx-actions" data-library-link-empty={empty}>
           <p className="kit-hint hx-hint">{empty === 'problem' ? WORDS.hint.linkProblemEmpty : WORDS.hint.linkEmpty}</p>
@@ -166,7 +166,7 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
         </div>
       ) : rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
       {real && saved.changed ? <div className="hx-actions" data-library-stale=""><p className="kit-hint hx-hint" role="status">{WORDS.hint.libraryStale}</p><HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton></div> : null}
-      {unreadable.map(u => <p key={`${u.label}|${u.name}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.label}: {u.why}</p>)}
+      {unreadable.map((u, i) => <p key={`${u.label}|${u.name}|${i}`} className="kit-hint hx-hint" data-unreadable-harness="">{u.label}: {u.why}</p>)}
       {real ? <AddSheet open={adding || linking} kind={kind} link={linking} onClose={() => { setAdding(false); setLinking(false); }} /> : null}
       <PickHarnessSheet open={picking.open} part={picking.part} onClose={() => setPicking(current => ({ ...current, open: false }))} />
     </Screen>

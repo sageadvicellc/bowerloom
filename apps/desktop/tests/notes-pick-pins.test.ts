@@ -55,3 +55,44 @@ test('notes-pick.ts calls approveFolder once, with the folder the dialog gave, n
   assert.match(text, /const picked = await d\.show\(\);\s*if \(picked === null \|\| d\.purpose !== 'use'\) return picked;\s*const kept = \(d\.approve \?\? approveFolder\)\(d\.stateRoot, picked\);/);
   assert.doesNotMatch(text, /node:fs/, 'the module imports no fs name');
 });
+
+// ---- the record of approvals and the package
+
+// e2e specs read the record to test it, so they are left out of the pin of its names; every other folder that holds code is in.
+const NOT_E2E = all.filter(f => !f.startsWith('e2e/'));
+
+test('only main/linked-notes.ts names the record of approvals: its file, its name and its folder', () => {
+  const named = NOT_E2E.filter(f => /\bapprovalsFileOf\b|approved\.json|linked-notes\//.test(strip(read(f))));
+  assert.ok(named.every(f => f === 'main/linked-notes.ts'), `named in: ${named.join(', ')}`);
+});
+
+/** The names a file imports from notes-source, and the forms that name no member (namespace, default, `export ... from`). */
+function notesSourceImports(text: string): { names: string[]; opaque: number } {
+  const names: string[] = [];
+  let opaque = 0;
+  for (const m of text.matchAll(/\b(import|export)\s+(type\s+)?([^;]*?)\s+from\s+['"][^'"]*notes-source[^'"]*['"]/g)) {
+    const braces = /^\{([^}]*)\}$/.exec(m[3]!.trim());
+    if (m[1] === 'export' || braces === null) { opaque += 1; continue; }
+    for (const part of braces[1]!.split(',')) { const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]!.trim(); if (name !== '') names.push(name); }
+  }
+  return { names: [...new Set(names)].sort(), opaque };
+}
+
+// The exact names each file of the app may import from notes-source. A new name, or a new file, fails here until a person has looked at it.
+const NOTES_SOURCE_NAMES: Readonly<Record<string, readonly string[]>> = {
+  'main/engine-service.ts': ['NotesOptions', 'NotesRefusal', 'applyGitInit', 'applyStarter', 'planGitInit', 'planStarter', 'readNotesSummary'],
+  'main/kit.ts': ['STARTER_LIMITS', 'TemplateFile'],
+  'main/linked-notes.ts': ['APPROVALS_LIMITS', 'approvalKeyOf', 'readApprovals'],
+  'main/notes-pick.ts': ['Approved', 'approvalKeyOf', 'approveFolder'],
+  'main/notes-report.ts': ['readLatestReport'],
+};
+
+test('each file of the app imports exactly the names listed for it from notes-source, and in no form that names no member', () => {
+  const found: Record<string, string[]> = {};
+  for (const f of all) {
+    const { names, opaque } = notesSourceImports(strip(read(f)));
+    assert.equal(opaque, 0, `${f} imports or re-exports notes-source in a form that names no member`);
+    if (names.length > 0) found[f] = names;
+  }
+  assert.deepEqual(found, Object.fromEntries(Object.entries(NOTES_SOURCE_NAMES).map(([f, n]) => [f, [...n].sort()])));
+});

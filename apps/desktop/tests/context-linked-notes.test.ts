@@ -244,20 +244,20 @@ test('the check and the read agree under low caps: a cut and a link with no room
   const scanner = createScanner({ home });
   const found = await scanner.addFolder(join(home, 'work'));
   const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
-  const text = (): string => linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: LOW }).text;
-  const first = text();
+  const text = async (): Promise<string> => (await linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: LOW })).text;
+  const first = await text();
   const tag = (name: string): string => hashText(join(home, name)).slice(0, 8);
   assert.match(first, new RegExp(`l\\|${tag('b')}\\|cut`), 'b is cut');
   assert.match(first, new RegExp(`p\\|limit\\|${hashText('~/b').slice(0, 8)}`), 'the read names b');
   assert.match(first, new RegExp(`p\\|limit\\|${hashText('~/c').slice(0, 8)}`), 'c has no room, as in the read');
   assert.equal(first.includes(`l|${tag('c')}|`), false, 'a starved folder is not walked');
   assert.doesNotMatch(first, new RegExp(`l\\|${tag('a')}\\|cut`), 'a fits');
-  assert.equal(linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: LOW }).complete, true);
+  assert.equal((await linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: LOW })).complete, true);
   // b has room for one file in the files and none in the pages, so no b file is listed: any change in b past the cap changes nothing, and a change of a shows.
   writeFileSync(join(home, 'b', 'b4.md'), `${page('b4')}\nMore text that changes the size.\n`);
-  assert.equal(text(), first, 'a change past the cap changes nothing');
+  assert.equal(await text(), first, 'a change past the cap changes nothing');
   writeFileSync(join(home, 'a', 'a1.md'), `${page('a1')}\nMore text that changes the size.\n`);
-  assert.notEqual(text(), first, 'a change inside the cap shows');
+  assert.notEqual(await text(), first, 'a change inside the cap shows');
 });
 
 test('more than the most linked folders, an unreadable list, a missing folder and a list that is not a list are problems, not silence', async t => {
@@ -339,32 +339,75 @@ test('an unexpected throw while the linked notes are read leaves the result as t
     assert.deepEqual(got.world.wikiPages, built.world.wikiPages, 'the result is as the reader made it');
     assert.deepEqual((got.harnessPlaces ?? []).flatMap(h => (h.harness as { linkProblems?: unknown[] }).linkProblems ?? []), [{ reason: 'unreadable', label: '' }]);
     const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
-    assert.deepEqual(linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: boom }), { text: 'linked|unreadable', complete: false });
+    assert.deepEqual(await linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: boom }), { text: 'linked|unreadable', complete: false });
   } finally { console.error = original; }
   assert.equal(lines.length, 2);
   assert.ok(lines.every(l => /\(Error\)\.$/.test(l) && !l.includes('made-up failure') && !l.includes(home)), 'the class only, never the message or a path');
 });
 
-test('a change in a linked folder shows as a change of the place, a link that is gone is unresolved, and the approvals are part of the check', async t => {
-  const home = setup(t, h => { proj(h, [wiki('~/journal', 'j'), wiki('gone', 'g')]); put(join(h, 'journal', 'one.md'), page('One')); });
+test('one dangling link is a line of the check and leaves it complete: change detection works for the rest of the read', async t => {
+  const home = setup(t, h => { proj(h, [wiki('~/journal', 'j'), wiki('gone', 'g'), wiki('../../x', 'x'), wiki('~/missing', 'm')]); put(join(h, 'journal', 'one.md'), page('One')); });
   const scanner = createScanner({ home });
   const found = await scanner.addFolder(join(home, 'work'));
   const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
   const check = (): ReturnType<typeof linkedWatchText> => linkedWatchText(home, watched, { stateRoot: stateOf(home) });
-  const none = check();
-  assert.match(none.text, /gone\|link\|/);
-  assert.equal(none.complete, false, 'a stored link that fails leaves the check unresolved');
+  const none = await check();
+  assert.match(none.text, /gone\|link\|/, 'a gone link is a line');
+  assert.match(none.text, /p\|form\|/, 'a path that is not read is a line');
   assert.match(none.text, /p\|approval\|/, 'the home link waits for a pick');
-  // The fingerprinter that main uses: the base answer when nothing is watched, and never complete when a link cannot be resolved.
-  const base = async (): Promise<{ fingerprint: string; complete: boolean }> => ({ fingerprint: 'base', complete: true });
-  assert.deepEqual(await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, [], undefined, undefined), { fingerprint: 'base', complete: true }, 'nothing watched, nothing added');
-  const mixed = await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, watched, undefined, undefined);
-  assert.notEqual(mixed.fingerprint, 'base');
-  assert.equal(mixed.complete, false);
+  assert.equal(none.complete, true, 'a dangling link does not make the check incomplete');
   approve(home, ['journal']);
-  const picked = check();
+  const picked = await check();
   assert.notEqual(picked.text, none.text, 'a pick changes the check');
+  assert.equal(picked.complete, true);
   assert.match(picked.text, /l\|[0-9a-f]+\|one\.md\|/);
   put(join(home, 'journal', 'two.md'), page('Two'));
-  assert.notEqual(check().text, picked.text);
+  const changed = await check();
+  assert.notEqual(changed.text, picked.text, 'a new page is seen although a link is gone');
+  assert.equal(changed.complete, true);
+  // The fingerprinter that main uses: the base answer when nothing is watched, and complete when the base is, whatever dangles.
+  const base = async (): Promise<{ fingerprint: string; complete: boolean }> => ({ fingerprint: 'base', complete: true });
+  const plain = await withLinkedNotes(base, { stateRoot: join(home, '.nowhere') })(home, [], undefined, undefined);
+  assert.deepEqual(plain, { fingerprint: 'base', complete: true }, 'nothing watched and no record: nothing added');
+  const mixed = await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, watched, undefined, undefined);
+  assert.notEqual(mixed.fingerprint, 'base');
+  assert.equal(mixed.complete, true);
+  const slow = async (): Promise<{ fingerprint: string; complete: boolean }> => ({ fingerprint: 'base', complete: false });
+  assert.equal((await withLinkedNotes(slow, { stateRoot: stateOf(home) })(home, watched, undefined, undefined)).complete, false, 'an incomplete base stays incomplete');
+});
+
+test('the check of the linked folders shares the budget of the launch check: a large linked folder cannot hold it past its budget, and the check is not complete', async t => {
+  const home = setup(t, h => {
+    proj(h, [wiki('docs', 'docs')]);
+    for (let i = 0; i < 300; i += 1) put(join(h, 'work', 'proj', 'docs', `p${String(i).padStart(3, '0')}.md`), page(`P${i}`));
+  });
+  const scanner = createScanner({ home });
+  const found = await scanner.addFolder(join(home, 'work'));
+  const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
+  const base = async (): Promise<{ fingerprint: string; complete: boolean }> => ({ fingerprint: 'base', complete: true });
+  // A clock that moves one millisecond at each look: the launch check has 40 of them, and the base took none of its own.
+  let calls = 0;
+  const clock = (): number => { calls += 1; return calls; };
+  const limited = await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, watched, clock, 40);
+  assert.equal(limited.complete, false, 'a budget that ran out is not a complete check');
+  assert.ok(calls < 200, `the walk stopped at the budget: ${calls} looks at the clock`);
+  // Given time, the same walk finishes and is complete; the budget was the only difference.
+  let t2 = 0;
+  const roomy = await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, watched, () => (t2 += 1), 1_000_000);
+  assert.equal(roomy.complete, true);
+  assert.notEqual(roomy.fingerprint, limited.fingerprint);
+  // A budget of nothing walks nothing.
+  const none = await linkedWatchText(home, watched, { stateRoot: stateOf(home), budgetMs: 0 });
+  assert.equal(none.complete, false);
+  assert.doesNotMatch(none.text, /l\|/);
+});
+
+test('more than the most sources of a knowledge.json is one problem row, not silence', async t => {
+  const home = setup(t, h => {
+    proj(h, [...Array.from({ length: 205 }, (_, i) => wiki(`n${i}`, `n${i}`))]);
+    for (let i = 0; i < 205; i += 1) put(join(h, 'work', 'proj', `n${i}`, 'p.md'), page(`P${i}`));
+  });
+  const problems = problemsOf(await read(home));
+  assert.equal(problems.filter(p => p === 'limit:').length, 1, problems.slice(-3).join(' | '));
+  assert.equal(problems.filter(p => p.startsWith('limit:n')).length, 192, 'the 8 first are read, the rest up to the list limit are over the folder limit');
 });

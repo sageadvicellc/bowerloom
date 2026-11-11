@@ -101,7 +101,9 @@ export function approveFolder(stateRoot: string, picked: string, nameOf: () => s
     keys.add(approvalKey(real));
     const tmp = path.join(dir, `.approved-${randomBytes(6).toString('hex')}.tmp`);
     try {
-      fs.writeFileSync(tmp, `${JSON.stringify({ version: VERSION, keys: [...keys].sort() })}\n`, { mode: 0o600, flag: 'wx' });
+      // The text is flushed to disk before the rename, so a crash leaves the old record or the new one, never an empty file.
+      const fd = fs.openSync(tmp, 'wx', 0o600);
+      try { fs.writeSync(fd, `${JSON.stringify({ version: VERSION, keys: [...keys].sort() })}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(tmp, file);
     } catch (error) { fs.rmSync(tmp, { force: true }); throw error; }
     return 'kept';

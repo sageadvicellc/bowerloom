@@ -245,6 +245,36 @@ test.describe('Link a notes folder', () => {
     await expect(page().locator('[data-link-problem="damaged"]')).toContainText('Saved approvals could not be read: ~/Documents/field-notes. Pick the folder again to start a new list.');
   });
 
+  test('the notes chooser opens once each time the link sheet opens, also after a cancel and a reopen, and one pick is recorded once', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const p = page(), notes = wiki(join(home, 'Documents', 'field-notes'));
+    const opens = (): Promise<number> => h.app.evaluate(() => (globalThis as unknown as { __opens: number }).__opens);
+    await h.app.evaluate(({ dialog }) => {
+      const g = globalThis as unknown as { __opens: number };
+      g.__opens = 0;
+      const original = dialog.showOpenDialog;
+      dialog.showOpenDialog = (async (...args: unknown[]) => { g.__opens += 1; return (original as (...a: unknown[]) => Promise<unknown>)(...args); }) as typeof dialog.showOpenDialog;
+    });
+    // Open and cancel the chooser: it was asked once.
+    await h.pick(null);
+    await p.locator('[data-link-notes]').click();
+    const s = linkSheet(p);
+    await expect(s).toBeVisible();
+    await expect.poll(opens).toBe(1);
+    await p.waitForTimeout(600);
+    expect(await opens(), 'no second chooser follows the first').toBe(1);
+    await s.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(s).toHaveCount(0);
+    // Reopen and pick: one more chooser, and the pick is recorded once.
+    await h.pick(notes);
+    await p.locator('[data-link-notes]').click();
+    await expect(linkSheet(p).locator('[data-notes-chosen]')).toContainText('field-notes');
+    await p.waitForTimeout(600);
+    expect(await opens(), 'one chooser for the reopened sheet').toBe(2);
+    expect((JSON.parse(readFileSync(approvalsFile(), 'utf8')) as { keys: string[] }).keys.length).toBe(1);
+  });
+
   test('a notes folder outside the home folder and the harness folder is refused at the review, with a clear message, and nothing is written', async () => {
     test.setTimeout(240_000);
     await start('context');

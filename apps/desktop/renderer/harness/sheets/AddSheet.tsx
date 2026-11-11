@@ -79,6 +79,8 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   const folder = usable.find(f => f.id === picked);
   // The folder that holds the chosen notes: it gets the link when its harness loads, and starts one when it has none.
   const target0 = linking && choice.view !== null && list !== 'failed' ? linkTarget(folders, choice.view) : null;
+  // A folder the person picked that holds no harness: the Start action is for that folder.
+  const startPicked = unusable !== null && !unusable.hasDefinition;
 
   /** A new folder clears what was chosen for the old one. The link form keeps its notes: they are chosen first, and the folder that gets them is picked after. */
   const reset = (keepNotes = false): void => {
@@ -88,9 +90,14 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   // Opened, or opened for another tab: everything starts again, and the folders are listed anew.
   useEffect(() => {
     if (!open) return;
-    setStep(linking ? 'notes' : 'folder'); setFolders([]); setList('unread'); setPicked(null); setUnusable(null); reset();
+    // The notes choice is cleared when the sheet closes (below), not here: clearing it here would take a new number for the notes step in the same commit that opened it, and the step would be
+    // mounted twice and ask for the folder twice. A choice left from another tab or engine is cleared here only when there is one.
+    setStep(linking ? 'notes' : 'folder'); setFolders([]); setList('unread'); setPicked(null); setUnusable(null); reset(true);
+    setChoice(c => (c.view === null ? c : notesRestart(c)));
     readFolders();
   }, [open, kind, engine, linking]);
+  // Closed: the notes choice and its step number go, so the next opening starts one fresh notes step (one chooser, one pick) and a late answer of this one is ignored.
+  useEffect(() => { if (!open) setChoice(notesRestart); }, [open]);
   // The New harness sheet closed: the folders are read again, so a harness it made is there.
   const adoptWas = useRef(false);
   useEffect(() => {
@@ -111,7 +118,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
     const read = async (): ReturnType<typeof foldersCall> => { try { return await foldersCall(engine); } catch (error) { setList(l => listAfter(l, 'failed')); throw error; } };
     void call.plan(W.label.planning, read, got => { setFolders(got); setList(l => listAfter(l, 'ok')); const ready = targetsFor(got).usable; if (ready.length === 1) setPicked(ready[0]!.id); });
   }
-  const pick = (id: string): void => { if (busy || id === picked) return; setPicked(id); reset(linking); };
+  const pick = (id: string): void => { if (busy || id === picked) return; setPicked(id); setUnusable(null); reset(linking); };
   const choose = (): void => {
     if (engine === null || busy) return;
     void call.plan(W.label.chooseFolder, () => chooseFolderCall(engine), got => {
@@ -130,8 +137,11 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   /** The link form's "Start a harness": the New harness sheet for the folder of the notes, which has none. Its own approval comes before any write. */
   const startHarness = (): void => {
     if (engine === null || busy || list === 'failed') return;
-    // The New harness sheet asks for its folder itself: the form never starts a harness in a folder it only guessed from a name.
-    ui.openAdopt({ folderId: null });
+    // A folder the person picked that has no harness is the folder that gets one. For a folder only matched by its name the New harness sheet asks for its folder itself: the form never starts a
+    // harness in a folder it only guessed.
+    const folderId = unusable !== null && !unusable.hasDefinition ? unusable.id : null;
+    setUnusable(null);
+    ui.openAdopt({ folderId });
   };
 
   /** The skills of another folder's harness, by id, name and description. */
@@ -226,7 +236,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
               <ul className="hxi-list hxe-folders" aria-label={W.label.folders}>
                 {usable.map(f => (
                   <li key={f.id}>
-                    <button type="button" className="hxi-card" aria-pressed={f.id === picked} aria-disabled={busy ? true : undefined} data-folder={f.id} data-suggested={target0?.kind === 'listed' && target0.folder.id === f.id ? '' : undefined} onClick={() => pick(f.id)}>
+                    <button type="button" className="hxi-card" aria-pressed={f.id === picked} aria-disabled={busy ? true : undefined} data-folder={f.id} onClick={() => pick(f.id)}>
                       <Tile name="folder" />
                       <span className="hxi-card-text"><span className="hxi-card-name">{f.name}</span><span className="hxi-card-sub">{f.label}</span></span>
                     </button>
@@ -240,7 +250,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
             {target0 === null || target0.kind === 'listed' ? null : (
               <p className="hxe-text" data-link-needs-harness="">{target0.kind === 'blocked' ? target0.why : target0.folder === null ? WORDS.hint.chooseAgain : WORDS.hint.needsHarness}</p>
             )}
-            {target0 === null || target0.kind !== 'needs-harness' || target0.folder === null ? null : <HButton icon="plus" variant="primary" data-link-start-harness="" disabled={busy || engine === null || list === 'failed'} onClick={startHarness}>{WORDS.label.startHarness}</HButton>}
+            {!linking || !(startPicked || (target0 !== null && target0.kind === 'needs-harness' && target0.folder !== null)) ? null : <HButton icon="plus" variant="primary" data-link-start-harness="" disabled={busy || engine === null || list === 'failed'} onClick={startHarness}>{WORDS.label.startHarness}</HButton>}
             <HButton icon="plus" disabled={busy || engine === null} onClick={choose}>{W.label.chooseFolder}</HButton>
             {left.length === 0 ? null : (
               <section className="hxe-section" aria-label={WORDS.label.leftOut} data-section="add-left-out">

@@ -41,6 +41,8 @@ export interface LinkedDeps {
   /** The private state folder that holds the record of approvals. */
   readonly stateRoot: string;
   readonly now?: () => number;
+  /** The time the check may take, in milliseconds. Default: the budget of a read. */
+  readonly budgetMs?: number;
   /** A test lowers the caps. */
   readonly limits?: LinkedLimits;
 }
@@ -129,7 +131,10 @@ export function linkedRootsOf(rootReal: string, home: string, approvals: Approva
   const roots: LinkedRoot[] = [], problems: LinkProblem[] = [];
   const label = (stored: unknown): string => (typeof stored === 'string' ? safeText(stored, 60) : '');
   // Only the wiki folders count, and only then are they cut at the list limit.
-  const links = sources.filter(x => (x as { kind?: unknown } | null)?.kind === 'wiki-folder').slice(0, LIST_MAX) as { path?: unknown }[];
+  const wikis = sources.filter(x => (x as { kind?: unknown } | null)?.kind === 'wiki-folder');
+  const links = wikis.slice(0, LIST_MAX) as { path?: unknown }[];
+  // The links past the list limit are not looked at, and the Library says so in one row.
+  if (wikis.length > LIST_MAX) problems.push({ reason: 'limit', label: '' });
   for (const link of links) {
     if (roots.length >= LINKED_NOTES_MAX) { problems.push({ reason: 'limit', label: label(link.path) }); continue; }
     const got = resolveStored(link.path, rootReal, home);
@@ -273,22 +278,22 @@ function addLinkedNotesNow(result: RealResult, chosen: readonly RealPlace[], dep
 // ---------------------------------------------------------------------------------------------------------------------- the check
 
 /** What the check of the saved read adds: for each watched place with a harness folder, its approvals, the links that fail, and the linked files under the same room as the read. */
-function linkedWatchTextNow(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): { readonly text: string; readonly complete: boolean } {
-  const limits = deps.limits ?? REAL_LIMITS, budget = makeBudget(deps.now ?? (() => Date.now())), tally = newTally();
+async function linkedWatchTextNow(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): Promise<{ readonly text: string; readonly complete: boolean }> {
+  const limits = deps.limits ?? REAL_LIMITS, budget = makeBudget(deps.now ?? (() => Date.now()), deps.budgetMs), tally = newTally();
   const approvals = approvalsOf(deps.stateRoot), lines: string[] = [];
   if (approvals.approved.size > 0 || approvals.damaged || approvals.blocked) lines.push(`approvals|${approvals.blocked ? 'blocked' : approvals.damaged ? 'damaged' : hashText([...approvals.approved].sort().join(','))}`);
   let complete = true;
   for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     if (w.kind === 'home') continue;
+    // The check shares the budget of the launch check: when it runs out, the walk stops and the check is not complete. The main thread is given back between places.
+    if (budget.expired()) { tally.stoppedEarly = true; break; }
+    await new Promise<void>(resolve => { setImmediate(resolve); });
     const dir = folderOfShown(w.path, home), rootReal = dir === null ? null : realFolderFollowing(dir);
     if (rootReal === null || realFolder(join(rootReal, '.bowerloom')) === null) continue;
     const got = collectLinked(rootReal, home, approvals, limits, budget, tally);
     lines.push(`place|${w.id}`);
-    // A link that fails shows as a change of the place, and the check cannot say "same" while one cannot be resolved.
-    for (const p of got.problems) {
-      lines.push(`${p.reason === 'gone' ? 'gone|link' : `p|${p.reason}`}|${hashText(p.label).slice(0, 8)}`);
-      if (p.reason === 'gone' || p.reason === 'form' || p.reason === 'unreadable') complete = false;
-    }
+    // A link that fails shows as a change of the place. It does not make the check incomplete: change detection works for the rest of the read. Only a budget that ran out, or a failure of the check, does.
+    for (const p of got.problems) lines.push(`${p.reason === 'gone' ? 'gone|link' : `p|${p.reason}`}|${hashText(p.label).slice(0, 8)}`);
     for (const g of got.groups) {
       const tag = hashText(g.root.real).slice(0, 8);
       for (const f of g.files) lines.push(`l|${tag}|${f.rel}|${f.size}|${f.mtimeMs}`);
@@ -299,9 +304,12 @@ function linkedWatchTextNow(home: string, watched: readonly { readonly id: strin
   return { text: lines.join('\n'), complete };
 }
 
-/** The fingerprinter of the saved read with the linked notes folders added: the same answer as `base` when nothing linked changed, and never complete when `base` is not or a link cannot be resolved. */
+/** The fingerprinter of the saved read with the linked notes folders added: the same answer as `base` when nothing linked changed, and not complete when `base` is not, when the budget it shares ran out, or when the check itself failed. A link that fails is a line of the text and does not make it incomplete. */
 export const withLinkedNotes = (base: Fingerprinter, deps: Omit<LinkedDeps, 'home'>): Fingerprinter => async (home, watched, now, budgetMs) => {
-  const first = await base(home, watched, now, budgetMs), linked = linkedWatchText(home, watched, deps);
+  // The check of the linked folders shares the budget of the launch check: what the base used is taken off, and the rest is what the linked walk may take.
+  const clock = now ?? ((): number => Date.now()), total = budgetMs ?? REAL_LIMITS.budgetMs, started = clock();
+  const first = await base(home, watched, now, budgetMs);
+  const linked = await linkedWatchText(home, watched, { ...deps, now: clock, budgetMs: Math.max(0, total - (clock() - started)) });
   return { fingerprint: linked.text === '' ? first.fingerprint : createHash('sha256').update(`${first.fingerprint}\n${linked.text}`).digest('hex'), complete: first.complete && linked.complete };
 };
 
@@ -320,8 +328,8 @@ export function addLinkedNotes(result: RealResult, chosen: readonly RealPlace[],
 }
 
 /** The check of the linked notes folders for the saved read. An unexpected throw makes the check unresolved, so the saved read is never called "same" on a check that failed. */
-export function linkedWatchText(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): { readonly text: string; readonly complete: boolean } {
-  try { return linkedWatchTextNow(home, watched, deps); } catch (error) {
+export async function linkedWatchText(home: string, watched: readonly { readonly id: string; readonly kind: RealPlace['kind']; readonly path: string }[], deps: Omit<LinkedDeps, 'home'>): Promise<{ readonly text: string; readonly complete: boolean }> {
+  try { return await linkedWatchTextNow(home, watched, deps); } catch (error) {
     console.error(`Bowerloom could not check the linked notes folders (${error instanceof Error ? error.constructor.name : typeof error}).`);
     return { text: 'linked|unreadable', complete: false };
   }

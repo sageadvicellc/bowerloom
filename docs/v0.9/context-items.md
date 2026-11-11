@@ -9,7 +9,7 @@ A context item is a set of notes pages that the Library lists under Context. It 
 The Library lists two kinds of context item.
 
 - A notes set. The reader walks a place's own folder for markdown and builds the set from the pages it finds (`notesWalk`, `main/real-scan.ts`).
-- A notes folder named by a harness. A harness lists a notes folder in `.bowerloom/knowledge.json` (`wiki-folder`, with an absolute path). The Library lists that name as a part of the harness. Since beta.2 the reader also walks the folder and lists its pages as a notes set.
+- A notes folder named by a harness. A harness lists a notes folder in `.bowerloom/knowledge.json` (`wiki-folder`, with a path in one of the stored forms below: never an absolute one). The Library lists that name as a part of the harness. Since beta.2 the reader also walks the folder and lists its pages as a notes set.
 
 ## The gap the diagnosis found
 
