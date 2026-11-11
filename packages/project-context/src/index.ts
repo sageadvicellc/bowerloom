@@ -156,7 +156,7 @@ const PROBE_LATE_MS = 100, PROBE_GRACE_MS = 100, PROBE_GRACES = 10;
  * that accepts and ends every connection. Both locks bind again on it, at most LOCK_REBINDS times in a row, and then
  * refuse it as a collision: `slotRefusal` through `mayBindAgain`, `withCacheLock` through its own count.
  */
-type ProbeVerdict = 'this' | 'other' | 'gone' | 'silent' | 'reset' | 'closed';
+export type ProbeVerdict = 'this' | 'other' | 'gone' | 'silent' | 'reset' | 'closed';
 function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<ProbeVerdict> {
   return new Promise(resolveHolder => {
     const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false, graces = 0, due = performance.now() + timeoutMs;
@@ -180,12 +180,16 @@ function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<ProbeVerdic
 /**
  * Published, with the port, each time a writer finds its slot held by something other than its own project's lock.
  * Only tests subscribe: a collision there is a property of the machine, not of the code under test.
+ * The message is `{ port, holder }`. `holder` is how the probe of the slot ended: 'silent' (the holder never answered
+ * within the banner timeout), 'other' (bytes that are not this slot's banner), 'reset' or 'closed' or 'gone' (a holder
+ * that let go, after all rebinds). A call that made no probe sends no `holder`. A test uses it to tell a machine that
+ * stalled (silent) from a lost bind race (the rest).
  */
 export const LOCK_SLOT_COLLISION_CHANNEL = 'bowerloom:lock-slot-collision';
 const collisions = channel(LOCK_SLOT_COLLISION_CHANNEL);
 /** Records a slot collision on the diagnostics channel and returns the port, for the caller's own refusal. */
-export function reportSlotCollision(slot: LockSlot): number {
-  if (collisions.hasSubscribers) collisions.publish({ port: slot.port });
+export function reportSlotCollision(slot: LockSlot, holder?: ProbeVerdict): number {
+  if (collisions.hasSubscribers) collisions.publish(holder === undefined ? { port: slot.port } : { port: slot.port, holder });
   return slot.port;
 }
 /**
@@ -200,7 +204,7 @@ export async function slotRefusal(slot: LockSlot, mayBindAgain = false): Promise
   if (holder === 'this') return 'locked';
   // A reset or close before any byte is a holder that let go before it answered, like 'gone'.
   if ((holder === 'gone' || holder === 'reset' || holder === 'closed') && mayBindAgain) return 'free';
-  reportSlotCollision(slot); return 'collision';
+  reportSlotCollision(slot, holder); return 'collision';
 }
 /** PROJECT_LOCK_SLOT_COLLISION. The message names the port, and the error carries it as `port` for the plain-words line. */
 function slotCollision(port: number): DefinitionError & { readonly port: number } {
