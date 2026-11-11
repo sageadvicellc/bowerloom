@@ -83,7 +83,7 @@ test('the runner never runs a test command on the host', () => {
 
 const MD = path.join(root, 'tools/sandbox/machine-dependent.mjs');
 const frozen = JSON.parse(fs.readFileSync(path.join(root, 'docs/v0.9/test-inventory.json'), 'utf8'));
-const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent').map(s => s.name);
+const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent' && s.group === undefined).map(s => s.name);
 
 test('the machine-dependent check reads four frozen names, and passes only when all four passed', () => {
   assert.equal(names.length, 4);
@@ -253,7 +253,7 @@ const sandboxRun = (extraEnv = {}) => {
   fs.writeFileSync(path.join(cwd, 'tools/gates.mjs'), `const step=process.argv[process.argv.indexOf('--only')+1];const bad=process.env.FAKE_GATE_FAIL===step;
 console.log(JSON.stringify({ok:!bad,steps:[{name:step,passed:!bad,exitCode:bad?1:0,counts:{pass:1,fail:bad?1:0,skipped:0}}],notRun:[]}));process.exit(bad?1:0);\n`);
   fs.mkdirSync(path.join(cwd, '.trellis/gates'), { recursive: true });
-  const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent').map(s => s.name);
+  const names = frozen.suites.root.skips.filter(s => s.kind === 'machine-dependent' && s.group === undefined).map(s => s.name);
   fs.mkdirSync(path.join(cwd, 'md')); fs.writeFileSync(path.join(cwd, 'md/four.test.mjs'), `import test from 'node:test';\n${names.map(n => `test(${JSON.stringify(n)}, () => {});`).join('\n')}\n`);
   const stub = (name, body) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   stub('npm', 'case "$*" in *"run build"*) [ "${FAKE_NPM_FAIL:-}" = build ] && { echo build broke >&2; exit 1; } ;; *"run bundle"*) [ "${FAKE_NPM_FAIL:-}" = bundle ] && exit 1 ;; esac; exit 0');
@@ -419,4 +419,16 @@ test('the shipped ceilings name the three suites with whole numbers, and the run
   const ceilings = JSON.parse(fs.readFileSync(path.join(root, 'tools/sandbox/skip-ceilings.json'), 'utf8'));
   for (const name of ['root-test', 'desktop-test', 'desktop-e2e']) assert.ok(Number.isInteger(ceilings[name]) && ceilings[name] > 0, name);
   assert.match(fs.readFileSync(inContainer, 'utf8'), /node tools\/sandbox\/probe-report\.mjs/);
+});
+
+test('the machine-dependent check ignores the frozen skips of the sandbox work, which skip in the container by design', () => {
+  const dir = tmp();
+  const inv = path.join(dir, 'inv.json');
+  const skip = (name, group) => ({ file: 'a.mjs', name, status: 'skip', kind: 'machine-dependent', reason: 'r', ...(group ? { group } : {}) });
+  fs.writeFileSync(inv, JSON.stringify({ suites: { root: { skips: [skip('runs here'), skip('skips as root', 'sandbox-work')] } } }));
+  const file = path.join(dir, 'run.jsonl');
+  fs.writeFileSync(file, [{ file: 'a.mjs', name: 'runs here', status: 'pass' }, { file: 'a.mjs', name: 'skips as root', status: 'skip' }].map(r => JSON.stringify(r)).join('\n') + '\n');
+  const result = spawnSync('node', [MD, file, inv], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /1 machine-dependent tests: all passed/);
 });

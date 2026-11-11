@@ -104,9 +104,9 @@ test('every frozen skip names a test that is in the files list, and the kinds fo
 test('the desktop and end-to-end inventories freeze the skips the base showed, by name', () => {
   const e2e = inventory.suites.e2e;
   assert.equal(e2e.skips.filter(s => s.kind === NEVER_RUNS && s.status === 'fixme').length, 2);
-  assert.equal(e2e.skips.filter(s => /(?:docs|landing|screen-tour)-shots\.spec\.ts$/.test(s.file)).length, e2e.skips.filter(s => s.status === 'skip').length);
+  assert.equal(e2e.skips.filter(s => /(?:docs|landing|screen-tour)-shots\.spec\.ts$/.test(s.file)).length, e2e.skips.filter(s => s.status === 'skip' && s.kind !== MACHINE_DEPENDENT).length);
   assert.ok(e2e.observedMustRun.some(s => /packaged-app\.spec\.ts$/.test(s.file)), 'the packaged-app skip is must-run');
-  assert.equal(inventory.suites.desktop.skips.length, 0, 'no desktop unit test skips on an environment flag');
+  assert.equal(inventory.suites.desktop.skips.filter(s => s.kind !== MACHINE_DEPENDENT).length, 0, 'no desktop unit test skips on an environment flag');
 });
 
 test('a must-run test that turns fixme or todo fails the gate like a skip', () => {
@@ -184,14 +184,14 @@ test('the four machine-dependent root skips are frozen by name as machine-depend
   }
 });
 
-test('the counts by kind: 3 must-run, 7 needs-decision, 4 machine-dependent, 40 flag-gated never-runs in root', () => {
+test('the counts by kind: 3 must-run, 7 needs-decision, 120 machine-dependent (4 of the base, 116 of the sandbox work), 40 flag-gated never-runs in root', () => {
   const must = Object.values(inventory.suites).flatMap(s => s.observedMustRun.map(m => m.file));
   assert.deepEqual(must.map(f => path.basename(f)).sort(), ['launch.test.mjs', 'packaged-app.spec.ts', 'packaging.test.mjs']);
   const root = inventory.suites.root;
   const kind = k => root.skips.filter(s => s.kind === k).length;
   assert.equal(root.observedMustRun.length, 0);
   assert.equal(kind(NEEDS_DECISION), 7);
-  assert.equal(kind(MACHINE_DEPENDENT), 4);
+  assert.equal(kind(MACHINE_DEPENDENT), 120);
   assert.equal(kind(NEVER_RUNS), 40);
 });
 
@@ -213,4 +213,24 @@ test('a machine-dependent test may skip or pass, and fails the check when it fai
   assert.deepEqual(checkRun({ frozen, run: run(['a.js', 'm', 'fail'], other) }).problems, ['failed: a.js: m']);
   assert.deepEqual(checkRun({ frozen, run: run(['a.js', 'm', 'fixme'], other) }).problems, ['machine-dependent test neither passed nor skipped: a.js: m']);
   assert.deepEqual(checkRun({ frozen, run: run(other) }).problems, ['missing: a.js: m']);
+});
+
+test('the skips of the sandbox work are frozen as machine-dependent in every suite, and the two desktop tests PR 173 renamed are listed under their new titles', () => {
+  const kinds = name => inventory.suites[name].skips.filter(s => s.kind === MACHINE_DEPENDENT).length;
+  assert.equal(kinds('desktop'), 14);
+  assert.equal(kinds('e2e'), 6);
+  const e2e = inventory.suites.e2e.skips.filter(s => s.file === 'apps/desktop/e2e/harness-close-guard.spec.ts');
+  assert.ok(e2e.length >= 2 && e2e.every(s => s.kind === MACHINE_DEPENDENT), 'the close-guard specs skip off macOS');
+  const names = file => inventory.suites.desktop.files[file];
+  assert.ok(names('.build/tests/sample-preview.test.mjs').includes('the page reads the attribute once, to make its sample world, and only the API client does it'));
+  assert.equal(names('.build/tests/sample-preview.test.mjs').includes('the page reads the attribute once, to make its sample world'), false);
+  assert.ok(names('.build/tests/harness-boundary.test.mjs').some(n => n.startsWith('only the real screens, the mount file, the root of the preview')));
+  assert.equal(names('.build/tests/harness-boundary.test.mjs').some(n => n.startsWith('only the real screens, the mount file and the call lanes')), false);
+  for (const suite of Object.values(inventory.suites)) for (const skip of suite.skips) assert.notEqual(skip.reason.trim(), '', skip.name);
+});
+
+test('no test of the sandbox work needs a Node-version skip: the guard and the header tests run on every Node 24', () => {
+  for (const file of ['packages/skill-sources/test/response-headers.test.mjs', 'tools/cli-distribution/test/installed-container.test.mjs']) {
+    assert.equal(inventory.suites.root.skips.some(s => s.file === file), false, file);
+  }
 });
