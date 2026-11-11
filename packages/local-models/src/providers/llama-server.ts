@@ -1,11 +1,11 @@
 /**
  * The llama-server provider. It reads /health, /props, /slots, /metrics and /v1/models and keeps only the fields the report names. Nothing is copied by spread or by loop:
  * each field is picked by name, checked for its type, and cleaned. A prompt, an output, a chat template, a token text or a generation setting is never read, so it cannot
- * reach the report, the cache or a file. A model file is shown by its base name. A field the server did not give is left out, never set to 0.
+ * reach the report, the cache or a file. A model file and a model name are shown by their base name. A field the server did not give is left out, never set to 0.
  */
 import { parsePrometheus } from '../prometheus.js';
 import { failureOf } from '../provider.js';
-import { baseName, clean, isAbsolute } from '../text.js';
+import { baseName, clean } from '../text.js';
 import type { BoundGet, GetResult, LocalModelProvider, ProviderProbe, ProviderResult } from '../provider.js';
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -24,11 +24,11 @@ function jsonOf(result: GetResult): unknown {
   try { return JSON.parse(result.body) as unknown; } catch { return undefined; }
 }
 
-/** A name for display: a path that could hold a user name is cut to its base name; a relative name stays as the server gave it. */
+/** A name for display: always cut to its base name, so a folder, absolute or relative, never shows. */
 function shownName(value: unknown): string | undefined {
   const raw = text(value);
   if (raw === undefined) return undefined;
-  const name = clean(isAbsolute(raw) ? baseName(raw) : raw);
+  const name = clean(baseName(raw));
   return name === '' ? undefined : name;
 }
 
@@ -51,6 +51,8 @@ const METRIC = {
 
 /** Only the HTTP answers that say "this endpoint is switched off". */
 const isOff = (result: GetResult): boolean => result.ok && (result.status === 404 || result.status === 501);
+/** A read that did not work and is not a switched-off endpoint: a failure, or an answer that is neither 200 nor 404 nor 501. */
+const isLost = (result: GetResult): boolean => !result.ok || (result.status !== 200 && !isOff(result));
 
 async function probe(get: BoundGet): Promise<ProviderResult> {
   const [health, props, slots, metrics, models] = await Promise.all([get('/health'), get('/props'), get('/slots'), get('/metrics'), get('/v1/models')]);
@@ -96,6 +98,7 @@ async function probe(get: BoundGet): Promise<ProviderResult> {
   const build = shownText(props_['build_info']);
   if (build !== undefined) row.build = build;
 
+  if ([props, slots, models, metrics].some(isLost)) notes.push('PARTIAL_READ');
   if (isOff(metrics)) notes.push('METRICS_OFF');
   else if (metrics.ok && metrics.status === 200) {
     const found = parsePrometheus(metrics.body, Object.values(METRIC));

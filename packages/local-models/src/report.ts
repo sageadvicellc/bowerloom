@@ -31,6 +31,7 @@ const CODE = /^[A-Z][A-Z0-9_]{0,39}$/;
 
 const NOTE_TEXT: Readonly<Record<string, string>> = Object.freeze({
   METRICS_OFF: 'A server runs without metrics, so its request and speed figures are not reported.',
+  PARTIAL_READ: 'A server answered, but some of its figures could not be read.',
   NO_ENDPOINTS: 'No local model server answered. Add a port to the local models file.',
 });
 

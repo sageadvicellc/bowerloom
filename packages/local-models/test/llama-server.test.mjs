@@ -78,7 +78,7 @@ test('the failure is judged on /health alone: the other paths failing does not m
   const table = { '/health': ok({ status: 'ok' }), '/props': failed('TIMEOUT'), '/slots': failed('TIMEOUT'), '/metrics': failed('TIMEOUT'), '/v1/models': failed('TIMEOUT') };
   const result = await llamaServer.probe(fakeGet(table));
   assert.deepEqual(rowOf(result), { state: 'up' });
-  assert.deepEqual(result.notes, []);
+  assert.deepEqual(result.notes, ['PARTIAL_READ']);
 });
 
 test('a 503 with the loading body is starting, with nothing else filled in', async () => {
@@ -105,7 +105,7 @@ test('a /metrics that is off (404 or 501) leaves the rate and request fields out
 });
 
 test('a /metrics that fails or holds nothing known leaves its fields out, without the METRICS_OFF note', async () => {
-  for (const metrics of [failed('TIMEOUT'), ok('garbage\nmore garbage\n'), ok('')]) {
+  for (const metrics of [ok('garbage\nmore garbage\n'), ok('')]) {
     const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/metrics': metrics }));
     assert.deepEqual(result.notes, []);
     assert.ok(!('activeRequests' in rowOf(result)));
@@ -130,7 +130,7 @@ test('without /v1/models, the context comes from the first slot and the quantiza
 
 test('without /props, the name comes from the model list and the file, build and slots-from-props are left out', async () => {
   const row = rowOf(await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/props': ok('nope', 404) })));
-  assert.equal(row.modelName, 'example-9b/Example-9B-Q8_0.gguf');
+  assert.equal(row.modelName, 'Example-9B-Q8_0.gguf', 'a model id that holds a folder is cut to its last part');
   assert.equal(row.quantization, 'Q8_0', 'from the model list');
   assert.ok(!('modelFile' in row));
   assert.ok(!('build' in row));
@@ -139,7 +139,7 @@ test('without /props, the name comes from the model list and the file, build and
 test('a model file is a base name only: a folder, an absolute path, a Windows path and a home path never appear', async () => {
   const cases = [
     ['/home/someone/models/x.gguf', 'x.gguf', 'x.gguf'], ['/Users/someone/models/y.gguf', 'y.gguf', 'y.gguf'], ['C:\\Users\\someone\\models\\z.gguf', 'z.gguf', 'z.gguf'],
-    ['~/models/w.gguf', 'w.gguf', 'w.gguf'], ['models/sub/v.gguf', 'v.gguf', 'models/sub/v.gguf'], ['u.gguf', 'u.gguf', 'u.gguf'],
+    ['~/models/w.gguf', 'w.gguf', 'w.gguf'], ['models/sub/v.gguf', 'v.gguf', 'v.gguf'], ['../secret/t.gguf', 't.gguf', 't.gguf'], ['u.gguf', 'u.gguf', 'u.gguf'],
   ];
   for (const [path, file, name] of cases) {
     const table = recorded('example-9b');
@@ -147,7 +147,7 @@ test('a model file is a base name only: a folder, an absolute path, a Windows pa
     const result = await llamaServer.probe(fakeGet(table));
     const row = rowOf(result);
     assert.equal(row.modelFile, file, path);
-    assert.equal(row.modelName, name, `an alias that is an absolute path is shown as its base name: ${path}`);
+    assert.equal(row.modelName, name, `an alias that is a path, absolute or relative, is shown as its base name: ${path}`);
     assert.ok(!/someone|Users|home|\\|~/.test(JSON.stringify(result)), path);
   }
 });
@@ -155,9 +155,9 @@ test('a model file is a base name only: a folder, an absolute path, a Windows pa
 test('a model name that is not a path is kept as written, with control and format characters replaced and a long one cut', async () => {
   const table = recorded('example-9b');
   const props = JSON.parse(fixture('example-9b/props.json'));
-  table['/props'] = ok({ ...props, model_alias: 'org/model\u202e\n\u0000name', build_info: `b1${'9'.repeat(200)}` });
+  table['/props'] = ok({ ...props, model_alias: 'model\u202e\n\u0000name', build_info: `b1${'9'.repeat(200)}` });
   const row = rowOf(await llamaServer.probe(fakeGet(table)));
-  assert.equal(row.modelName, 'org/model???name');
+  assert.equal(row.modelName, 'model???name');
   assert.ok(row.build.length <= 121 && row.build.endsWith('…'));
 });
 
@@ -196,4 +196,25 @@ test('a size that is the wrong shape in any answer never throws', async () => {
 test('the result is plain data with no undefined value, so it survives a copy through JSON', async () => {
   const result = await llamaServer.probe(fakeGet(recorded('gpt-oss-20b')));
   assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
+});
+
+test('PARTIAL_READ: a failed or odd answer from /props, /slots, /v1/models or /metrics adds the note, and the row stays up', async () => {
+  for (const path of ['/props', '/slots', '/v1/models', '/metrics']) {
+    for (const answer of [failed('TIMEOUT'), failed('CONNECTION_FAILED'), ok('boom', 500), ok('busy', 503)]) {
+      const result = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), [path]: answer }));
+      assert.deepEqual(result.notes, ['PARTIAL_READ'], `${path} ${JSON.stringify(answer)}`);
+      assert.equal(rowOf(result).state, 'up');
+    }
+  }
+});
+
+test('PARTIAL_READ: not added for a clean read, or for an endpoint that is switched off (404 or 501)', async () => {
+  assert.deepEqual((await llamaServer.probe(fakeGet(recorded('example-9b')))).notes, []);
+  for (const path of ['/props', '/slots', '/v1/models']) {
+    for (const status of [404, 501]) assert.deepEqual((await llamaServer.probe(fakeGet({ ...recorded('example-9b'), [path]: ok('off', status) }))).notes, [], `${path} ${status}`);
+  }
+  const off = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/metrics': failed('TIMEOUT') }));
+  assert.deepEqual(off.notes, ['PARTIAL_READ']);
+  const both = await llamaServer.probe(fakeGet({ ...recorded('example-9b'), '/metrics': ok('off', 404), '/slots': failed('TIMEOUT') }));
+  assert.deepEqual(both.notes, ['PARTIAL_READ', 'METRICS_OFF']);
 });

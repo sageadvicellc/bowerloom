@@ -140,3 +140,14 @@ test('the reads never reject', async () => {
   const results = await Promise.all([createGet(await closedPort())('/x'), createGet(0)('/x'), createGet(1)('bad')]);
   for (const r of results) assert.equal(r.ok, false);
 });
+
+test('no proxy is used, even when the proxy settings of the process name one', async t => {
+  const names = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'NODE_USE_ENV_PROXY'];
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  t.after(() => { for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; } });
+  for (const name of names) process.env[name] = name === 'NODE_USE_ENV_PROXY' ? '1' : 'http://127.0.0.1:9';
+  const { port, hits } = await serve(t, json({ status: 'ok' }));
+  const result = await createGet(port)('/health');
+  assert.deepEqual(result, { ok: true, status: 200, body: '{"status":"ok"}' });
+  assert.deepEqual(hits, [{ method: 'GET', url: '/health', host: `127.0.0.1:${port}` }], 'the request went straight to the server, as a plain path, not an absolute URL through a proxy');
+});

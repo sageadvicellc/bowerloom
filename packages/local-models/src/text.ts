@@ -4,7 +4,7 @@
 export const SHOWN_MAX = 120;
 
 /** Control characters, format characters, invisible and look-alike spaces: replaced with a question mark, as the extension loader does. */
-const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}឴឵￼\u{1d173}-\u{1d17a}  - ⠀]/gu;
+const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u17b4\u17b5\ufffc\u{1d173}-\u{1d17a}\u00a0\u2000-\u200a\u2800]/gu;
 
 /** Replaces unsafe characters and cuts the text at SHOWN_MAX characters, with an ellipsis. */
 export function clean(text: string): string {

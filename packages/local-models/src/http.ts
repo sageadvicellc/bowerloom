@@ -1,8 +1,9 @@
 /**
  * The one place in the package that opens a connection. It makes a GET to 127.0.0.1 and a port, with a total time limit, a size limit by path, and no redirect followed.
+ * The agent is built here with no proxy option, so HTTP_PROXY, HTTPS_PROXY, ALL_PROXY and NODE_USE_ENV_PROXY never apply to a probe.
  * The host is the constant of the guard, so no setting and no provider can name another one. A path is checked against a short list of safe characters first.
  */
-import { request } from 'node:http';
+import { Agent, request } from 'node:http';
 import { LOOPBACK_HOST, parsePort } from './guard.js';
 import type { BoundGet, GetResult } from './provider.js';
 
@@ -46,7 +47,7 @@ export function createGet(port: number, options: GetOptions = {}): BoundGet {
       resolve(result);
       stop?.();
     };
-    const req = request({ host: LOOPBACK_HOST, port, path, method: 'GET', agent: false, headers: { accept: 'application/json, text/plain' } }, res => {
+    const req = request({ host: LOOPBACK_HOST, port, path, method: 'GET', agent: new Agent({ keepAlive: false }), headers: { accept: 'application/json, text/plain' } }, res => {
       const status = res.statusCode ?? 0;
       const stop = (): void => { req.destroy(); };
       if (status >= 300 && status < 400) { finish({ ok: false, code: 'REDIRECT' }, stop); return; }
