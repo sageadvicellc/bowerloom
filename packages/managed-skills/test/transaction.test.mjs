@@ -121,12 +121,13 @@ for (const first of ['startup', 'manager']) for (const method of ['apply', 'reco
   if (method === 'recover') await applyStartupRevision(revised, revision.fromRevision, revision.revision);
   const manager = await planObservedManagedSkill(f.input), create = net.createServer; let unblock, acquired; const gate = new Promise(r => { unblock = r; }), ready = new Promise(r => { acquired = r; }); let gated = false;
   // The gate holds the first listener that binds. It is not the first listener made: a bind that meets a port held by another test file or program is refused and the owner binds again with a new listener, and a gate on the refused one would never open.
-  t.mock.method(net, 'createServer', (...args) => { const server = create(...args), listen = server.listen.bind(server); server.listen = (opts, cb) => listen(opts, () => { if (gated) return cb(); gated = true; acquired(); gate.then(cb); }); return server; }); syncBuiltinESMExports();
+  t.mock.method(net, 'createServer', (...args) => { const server = create(...args), listen = server.listen.bind(server); server.listen = (opts, cb) => listen(opts, () => { if (gated || opts?.port !== lockPort(f.projectDir)) return cb(); gated = true; acquired(); gate.then(cb); }); return server; }); syncBuiltinESMExports();
   const startup = () => method === 'apply' ? applyStartupRevision(revised, revision.fromRevision, revision.revision) : recoverStartupRevision(f.projectDir, revision.revision, 'resume');
   const manage = () => applyObservedManagedSkill(f.input, manager.revision, null);
   let owner;
   try { owner = first === 'startup' ? startup() : manage(); const observer = owner.catch(() => {}); await Promise.race([ready, new Promise((_, stop) => owner.then(() => stop(new Error('the owner finished before it held the lock')), stop))]); await assert.rejects(first === 'startup' ? manage() : startup()); unblock(); await owner; await observer; }
   finally { unblock(); t.mock.restoreAll(); syncBuiltinESMExports(); }
+  assert.equal(gated, true, 'the gate held the project lock listener');
   assert.equal((await inspectStartup(f.projectDir)).specReady, true);
 });
 

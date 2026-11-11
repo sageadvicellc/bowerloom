@@ -9,7 +9,8 @@ const { withProjectLock, LOCK_SLOT_COLLISION_CHANNEL } = await import(index);
 let verdict = 'unknown'; subscribe(LOCK_SLOT_COLLISION_CHANNEL, message => { verdict = message?.holder ?? 'unknown'; });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 for (let i = 0; i < Number(count); i++) {
+  verdict = 'unknown';
   try { await withProjectLock(dir, new AbortController().signal, () => sleep(Math.floor(Math.random() * 4))); process.stdout.write('ok\n'); }
-  catch (error) { const code = error?.code ?? 'ERROR'; process.stdout.write(code === 'PROJECT_LOCK_SLOT_COLLISION' ? `${code} ${verdict}\n` : `${code}\n`); }
+  catch (error) { const code = error?.code ?? 'ERROR'; process.stdout.write(code === 'PROJECT_LOCK_SLOT_COLLISION' ? `${code} ${verdict}\n` : `${code}\n`); verdict = 'unknown'; }
   await sleep(Math.floor(Math.random() * 3));
 }

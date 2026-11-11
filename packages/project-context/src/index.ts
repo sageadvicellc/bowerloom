@@ -156,7 +156,7 @@ const PROBE_LATE_MS = 100, PROBE_GRACE_MS = 100, PROBE_GRACES = 10;
  * that accepts and ends every connection. Both locks bind again on it, at most LOCK_REBINDS times in a row, and then
  * refuse it as a collision: `slotRefusal` through `mayBindAgain`, `withCacheLock` through its own count.
  */
-type ProbeVerdict = 'this' | 'other' | 'gone' | 'silent' | 'reset' | 'closed';
+export type ProbeVerdict = 'this' | 'other' | 'gone' | 'silent' | 'reset' | 'closed';
 function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<ProbeVerdict> {
   return new Promise(resolveHolder => {
     const want = Buffer.from(slot.banner), chunks: Buffer[] = []; let size = 0, done = false, graces = 0, due = performance.now() + timeoutMs;
@@ -188,7 +188,7 @@ function probeLockHolder(slot: LockSlot, timeoutMs: number): Promise<ProbeVerdic
 export const LOCK_SLOT_COLLISION_CHANNEL = 'bowerloom:lock-slot-collision';
 const collisions = channel(LOCK_SLOT_COLLISION_CHANNEL);
 /** Records a slot collision on the diagnostics channel and returns the port, for the caller's own refusal. */
-export function reportSlotCollision(slot: LockSlot, holder?: string): number {
+export function reportSlotCollision(slot: LockSlot, holder?: ProbeVerdict): number {
   if (collisions.hasSubscribers) collisions.publish(holder === undefined ? { port: slot.port } : { port: slot.port, holder });
   return slot.port;
 }
