@@ -10,7 +10,7 @@ import type { LocalModel, LocalModelsReport } from './types.js';
 export const LOCAL_MODELS_MANIFEST: ExtensionManifest = Object.freeze({ id: 'local-models', title: 'Local models', kind: 'ui', routes: Object.freeze(['local-models']), protected: false });
 
 const base = (port: number): Omit<LocalModel, 'id' | 'state' | 'stateReason' | 'sampledAt'> => ({
-  provider: 'llama-server', port, modelName: null, modelFile: null, quantization: null, parameterCount: null, fileBytes: null, contextSize: null, contextTrain: null, contextUsedPeak: null,
+  provider: 'llama-server', port, modelName: null, modelFile: null, quantization: null, parameterCount: null, fileBytes: null, contextSize: null, contextTrain: null, contextUsedPeak: null, notes: [],
   slotsTotal: null, activeRequests: null, deferredRequests: null, promptTokensPerSecond: null, generationTokensPerSecond: null, processMemoryBytes: null, uptimeSeconds: null, build: null,
 });
 

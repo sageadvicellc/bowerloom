@@ -4,7 +4,7 @@
  */
 import { createContext, useContext } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { LocalBridge } from '../../../shared/api/local.js';
+import type { LocalBridge } from '../../../shared/local-models/types.js';
 
 export interface LocalValue { readonly bridge: LocalBridge | null; readonly sample: boolean }
 const Context = createContext<LocalValue>({ bridge: null, sample: false });

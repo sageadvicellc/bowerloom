@@ -155,10 +155,10 @@ test('listExtensions that fails at launch (FAILED, then HOST_NOT_STARTED) is "no
   };
   followExtensions(registry, bridge, state => answers.push(state), clock);
   await settle();
-  assert.equal(calls, 1); assert.deepEqual(answers, [], 'a first failure is not an answer and not an error'); assert.equal(registry.resolve('local-models').found, false);
+  assert.equal(calls, 1); assert.equal(answers.length, 0, 'a first failure is not an answer and not an error'); assert.equal(registry.resolve('local-models').found, false);
   assert.equal(clock.queue.length, 1); assert.equal(clock.queue[0]!.ms, REFRESH_MS);
   clock.queue[0]!.run(); await settle();
-  assert.equal(calls, 2); assert.deepEqual(answers, []); assert.equal(clock.queue.length, 2); assert.equal(clock.queue[1]!.ms, REFRESH_MS);
+  assert.equal(calls, 2); assert.equal(answers.length, 0); assert.equal(clock.queue.length, 2); assert.equal(clock.queue[1]!.ms, REFRESH_MS);
   clock.queue[1]!.run(); await settle();
   assert.equal(calls, 3); assert.equal(answers.length, 1); assert.equal(answers[0]!.ready, true); assert.deepEqual(answers[0]!.extensions.map(m => m.id), ['local-models']);
   assert.equal(registry.resolve('local-models').found, true); assert.equal(clock.queue.length, 2, 'it stops asking once answered');
@@ -170,7 +170,7 @@ test('stopping while a retry is waiting cancels it, and a late answer after stop
   const pending: LocalBridge = { localModels: async () => SAMPLE, listExtensions: () => new Promise((_, reject) => { release = () => reject(new Error('FAILED')); }) };
   const stop = followExtensions(registry, pending, s => answers.push(s), clock);
   stop(); release!(); await settle();
-  assert.equal(clock.queue.length, 0); assert.deepEqual(answers, []);
+  assert.equal(clock.queue.length, 0); assert.equal(answers.length, 0);
   const failing: LocalBridge = { localModels: async () => SAMPLE, listExtensions: async () => { throw new Error('FAILED'); } };
   const stop2 = followExtensions(registry, failing, s => answers.push(s), clock);
   await settle(); stop2();

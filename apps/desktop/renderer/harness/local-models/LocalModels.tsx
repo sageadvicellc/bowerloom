@@ -11,6 +11,7 @@ import { HIcon } from '../icons.js';
 import { LOCAL_WORDS, isStale, viewOf } from '../../../shared/local-models/view-model.js';
 import type { Row } from '../../../shared/local-models/view-model.js';
 import type { LocalModelsReport } from '../../../shared/local-models/types.js';
+import { realNowMs } from '../clock.js';
 import { useLocal } from './local.js';
 import { useLocalReport } from './useLocalReport.js';
 import './local-models.css';
@@ -77,7 +78,7 @@ export function LocalModels(): ReactElement {
   const { bridge, sample } = useLocal();
   const state = useLocalReport(bridge);
   const view = state.report === null ? null : viewOf(state.report);
-  const stale = state.report !== null && isStale(state.failed, state.at, Date.now());
+  const stale = state.report !== null && isStale(state.failed, state.at, realNowMs());
   const refresh = <HButton icon="play" disabled={bridge === null || state.busy} onClick={state.refresh}>{LOCAL_WORDS.refresh}</HButton>;
   return (
     <Screen slot="local-models" title={LOCAL_WORDS.title} count={view === null || view.summary === null ? undefined : view.summary} tools={refresh}>

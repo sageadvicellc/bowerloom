@@ -2,6 +2,8 @@
  * Local models (route `local-models`, the bundled extension) on the sample launch (--sample): the screen reads the sample bridge, so it shows three made-up servers (two up, one down), says they are sample data,
  * shows memory and uptime as "not reported", and the navigation gets its entry only after the extension list answers. Route-to-spec matrix: extension route local-models, sample mode.
  */
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { removeTempDirs } from './temp-dirs.js';
@@ -23,11 +25,14 @@ test('the screen lists the three sample servers with their state, figures and "n
   await expect(p.locator('[data-local-sample]')).toContainText('Sample data');
   const rows = p.locator('[data-model]');
   await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText('Example-9B-Q8_0.gguf');
-  await expect(rows.nth(0)).toContainText('Q8_0');
-  await expect(rows.nth(0)).toContainText('38.4 tokens per second');
-  await expect(rows.nth(0)).toContainText('1 active');
-  await expect(rows.nth(0)).toContainText('8091');
+  // Rows are sorted by state, then by name: Example-20B before Example-9B, then the server that is down.
+  await expect(rows.nth(0)).toHaveAttribute('data-model', 'llama-server:8092');
+  const nine = p.locator('[data-model="llama-server:8091"]');
+  await expect(nine).toContainText('Example-9B-Q8_0.gguf');
+  await expect(nine).toContainText('Q8_0');
+  await expect(nine).toContainText('38.4 tokens per second');
+  await expect(nine).toContainText('1 active');
+  await expect(nine).toContainText('8091');
   await expect(rows.nth(2)).toHaveAttribute('data-state', 'Down');
   await expect(rows.nth(2)).toContainText('Nothing is listening on this port.');
   for (let i = 0; i < 3; i += 1) {
@@ -35,6 +40,10 @@ test('the screen lists the three sample servers with their state, figures and "n
     await expect(rows.nth(i).locator('[data-fact="uptime"] dd')).toHaveText('not reported');
   }
   await expect(p.locator('.hx-count')).toHaveText('2 up, 1 down');
+  const dir = test.info().outputDir;
+  mkdirSync(dir, { recursive: true });
+  await p.setViewportSize({ width: 1280, height: 800 });
+  await p.screenshot({ path: join(dir, 'local-models-screen.png') });
 });
 
 test('a server that is down shows no figure as 0', async () => {

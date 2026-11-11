@@ -10,7 +10,7 @@ const NR = 'not reported';
 const model = (over: Partial<LocalModel> = {}): LocalModel => ({
   id: 'llama-server:8091', provider: 'llama-server', port: 8091, state: 'up', stateReason: null, modelName: 'Example-9B-Q8_0.gguf', modelFile: 'Example-9B-Q8_0.gguf', quantization: 'Q8_0',
   parameterCount: null, fileBytes: 9518764032, contextSize: 32768, contextTrain: null, contextUsedPeak: 8192, slotsTotal: 2, activeRequests: 1, deferredRequests: 0,
-  promptTokensPerSecond: 400, generationTokensPerSecond: 38.44, processMemoryBytes: null, uptimeSeconds: null, build: null, sampledAt: '2026-11-11T10:00:00Z', ...over,
+  promptTokensPerSecond: 400, generationTokensPerSecond: 38.44, processMemoryBytes: null, uptimeSeconds: null, build: null, notes: [], sampledAt: '2026-11-11T10:00:00Z', ...over,
 });
 const report = (over: Partial<LocalModelsReport> = {}): LocalModelsReport => ({ sampledAt: '2026-11-11T10:00:00Z', models: [model()], endpointsConfigured: 1, notes: [], ...over });
 const NULLS: Partial<LocalModel> = { modelName: null, modelFile: null, quantization: null, fileBytes: null, contextSize: null, contextUsedPeak: null, activeRequests: null, deferredRequests: null, generationTokensPerSecond: null };

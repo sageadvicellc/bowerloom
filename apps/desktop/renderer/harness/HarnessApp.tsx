@@ -34,7 +34,7 @@ import { NotesProvider } from './notes/notes-session.js';
 import { FolderDraftProvider } from './folder-draft.js';
 import { useCloseGuard } from './close-guard.js';
 import { fallbackEngine, fallbackLocal } from '../api/client.js';
-import type { LocalBridge } from '../../shared/api/local.js';
+import type { LocalBridge } from '../../shared/local-models/types.js';
 import { LocalProvider, useLocal } from './local-models/local.js';
 import { LocalModelsPending } from './local-models/LocalModels.js';
 import { useBundledExtensions } from './bundled-extensions.js';

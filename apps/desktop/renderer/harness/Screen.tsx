@@ -12,7 +12,7 @@ import { WORDS } from './words.js';
 export interface ScreenProps {
   title: string;
   /** Muted words after the title, such as "11 parts". */
-  count?: string;
+  count?: string | undefined;
   /** Muted words in the place of the count that carry a state, such as the dot of the file view. */
   titleExtra?: ReactNode;
   /** The page's own buttons, at the right of the top row. */

@@ -4,7 +4,7 @@
  * any failure means "not ready yet", and the same read is tried again on the normal refresh interval. It is never shown as an error.
  */
 import { useEffect, useState } from 'react';
-import type { LocalBridge } from '../../shared/api/local.js';
+import type { LocalBridge } from '../../shared/local-models/types.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
 import type { Registry } from '../../shared/extensions/registry.js';
 import { REFRESH_MS } from '../../shared/local-models/view-model.js';
