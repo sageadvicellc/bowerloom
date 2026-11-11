@@ -10,11 +10,12 @@ import { ADAPTERS, adapterOf, appLabel, classify, recordsOfFile, walkEnter, walk
 import type { ConfigKind } from '../shared/real/adapters.js';
 import { firstHeading, firstSentence, parseFrontmatter } from '../shared/real/frontmatter.js';
 import { countsOf, tallyWords, topicsOf } from '../shared/real/place.js';
+import { APPROVALS_MAX_BYTES, approvalKey, parseApprovals } from '../shared/real/linked-approvals.js';
 import type { NoteEntry, PlaceRead, StampedRecord } from '../shared/real/place.js';
 import { cleanLine, cleanPath, cut, safeText } from '../shared/real/redact.js';
 import { hashText } from '../shared/world/sample.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
-import type { RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
+import type { LinkProblem, RealApp, RealDiscovery, RealPlace, RealPlaceKind } from '../shared/real/types.js';
 import { addTally, couldNotRead, isThere, listDir, makeBudget, miss, mustStop, newTally, readHead, readText, realFolder, realFolderFollowing, resolveInside, shortPath, statLine, walkFiles } from './real-fs.js';
 import type { Budget, Tally, WalkOptions } from './real-fs.js';
 import { textOf, listOf } from '../shared/real/yaml.js';
@@ -272,63 +273,108 @@ const notesWalk = (linked = false): WalkOptions => ({
   accept: rel => MARKDOWN.test(rel), ...(linked ? {} : { boundary: hasMarker }),
 });
 
-/** The most notes folders one harness may link. A longer list is read up to this many. */
-const LINKED_NOTES_MAX = 8;
+/** The most notes folders one harness may link. A longer list is read up to this many, and the rest is a problem the Library says. */
+export const LINKED_NOTES_MAX = 8;
 
-/**
- * The folder a stored notes path names, or null. The stored forms are the ones the harness package writes: `.` for the harness folder itself, a path below it, or `~/` and a path below the home
- * folder. An absolute path, a `..` that leaves either folder, a hidden name and an odd character are not stored forms, so they name nothing. The result must still be inside the folder it came from
- * once its shortcuts are resolved.
- */
-function storedNotesFolder(stored: unknown, rootReal: string, home: string): string | null {
-  if (typeof stored !== 'string' || stored === '' || stored.length > 1024 || /[\\`\u0000-\u001f]|^[A-Za-z]:/.test(stored)) return null;
-  if (stored === '.') return rootReal;
-  const homeBased = stored.startsWith('~/');
-  if (!homeBased && (stored.startsWith('~') || isAbsolute(stored))) return null;
-  const rest = normalize(homeBased ? stored.slice(2) : stored);
-  if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest) || rest.split(sep).some(part => part.startsWith('.') && part !== '.')) return null;
-  const base = homeBased ? realFolderFollowing(home) : rootReal;
-  if (base === null) return null;
-  const real = realFolderFollowing(join(base, rest));
-  if (real === null) return null;
-  const inside = relative(base, real);
-  return inside === '' || (!inside.startsWith('..') && !isAbsolute(inside)) ? real : null;
+/** What the reader needs besides the place: the approvals of this machine, and the caps (a test lowers them). */
+export interface LinkContext {
+  readonly approved: ReadonlySet<string>;
+  readonly limits?: { readonly filesPerPlace: number; readonly pagesPerPlace: number };
+}
+export const NO_LINK_CONTEXT: LinkContext = Object.freeze({ approved: new Set<string>() });
+
+/** Loads the approval record. A record that is not there, is a link, is too big or is damaged holds no approval. */
+export function loadApprovals(file: string | undefined, budget: Budget, tally: Tally): ReadonlySet<string> {
+  if (file === undefined) return new Set();
+  const dir = realFolder(dirname(file));
+  if (dir === null) return new Set();
+  const text = readText(join(dir, basename(file)), dir, tally, budget);
+  return text === null || text.length > APPROVALS_MAX_BYTES ? new Set() : parseApprovals(text);
 }
 
+const STORED_ODD = /[\0-\x1f\x7f\\`]/;
+/** The rule of `isKnowledgePath` in the harness package: `.`, a plain relative path, or `~/` and a plain relative path. A plain path has no empty, `.`, `..` or hidden segment. */
+function isStoredPath(value: unknown): value is string {
+  if (typeof value !== 'string' || value === '' || [...value].length > 1024 || STORED_ODD.test(value) || /^[A-Za-z]:/.test(value)) return false;
+  const plain = (rest: string): boolean => rest.split('/').every(seg => seg !== '' && !seg.startsWith('.'));
+  if (value === '.') return true;
+  if (value.startsWith('~/')) return plain(value.slice(2));
+  if (value.startsWith('/') || value.startsWith('~')) return false;
+  return plain(value);
+}
+
+type Stored = { readonly ok: true; readonly real: string } | { readonly ok: false; readonly why: 'form' | 'gone' };
+
 /**
- * The notes folders the person linked to the harness of a place, by the stored path `knowledge.json` keeps (`wiki-folder`). Nothing is searched for: a folder is read only when the person
- * picked it. A path that is not a stored form, and a folder that is not there, are left out. Each folder is returned once, as its real location; the place's own folder may be one.
+ * The folder a stored notes path names. A path that is not a stored form is `form`. A folder that is not there is `gone`. A folder that, once its shortcuts are resolved, is not below its
+ * base (the harness folder, or the home folder), is the home folder itself, or has a hidden part below the base is `form` too: a shortcut such as `~/notes` to `~/.ssh` is no notes folder.
  */
-function linkedNotesRoots(place: PlaceInternal, home: string, budget: Budget, tally: Tally): string[] {
+function resolveStored(stored: unknown, rootReal: string, home: string): Stored {
+  if (!isStoredPath(stored)) return { ok: false, why: 'form' };
+  const homeBased = stored.startsWith('~/');
+  const base = homeBased ? realFolderFollowing(home) : rootReal;
+  if (base === null) return { ok: false, why: 'gone' };
+  const real = realFolderFollowing(stored === '.' ? base : join(base, homeBased ? stored.slice(2) : stored));
+  if (real === null) return { ok: false, why: 'gone' };
+  const inside = relative(base, real);
+  if (inside.startsWith('..') || isAbsolute(inside)) return { ok: false, why: 'form' };
+  if (inside === '' ? homeBased : inside.split(sep).some(part => part.startsWith('.'))) return { ok: false, why: 'form' };
+  return { ok: true, real };
+}
+
+const shortHash = (text: string): string => hashText(text).slice(0, 8);
+/** The name each linked folder's pages carry in front of their path: the folder's own name, and a short hash after it when two folders share the name. */
+function linkedNames(roots: readonly LinkedRoot[]): string[] {
+  const base = roots.map(r => basename(r.real));
+  return base.map((b, i) => (base.indexOf(b) === i && base.lastIndexOf(b) === i ? b : `${b}-${shortHash(roots[i]!.real).slice(0, 4)}`));
+}
+
+export interface LinkedRoot { readonly real: string; readonly stored: string }
+export interface LinkedNotes { readonly roots: readonly LinkedRoot[]; readonly problems: readonly LinkProblem[] }
+
+/**
+ * The notes folders the person linked to the harness of a place, by the stored path `knowledge.json` keeps (`wiki-folder`), and what could not be read, each with its reason. Nothing is
+ * searched for. A link below the harness folder is part of the project. A link in `~/` form is read only when this machine holds the person's approval for that folder and path
+ * (`ctx.approved`): `knowledge.json` can come from a cloned repository. A root inside another root is left out, because the outer one reads it. Nothing is dropped without a problem.
+ */
+export function linkedNotesRoots(place: PlaceInternal, home: string, ctx: LinkContext, budget: Budget, tally: Tally): LinkedNotes {
   const own = place.kind === 'home' ? undefined : place.folders.find(f => f.app === 'bowerloom');
-  if (own === undefined || realFolderFollowing(own.abs) !== own.abs) return [];
+  if (own === undefined || realFolderFollowing(own.abs) !== own.abs) return { roots: [], problems: [] };
   const file = join(own.abs, 'knowledge.json');
-  if (!isThere(file)) return [];
+  if (!isThere(file)) return { roots: [], problems: [] };
   const text = readText(file, own.abs, tally, budget);
-  if (text === null) return [];
+  if (text === null) return { roots: [], problems: [{ reason: 'unreadable', label: '' }] };
   let sources: unknown;
-  try { sources = (JSON.parse(text) as { sources?: unknown } | null)?.sources; } catch { return []; }
-  if (!Array.isArray(sources)) return [];
-  const out: string[] = [];
-  for (const source of sources.slice(0, HARNESS_LIST_MAX)) {
-    const entry = source as { kind?: unknown; path?: unknown } | null;
-    if (entry?.kind !== 'wiki-folder' || typeof entry.path !== 'string') continue;
-    const real = storedNotesFolder(entry.path, place.realRoot, home);
-    if (real === null || out.includes(real)) continue;
-    out.push(real);
-    if (out.length >= LINKED_NOTES_MAX) break;
+  try { sources = (JSON.parse(text) as { sources?: unknown } | null)?.sources; } catch { return { roots: [], problems: [{ reason: 'unreadable', label: '' }] }; }
+  if (sources === undefined) return { roots: [], problems: [] };
+  if (!Array.isArray(sources)) return { roots: [], problems: [{ reason: 'unreadable', label: '' }] };
+  const roots: LinkedRoot[] = [], problems: LinkProblem[] = [];
+  const label = (stored: unknown): string => (typeof stored === 'string' ? safeText(stored, 60) : '');
+  // Only the wiki folders count, and only then are they cut at the list limit.
+  const links = sources.filter(x => (x as { kind?: unknown } | null)?.kind === 'wiki-folder').slice(0, HARNESS_LIST_MAX) as { path?: unknown }[];
+  for (const link of links) {
+    if (roots.length >= LINKED_NOTES_MAX) { problems.push({ reason: 'limit', label: label(link.path) }); continue; }
+    const got = resolveStored(link.path, place.realRoot, home);
+    if (!got.ok) { problems.push({ reason: got.why === 'gone' ? 'gone' : 'form', label: label(link.path) }); continue; }
+    const stored = link.path as string;
+    if (stored.startsWith('~/') && !ctx.approved.has(approvalKey(place.realRoot, stored))) { problems.push({ reason: 'approval', label: label(stored) }); continue; }
+    if (roots.some(r => r.real === got.real)) continue;
+    roots.push({ real: got.real, stored });
   }
-  return out;
+  // A root inside another root is read by the outer one.
+  const inside = (a: string, b: string): boolean => a !== b && !relative(b, a).startsWith('..') && !isAbsolute(relative(b, a));
+  return { roots: roots.filter(r => !roots.some(o => inside(r.real, o.real))), problems };
 }
 
 /**
  * Reads one place. `withText` false is step one: skills, agents and prompts are found by their paths and their files are not opened; only config files are opened, and only
  * their structure is kept. `withText` true is step two, after the person confirmed: the text of skills, agents and prompts is read too, and the head of each notes page.
  */
-export function readPlace(place: PlaceInternal, home: string, withText: boolean, budget: Budget): PlaceRead {
+export function readPlace(place: PlaceInternal, home: string, withText: boolean, budget: Budget, link: LinkContext = NO_LINK_CONTEXT): PlaceRead {
   const tally = newTally();
   const records: StampedRecord[] = [], notes: NoteEntry[] = [];
   let partlyRead = 0, filesLeft = REAL_LIMITS.filesPerPlace, notesLeftOut = 0;
+  let linkProblems: LinkProblem[] = [];
   // Every read in this function is held to the real folder that was recorded when the place was discovered (`place.realRoot`, or the real tool folder).
   folders: for (const folder of place.folders) {
     if (mustStop(budget, tally)) break;
@@ -364,9 +410,11 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
     if (realFolderFollowing(rootReal) !== rootReal) tally.unreadable += 1;
     else {
       // A place whose own folder is the linked notes folder is read whole too: the person picked it as notes.
-      const linkedRoots = linkedNotesRoots(place, home, budget, tally);
-      const walked = walkFiles(rootReal, rootReal, notesWalk(linkedRoots.includes(rootReal)), budget, tally);
-      const shown = withText ? walked.slice(0, REAL_LIMITS.pagesPerPlace) : walked;
+      const found = linkedNotesRoots(place, home, link, budget, tally);
+      linkProblems = [...found.problems];
+      const limits = link.limits ?? REAL_LIMITS;
+      const walked = walkFiles(rootReal, rootReal, { ...notesWalk(found.roots.some(r => r.real === rootReal)), maxFiles: limits.filesPerPlace }, budget, tally);
+      const shown = withText ? walked.slice(0, limits.pagesPerPlace) : walked;
       let added = 0;
       for (const f of shown) {
         if (withText && mustStop(budget, tally)) break;
@@ -374,17 +422,27 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
         added += 1;
       }
       notesLeftOut = walked.length - added;
-      // The notes folders the person linked, under the same caps as the place's own notes.
+      // The notes folders the person linked, under the same caps as the place's own notes: what the place's walk used is not left to them.
       const have = new Set(walked.map(f => f.abs));
-      let room = REAL_LIMITS.filesPerPlace - walked.length, pageRoom = REAL_LIMITS.pagesPerPlace - added;
-      for (const root of linkedRoots.filter(r => r !== rootReal)) {
+      let room = limits.filesPerPlace - walked.length, pageRoom = limits.pagesPerPlace - added;
+      const others = found.roots.filter(r => r.real !== rootReal);
+      const names = linkedNames(others);
+      for (const [n, root] of others.entries()) {
         if (mustStop(budget, tally)) break;
-        const more = walkFiles(root, root, { ...notesWalk(true), maxFiles: Math.max(room, 0) }, budget, tally).filter(f => !have.has(f.abs));
+        // No room is left: the folder is not walked, and the Library is told.
+        if (room <= 0) { linkProblems.push({ reason: 'limit', label: safeText(root.stored, 60) }); continue; }
+        // One file more than the room is asked for, so a folder that does not fit is known to be cut.
+        const walkedMore = walkFiles(root.real, root.real, { ...notesWalk(true), maxFiles: room + 1 }, budget, tally);
+        const cut = walkedMore.length > room;
+        const more = walkedMore.slice(0, room).filter(f => !have.has(f.abs));
+        for (const f of walkedMore) have.add(f.abs);
         room -= more.length;
+        if (cut) { notesLeftOut += 1; linkProblems.push({ reason: 'limit', label: safeText(root.stored, 60) }); }
         const take = withText ? more.slice(0, Math.max(pageRoom, 0)) : more;
+        const source = shortHash(root.real);
         for (const f of take) {
           if (withText && mustStop(budget, tally)) break;
-          notes.push(noteOf(f.rel, f.size, f.mtimeMs, withText ? readHead(f.abs, root, tally, budget) : null));
+          notes.push({ ...noteOf(`${names[n]}/${f.rel}`, f.size, f.mtimeMs, withText ? readHead(f.abs, root.real, tally, budget) : null), source });
           added += 1; pageRoom -= 1;
         }
         notesLeftOut += more.length - take.length;
@@ -397,12 +455,12 @@ export function readPlace(place: PlaceInternal, home: string, withText: boolean,
   const ownChanged = own !== undefined && (realFolder(join(place.realRoot, own.name)) === null || realFolderFollowing(own.abs) !== own.abs);
   const harness = own === undefined ? null : ownChanged ? unreadableHarness() : harnessOf(own.abs, records, tally, budget);
   const names = [...place.folders.map(p => p.name), ...place.files.map(p => p.name)];
-  return { place: { id: place.id, kind: place.kind, label: place.label, path: shortPath(place.root, home), apps }, records, notes, notesLeftOut, partlyRead, ...(harness === null ? {} : { harness }), folders: names, tally };
+  return { place: { id: place.id, kind: place.kind, label: place.label, path: shortPath(place.root, home), apps }, records, notes, notesLeftOut, partlyRead, ...(harness === null ? {} : { harness: linkProblems.length > 0 ? { ...harness, linkProblems } : harness }), folders: names, tally };
 }
 
 /** The step-one entry for a place: counts and details, no text. */
-export function summarise(place: PlaceInternal, home: string, budget: Budget): { place: RealPlace; tally: Tally } {
-  const read = readPlace(place, home, false, budget);
+export function summarise(place: PlaceInternal, home: string, budget: Budget, link: LinkContext = NO_LINK_CONTEXT): { place: RealPlace; tally: Tally } {
+  const read = readPlace(place, home, false, budget, link);
   const counts = countsOf(read.records, read.notes.length + read.notesLeftOut);
   const labels = read.place.apps.map(appLabel);
   const empty = counts.agents + counts.skills + counts.tools + counts.hooks + counts.notes === 0;
@@ -487,7 +545,7 @@ function keptOf(app: RealApp, config: ConfigKind, name: string, abs: string, con
  * that must be read could not be. A config file that a program rewrites during any session (`~/.claude.json`, and `settings.local.json`, which holds the permissions a person approves)
  * counts by what the reader keeps from it, so a new connection or hook shows and the rest does not. The four files of a `.bowerloom` folder count by size and change time.
  */
-function watchLines(place: PlaceInternal, home: string, budget: Budget, tally: Tally, flags: { unresolved: boolean }): string[] {
+function watchLines(place: PlaceInternal, home: string, budget: Budget, tally: Tally, flags: { unresolved: boolean }, link: LinkContext): string[] {
   const out: string[] = [];
   const kept = (app: RealApp, config: ConfigKind, name: string, abs: string, contain: string): string => {
     const text = keptOf(app, config, name, abs, contain, budget, tally);
@@ -509,10 +567,27 @@ function watchLines(place: PlaceInternal, home: string, budget: Budget, tally: T
   if (place.kind !== 'home') {
     if (realFolderFollowing(place.realRoot) !== place.realRoot) out.push('gone|root');
     else {
-      const roots = linkedNotesRoots(place, home, budget, tally);
-      for (const f of walkFiles(place.realRoot, place.realRoot, notesWalk(roots.includes(place.realRoot)), budget, tally)) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
-      // A linked notes folder is read the same way, so a change in it shows as a change of the place.
-      for (const root of roots.filter(r => r !== place.realRoot)) for (const f of walkFiles(root, root, notesWalk(true), budget, tally)) out.push(`l|${hashText(root).slice(0, 8)}|${f.rel}|${f.size}|${f.mtimeMs}`);
+      const found = linkedNotesRoots(place, home, link, budget, tally), limits = link.limits ?? REAL_LIMITS;
+      const walked = walkFiles(place.realRoot, place.realRoot, { ...notesWalk(found.roots.some(r => r.real === place.realRoot)), maxFiles: limits.filesPerPlace }, budget, tally);
+      for (const f of walked) out.push(`n|${f.rel}|${f.size}|${f.mtimeMs}`);
+      // A link that fails shows as a change of the place, and the check cannot say "same" while one cannot be resolved.
+      for (const problem of found.problems) {
+        out.push(`${problem.reason === 'gone' ? 'gone|link' : `p|${problem.reason}`}|${hashText(problem.label).slice(0, 8)}`);
+        if (problem.reason === 'gone' || problem.reason === 'form' || problem.reason === 'unreadable') flags.unresolved = true;
+      }
+      // A linked notes folder is read the same way, under the same room as a read, so a change past the cap does not change the fingerprint.
+      const have = new Set(walked.map(f => f.abs));
+      let room = limits.filesPerPlace - walked.length;
+      for (const root of found.roots.filter(r => r.real !== place.realRoot)) {
+        const tag = hashText(root.real).slice(0, 8);
+        if (room <= 0) { out.push(`l|${tag}|cut`); continue; }
+        const got = walkFiles(root.real, root.real, { ...notesWalk(true), maxFiles: room + 1 }, budget, tally);
+        const more = got.slice(0, room).filter(f => !have.has(f.abs));
+        for (const f of got) have.add(f.abs);
+        room -= more.length;
+        for (const f of more) out.push(`l|${tag}|${f.rel}|${f.size}|${f.mtimeMs}`);
+        if (got.length > room + more.length) out.push(`l|${tag}|cut`);
+      }
     }
   }
   return out;
@@ -529,12 +604,15 @@ let unfinishedCount = 0;
  * screen: spaces are collapsed, a long part is cut, a key-like part is hidden). The text then holds the clock, so it matches nothing, and the check says it could not check, never
  * "same". A `gone` line is written only for a place that was rebuilt and has lost a tool folder. Nothing is written. The caller hashes the text (main/scan-session.ts).
  */
-export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now(), budgetMs: number = REAL_LIMITS.budgetMs): Promise<{ readonly text: string; readonly complete: boolean }> {
+export async function watchTextOf(home: string, watched: readonly WatchedPlace[], now: () => number = () => Date.now(), budgetMs: number = REAL_LIMITS.budgetMs, approvalsFile?: string): Promise<{ readonly text: string; readonly complete: boolean }> {
   const budget = makeBudget(now, budgetMs), tally = newTally();
+  const link: LinkContext = { approved: loadApprovals(approvalsFile, budget, tally) };
   let unresolved = false;
   const ambiguity = new Map<string, Map<string, number>>();
   const homePlaces = findHomePlaces(home);
   const lines: string[] = ['bowerloom-read-fingerprint-1', ...homePlaces.map(p => `roster|${p.id}`).sort()];
+  // The approvals of linked home folders decide what is read, so they are part of the fingerprint. A record with none adds nothing.
+  if (link.approved.size > 0) lines.push(`approvals|${hashText([...link.approved].sort().join(','))}`);
   for (const w of [...watched].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     if (mustStop(budget, tally)) break;
     const dir = folderOfShown(w.path, home);
@@ -549,7 +627,7 @@ export async function watchTextOf(home: string, watched: readonly WatchedPlace[]
     // A path that a neighbour shares, or that holds a link the walk cannot take, may name another folder than the one read: it cannot be checked.
     if ('place' in rebuilt && (rebuilt.unresolved || (dir !== null && pathIsAmbiguous(dir, home, ambiguity)))) unresolved = true;
     const flags = { unresolved: false };
-    lines.push(...watchLines(place, home, budget, tally, flags));
+    lines.push(...watchLines(place, home, budget, tally, flags, link));
     if (flags.unresolved) unresolved = true;
     await yieldToLoop();
   }
@@ -561,7 +639,11 @@ export async function watchTextOf(home: string, watched: readonly WatchedPlace[]
 
 // ---------------------------------------------------------------------------------------------------------------------- the scanner
 
-export interface ScannerDeps { readonly home: string; readonly now?: () => number }
+export interface ScannerDeps {
+  readonly home: string; readonly now?: () => number;
+  /** The file of this machine's approvals of linked home folders (main/linked-approvals.ts). Without it no linked home folder is read. */
+  readonly approvalsFile?: string;
+}
 
 export interface Batch { readonly reads: readonly PlaceRead[]; readonly tally: Tally }
 
@@ -586,10 +668,10 @@ export function createScanner(deps: ScannerDeps): Scanner {
     try { return await run(); } finally { busy = false; }
   };
   const describe = async (places: readonly PlaceInternal[], budget: Budget, tally: Tally): Promise<RealPlace[]> => {
-    const out: RealPlace[] = [];
+    const out: RealPlace[] = [], link: LinkContext = { approved: loadApprovals(deps.approvalsFile, budget, tally) };
     for (const p of places) {
       if (mustStop(budget, tally)) break;
-      const s = summarise(p, home, budget);
+      const s = summarise(p, home, budget, link);
       addTally(tally, s.tally);
       out.push(s.place);
       await yieldToLoop();
@@ -633,9 +715,10 @@ export function createScanner(deps: ScannerDeps): Scanner {
         if (!chosen.includes(p)) chosen.push(p);
       }
       const budget = makeBudget(now), tally = newTally(), reads: PlaceRead[] = [];
+      const link: LinkContext = { approved: loadApprovals(deps.approvalsFile, budget, tally) };
       for (const p of chosen) {
         if (mustStop(budget, tally)) break;
-        const r = readPlace(p, home, true, budget);
+        const r = readPlace(p, home, true, budget, link);
         addTally(tally, r.tally as Tally);
         reads.push(r);
         await yieldToLoop();

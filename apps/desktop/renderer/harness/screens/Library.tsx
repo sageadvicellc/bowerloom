@@ -17,12 +17,12 @@ import { Sheet } from '../parts/Sheet.js';
 import { Button } from '../../home/kit/Button.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon, KIND_ICON, Tile } from '../icons.js';
-import { KIND_PLURAL, WORDS, addTo, fromWords, notYetWords } from '../words.js';
+import { KIND_PLURAL, WORDS, addTo, fromWords, linkProblemWords, notYetWords } from '../words.js';
 import { PathDisclosure } from '../parts/PathDisclosure.js';
 import { fileNameOf } from '../../../shared/harness/frontmatter.js';
 import { nothingChanged } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
-import { addState, showLinkAction, unreadableHarnesses } from '../../../shared/harness/library-add.js';
+import { addState, contextEmpty, linkProblems, unreadableHarnesses } from '../../../shared/harness/library-add.js';
 import { AddSheet } from '../sheets/AddSheet.js';
 import { useSavedScan } from '../real/saved-scan.js';
 import { REAL } from '../real/words-real.js';
@@ -127,7 +127,8 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
   const needle = query.trim().toLowerCase();
   const rows = sorted(state, state.parts.filter(p => p.inLibrary && p.kind === kind && (needle === '' || `${p.name} ${p.description}`.toLowerCase().includes(needle))), mode);
   // The empty Context tab offers the one thing that fills it: link a notes folder.
-  const linkAction = showLinkAction({ kind, real, shown: rows.length, query });
+  const problems = kind === 'context' && real ? linkProblems(state) : [];
+  const empty = contextEmpty({ kind, real, shown: rows.length, query, problems: problems.length });
   const selected = rows.find(p => p.id === partId) ?? rows[0];
   const open = (next: PartKind): void => go({ name: 'library', kind: next });
   if (partId !== null && !state.parts.some(p => p.id === partId && p.inLibrary)) {
@@ -157,10 +158,11 @@ export function Library({ kind, partId }: { kind: PartKind; partId: string | nul
       <ul className="hx-rows" aria-label={KIND_PLURAL[kind]}>
         {rows.map(p => <Row key={p.id} state={state} part={p} selected={selected?.id === p.id} onPick={() => go({ name: 'library', kind, partId: p.id })} />)}
       </ul>
-      {linkAction ? (
-        <div className="hx-actions" data-library-link-empty="">
-          <p className="kit-hint hx-hint">{WORDS.hint.linkEmpty}</p>
-          <HButton icon="plus" variant="primary" data-link-notes="" onClick={() => setLinking(true)}>{WORDS.label.linkNotes}</HButton>
+      {problems.map(p => <p key={`${p.folder}|${p.reason}|${p.label}`} className="kit-hint hx-hint" role="status" data-link-problem={p.reason}>{linkProblemWords(p.folder, p.reason, p.label)}</p>)}
+      {empty !== 'none' ? (
+        <div className="hx-actions" data-library-link-empty={empty}>
+          <p className="kit-hint hx-hint">{empty === 'problem' ? WORDS.hint.linkProblemEmpty : WORDS.hint.linkEmpty}</p>
+          <HButton icon="plus" variant="primary" data-link-notes="" onClick={() => setLinking(true)}>{empty === 'problem' ? WORDS.label.linkAgain : WORDS.label.linkNotes}</HButton>
         </div>
       ) : rows.length === 0 ? <p className="kit-hint hx-hint">{WORDS.hint.libraryEmpty}</p> : null}
       {real && saved.changed ? <div className="hx-actions" data-library-stale=""><p className="kit-hint hx-hint" role="status">{WORDS.hint.libraryStale}</p><HButton icon="search" onClick={saved.readAgain}>{REAL.label.readAgain}</HButton></div> : null}

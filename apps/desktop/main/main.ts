@@ -12,6 +12,7 @@ import { registerEngineIpc } from './engine-ipc.js';
 import { registerLocalModelsIpc } from './local-models-ipc.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createScanSession } from './scan-session.js';
+import { approvalsFileOf } from './linked-approvals.js';
 import { createRecorder } from './engine-events.js';
 import { shippedKits } from './kit.js';
 import { NOTES_DIALOG } from './notes-dialog.js';
@@ -216,7 +217,7 @@ app.whenReady().then(async () => {
     // The last read is kept in the private state folder, so the next launch can show it without reading a folder (main/scan-session.ts).
     const scan = createScanSession({ home, stateRoot: engineStateRoot(home) });
     registerRealIpc({
-      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: scan.keepRead,
+      ipc: ipcMain, appIndexUrl: indexUrl, home, keepRead: scan.keepRead, approvalsFile: approvalsFileOf(engineStateRoot(home)),
       chooseFolder: async () => {
         const options: Electron.OpenDialogOptions = { title: 'Choose a folder to look in', buttonLabel: 'Look in this folder', properties: ['openDirectory'] };
         const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);

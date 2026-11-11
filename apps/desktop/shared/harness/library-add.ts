@@ -108,10 +108,23 @@ export type LinkTarget =
   | { readonly kind: 'ready'; readonly folder: FolderInfo }
   | { readonly kind: 'needs-harness'; readonly folder: FolderInfo | null }
   | { readonly kind: 'blocked'; readonly folder: FolderInfo; readonly why: string };
+/** The words when two folders carry the label of the notes: the window holds no folder id or path for the notes, so it cannot tell which one is meant, and the person picks. */
+export const LINK_WHICH_ONE = 'Which one? Several folders share that name.';
 export function linkTarget(folders: readonly FolderInfo[], notes: { readonly label: string }): LinkTarget {
-  const folder = folders.find(f => f.label === notes.label);
+  const same = folders.filter(f => f.label === notes.label);
+  if (same.length > 1) return { kind: 'blocked', folder: same[0]!, why: LINK_WHICH_ONE };
+  const folder = same[0];
   if (folder === undefined) return { kind: 'needs-harness', folder: null };
   if (!folder.hasDefinition) return { kind: 'needs-harness', folder };
   const why = whyNot(folder);
   return why === null ? { kind: 'ready', folder } : { kind: 'blocked', folder, why };
 }
+
+/** The linked notes folders the reader could not read, one row each, with the folder that links them. They show in the Context tab, so a link that does not work is never silent. */
+export interface LinkProblemRow { readonly folder: string; readonly reason: 'gone' | 'form' | 'approval' | 'unreadable' | 'limit'; readonly label: string }
+export const linkProblems = (state: HarnessState): LinkProblemRow[] =>
+  (state.harnessPlaces ?? []).flatMap(h => (h.linkProblems ?? []).map(p => ({ folder: h.label, reason: p.reason, label: p.label })));
+
+/** What the empty Context tab shows: nothing special, the action to link a first folder, or the problem of a link that does not work (shown before any action). */
+export const contextEmpty = (a: { kind: PartKind; real: boolean; shown: number; query: string; problems: number }): 'none' | 'link' | 'problem' =>
+  (!showLinkAction(a) ? 'none' : a.problems > 0 ? 'problem' : 'link');

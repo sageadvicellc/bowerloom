@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Stepper } from '../../home/kit/Stepper.js';
 import type { Answer, DefinitionView, FolderInfo, SaveEdit, SaveWritten } from '../../../shared/engine/types.js';
-import { KEEPER_EDITS, NOTES_START, folderStepLines, linkTarget, listAfter, notesTone, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor } from '../../../shared/harness/library-add.js';
+import { KEEPER_EDITS, NOTES_START, folderStepLines, linkTarget, listAfter, notesTone, copySources, keeperHeld, notesDone, notesEdits, notesRestart, skillEdits, skillHeld, targetsFor, whyNot } from '../../../shared/harness/library-add.js';
 import type { ListState, NotesChoice } from '../../../shared/harness/library-add.js';
 import type { PartKind } from '../../../shared/harness/types.js';
 import { Sheet } from '../parts/Sheet.js';
@@ -57,6 +57,8 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   // The notes step runs writes of its own (a history, a starter): while one runs, the sheet cannot be left.
   const [notesWriting, setNotesWriting] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  // The folder the person chose last that cannot take the part: the form says why, and that a harness can be started.
+  const [unusable, setUnusable] = useState<FolderInfo | null>(null);
   const [target, setTarget] = useState<DefinitionView | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [skills, setSkills] = useState<Skills | null>(null);
@@ -76,7 +78,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   const lines = folderStepLines({ list, usable: usable.length, busy, bridge: engine !== null });
   const folder = usable.find(f => f.id === picked);
   // The folder that holds the chosen notes: it gets the link when its harness loads, and starts one when it has none.
-  const target0 = linking && choice.view !== null ? linkTarget(folders, choice.view) : null;
+  const target0 = linking && choice.view !== null && list !== 'failed' ? linkTarget(folders, choice.view) : null;
 
   /** A new folder clears what was chosen for the old one. The link form keeps its notes: they are chosen first, and the folder that gets them is picked after. */
   const reset = (keepNotes = false): void => {
@@ -86,7 +88,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   // Opened, or opened for another tab: everything starts again, and the folders are listed anew.
   useEffect(() => {
     if (!open) return;
-    setStep(linking ? 'notes' : 'folder'); setFolders([]); setList('unread'); setPicked(null); reset();
+    setStep(linking ? 'notes' : 'folder'); setFolders([]); setList('unread'); setPicked(null); setUnusable(null); reset();
     readFolders();
   }, [open, kind, engine, linking]);
   // The link form picks the folder of the chosen notes for the person once it is a folder that can take them. The form still shows it.
@@ -120,7 +122,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
       // A closed chooser changes nothing: the earlier message and Try again stay. A pick returns the whole list, so it counts as a read.
       if (got === null) return;
       setFolders(got.list); setList(l => listAfter(l, 'picked'));
-      if (targetsFor(got.list).usable.some(f => f.id === got.info.id)) { setPicked(got.info.id); reset(linking); }
+      if (targetsFor(got.list).usable.some(f => f.id === got.info.id)) { setPicked(got.info.id); setUnusable(null); reset(linking); } else setUnusable(got.info);
     });
   };
   /** Next: reads the folder's harness (a plan with no edits, which writes nothing) so the form knows what it holds already. */
@@ -181,7 +183,7 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
   else if (step === 'choose') actions = <><HButton disabled={busy || held} onClick={() => back('folder')}>{W.label.back}</HButton><HButton variant="primary" data-add-review="" disabled={!canReview} onClick={planReview}>{WORDS.label.reviewChange}</HButton></>;
   else if (step === 'review') {
     const n = shown?.view.changes.length ?? 0, noop = shown?.view.noop ?? true;
-    const words = shown === null ? W.label.saved : noop ? W.label.nothingToChange : saveFilesWords(n);
+    const words = shown === null ? W.label.saved : noop ? W.label.nothingToChange : n === 0 && (shown.view.approves?.length ?? 0) > 0 ? WORDS.label.approveLink : saveFilesWords(n);
     actions = <><HButton disabled={held} onClick={() => back(linking ? 'folder' : 'choose')}>{W.label.back}</HButton><HButton variant="primary" data-write="" disabled={busy || !writable} onClick={write}>{words}</HButton></>;
   } else {
     const wrote = done !== null && done.written.length > 0;
@@ -237,10 +239,11 @@ export function AddSheet({ open, kind, link = false, onClose }: AddSheetProps): 
             )}
             {lines.tryAgain ? <p className="hxe-text" data-list-failed="">{WORDS.hint.listFailed}</p> : null}
             {lines.tryAgain ? <HButton data-try-again="" onClick={readFolders}>{W.label.tryAgain}</HButton> : null}
+            {unusable === null ? null : <p className="hxe-text" data-picked-unusable="">{whyNot(unusable) === null || !unusable.hasDefinition ? WORDS.hint.noHarnessPicked : whyNot(unusable)}</p>}
             {target0 === null || target0.kind === 'ready' ? null : (
               <p className="hxe-text" data-link-needs-harness="">{target0.kind === 'blocked' ? target0.why : target0.folder === null ? WORDS.hint.chooseAgain : WORDS.hint.needsHarness}</p>
             )}
-            {target0 === null || target0.kind !== 'needs-harness' || target0.folder === null ? null : <HButton icon="plus" variant="primary" data-link-start-harness="" disabled={busy || engine === null} onClick={startHarness}>{WORDS.label.startHarness}</HButton>}
+            {target0 === null || target0.kind !== 'needs-harness' || target0.folder === null ? null : <HButton icon="plus" variant="primary" data-link-start-harness="" disabled={busy || engine === null || list === 'failed'} onClick={startHarness}>{WORDS.label.startHarness}</HButton>}
             <HButton icon="plus" disabled={busy || engine === null} onClick={choose}>{W.label.chooseFolder}</HButton>
             {left.length === 0 ? null : (
               <section className="hxe-section" aria-label={WORDS.label.leftOut} data-section="add-left-out">

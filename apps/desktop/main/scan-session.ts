@@ -18,13 +18,14 @@ import { watchTextOf } from './real-scan.js';
 import type { WatchedPlace } from './real-scan.js';
 import { createScanCache } from './scan-cache.js';
 import type { ScanCache } from './scan-cache.js';
+import { approvalsFileOf } from './linked-approvals.js';
 
 export interface Fingerprint { readonly fingerprint: string; readonly complete: boolean }
-export type Fingerprinter = (home: string, watched: readonly WatchedPlace[], now?: () => number, budgetMs?: number) => Promise<Fingerprint>;
+export type Fingerprinter = (home: string, watched: readonly WatchedPlace[], now?: () => number, budgetMs?: number, approvalsFile?: string) => Promise<Fingerprint>;
 
 /** A SHA-256 of what the watched places look like (see `watchTextOf`). */
-export const fingerprintOf: Fingerprinter = async (home, watched, now, budgetMs) => {
-  const { text, complete } = await watchTextOf(home, watched, now, budgetMs);
+export const fingerprintOf: Fingerprinter = async (home, watched, now, budgetMs, approvalsFile) => {
+  const { text, complete } = await watchTextOf(home, watched, now, budgetMs, approvalsFile);
   return { fingerprint: createHash('sha256').update(text).digest('hex'), complete };
 };
 
@@ -58,6 +59,7 @@ const NOT_REMOVED = 'Bowerloom could not remove its older saved read.';
 export function createScanSession(deps: ScanSessionDeps): ScanSession {
   const now = deps.now ?? (() => Date.now()), cache = deps.cache ?? createScanCache({ stateRoot: deps.stateRoot }), fingerprint = deps.fingerprint ?? fingerprintOf;
   const checkBudget = deps.checkBudgetMs ?? CHECK_BUDGET_MS;
+  const approvals = approvalsFileOf(deps.stateRoot);
   /**
    * The read that is on the screen: its places and the fingerprint made before it. The launch sets it from the file it loaded and showed, and a read made in this window sets it too,
    * so the check always answers for the read the window holds and never for another file.
@@ -66,7 +68,7 @@ export function createScanSession(deps: ScanSessionDeps): ScanSession {
   return {
     keepRead: async (chosen, read) => {
       let before: Fingerprint | null = null;
-      try { before = await fingerprint(deps.home, watchedOf(chosen), now); } catch { before = null; }
+      try { before = await fingerprint(deps.home, watchedOf(chosen), now, undefined, approvals); } catch { before = null; }
       const result = await read();
       try {
         const kept = before !== null && chosen.length > 0 && cache.save({ version: SAVED_SCAN_VERSION, savedAtMs: now(), fingerprint: before.fingerprint, chosen, result });
@@ -98,7 +100,7 @@ export function createScanSession(deps: ScanSessionDeps): ScanSession {
       const read = held;
       if (read === null) return 'unchecked';
       try {
-        const current = await fingerprint(deps.home, watchedOf(read.chosen), now, checkBudget);
+        const current = await fingerprint(deps.home, watchedOf(read.chosen), now, checkBudget, approvals);
         return !current.complete ? 'unchecked' : current.fingerprint === read.fingerprint ? 'same' : 'changed';
       } catch { return 'unchecked'; }
     },

@@ -58,6 +58,7 @@ import { loadKit } from './kit.js';
 import { accountName, createShare } from './engine-bundle.js';
 import { createBundleHost } from './engine-bundle-host.js';
 import type { Kit } from './kit.js';
+import { isApproved, recordApprovals } from './linked-approvals.js';
 import type { Scrub } from '../shared/engine/scrub.js';
 import { ENGINE_IDS, isEngineId, isPreviewEngine } from '../shared/engine/engines.js';
 import { EnginePreviewRefusal } from '../../../packages/skill-manifest/src/engine.js';
@@ -79,6 +80,9 @@ import {
   stoppedSources, targetOf, targetView, versionViews, viewOf, wentBackLabel,
 } from './engine-save.js';
 import type { NotesEditDeps, SourceOf } from './engine-save.js';
+/** The warning of a save whose link approval could not be recorded. */
+const LINK_APPROVAL_NOT_KEPT = 'Bowerloom could not record your approval, so it will not read that notes folder. Link it again.';
+
 
 export interface EngineServiceDeps {
   /** The home folder. Paths below it are shown with `~`. */
@@ -575,6 +579,20 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
     },
     kit: kitNow,
   });
+  /**
+   * The linked notes folders in `~/` form that a save names and this machine has no approval for yet. `knowledge.json` can come from a cloned repository, so the reader reads such a
+   * folder only after the person approved this save for this folder and path (shared/real/linked-approvals.ts). A path that cannot be stored names nothing here: the plan refuses it.
+   */
+  const pendingLinkApprovals = (f: Folder, edits: readonly SaveEdit[]): string[] => {
+    const out: string[] = [];
+    for (const e of edits) {
+      if (e.kind !== 'set-source') continue;
+      let stored: string;
+      try { stored = notesEdits(f).sourcePath(e.notesId); } catch { continue; }
+      if (stored.startsWith('~/') && !out.includes(stored) && !isApproved(deps.stateRoot, f.dir, stored)) out.push(stored);
+    }
+    return out;
+  };
   /** Runs a notes write and records its step: done, or refused with its code. The result or the error passes through as it was. */
   const notesStep = async <T>(n: Notes, step: string, run: () => Promise<T>): Promise<T> => {
     try { const r = await run(); record({ kind: 'scenario', step, outcome: 'done' }); return r; } catch (error) {
@@ -1103,7 +1121,10 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
       const f = folderOf(id), e = checkSaveEdits(edits);
       return planned(f, 'save', () => {
         const { plan, target, def, origins } = saveNow(f, e);
-        const value: SaveView = saveView(f, plan, target, { origins, edits: e, def });
+        const made: SaveView = saveView(f, plan, target, { origins, edits: e, def });
+        // A link that needs the person's approval is a change to be written, though no file changes: the review lists it, and the write records it.
+        const approves = pendingLinkApprovals(f, e);
+        const value: SaveView = approves.length === 0 ? made : { ...made, noop: false, approves };
         // The choices hold the acknowledgement this plan asks for (null for none), so a write without it is never the plan shown.
         return { value, revision: plan.revision, choices: { edits: e, acknowledged: value.acknowledge }, ask: value.noop ? null : ASK.save(f.label, plan.changes.length, plan.revision, marksOf(value.changes)) };
       });
@@ -1120,7 +1141,12 @@ export function createEngineService(deps: EngineServiceDeps): EngineService {
         // files that can run it copies must be the ones acknowledged, too: the hash binds the plan's revision and each such file.
         const { plan, target, def, origins } = saveNow(f, e);
         if (saveView(f, plan, target, { origins, edits: e, def }).acknowledge !== request.acknowledged) throw new SaveRefusal('SAVE_STALE');
-        return saveAndKeep(f, rev, target, n => savedLabel(n));
+        const approves = pendingLinkApprovals(f, e);
+        const r = await saveAndKeep(f, rev, target, n => savedLabel(n));
+        if (approves.length === 0) return r;
+        // The save is approved, so the links it names are too. A record that cannot be written leaves the folder unread, and the person is told.
+        const kept = recordApprovals(deps.stateRoot, f.dir, approves);
+        return kept ? r : { ...r, warnings: [...(r.warnings ?? []), LINK_APPROVAL_NOT_KEPT] };
       }));
     }),
     listVersions: id => serial(async () => {

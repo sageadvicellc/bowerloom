@@ -305,6 +305,7 @@ export function sourceIdFor(key: string, used: ReadonlySet<string>): string {
 function harnessPlacesOf(result: RealResult): HarnessPlace[] {
   return (result.harnessPlaces ?? []).map(h => ({
     id: h.id, name: `${cut(plain(h.name), NAME_CHARS)} (Bowerloom)`, label: folderLabelOf(h.path), readable: h.harness.readable, engines: h.harness.engines, parts: h.harness.parts, links: h.harness.links,
+    ...(h.harness.linkProblems === undefined || h.harness.linkProblems.length === 0 ? {} : { linkProblems: h.harness.linkProblems.map(p => ({ reason: p.reason, label: plain(p.label) })) }),
   }));
 }
 

@@ -23,6 +23,8 @@ export interface RealIpcDeps {
   readonly ipc: RealIpc;
   readonly appIndexUrl: string;
   readonly home: string;
+  /** The file of this machine's approvals of linked home folders; the reader only reads it. */
+  readonly approvalsFile?: string;
   /** Opens the system folder chooser and answers the chosen folder, or null when the person closed it. */
   readonly chooseFolder: () => Promise<string | null>;
   readonly now?: () => number;
@@ -42,7 +44,7 @@ const NOT_ALLOWED = 'NOT_ALLOWED';
 
 export function registerRealIpc(deps: RealIpcDeps): Scanner {
   const now = deps.now ?? (() => Date.now());
-  const scanner = createScanner({ home: deps.home, now });
+  const scanner = createScanner({ home: deps.home, now, ...(deps.approvalsFile === undefined ? {} : { approvalsFile: deps.approvalsFile }) });
   const guarded = (channel: string, argCount: number, run: (args: unknown[]) => Promise<unknown>): void => {
     deps.ipc.handle(channel, async (event, ...args) => {
       const frame = event.senderFrame;
