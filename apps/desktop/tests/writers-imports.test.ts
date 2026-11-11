@@ -51,10 +51,10 @@ const FS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
   'main/main.ts': ['readFile'],
   'main/notes-report.ts': ['closeSync', 'constants', 'fchmodSync', 'fstatSync', 'lstatSync', 'mkdtempSync', 'openSync', 'readSync', 'realpathSync', 'rmSync', 'writeSync'],
   'main/real-fs.ts': ['closeSync', 'constants', 'fstatSync', 'lstatSync', 'opendirSync', 'openSync', 'readSync', 'realpathSync', 'statSync'],
-  'main/scan-cache.ts': ['chmodSync', 'closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readSync', 'readdirSync', 'renameSync', 'rmSync', 'unlinkSync', 'writeSync'],
   'main/run-folder.ts': ['lstatSync'],
   'main/run-logs.ts': ['constants', 'lstat', 'open', 'readdir', 'realpath'],
   'main/run-store.ts': ['chmodSync', 'closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readFileSync', 'readdirSync', 'renameSync', 'unlinkSync', 'writeSync'],
+  'main/scan-cache.ts': ['chmodSync', 'closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readSync', 'readdirSync', 'renameSync', 'rmSync', 'unlinkSync', 'writeSync'],
   'main/safe.ts': ['lstatSync', 'realpathSync'],
   'main/temp-data.mjs': ['chmodSync', 'existsSync', 'lstatSync', 'mkdtempSync', 'realpathSync', 'rmSync'],
 };
