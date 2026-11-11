@@ -3,7 +3,7 @@
  * This file mounts no screen. The harness app registers a screen mount for each id (renderer/harness/extension-mounts.tsx).
  */
 
-import type { RouteName } from '../harness/route.js';
+import type { BaseRouteName } from '../harness/route.js';
 import { checkManifest } from './manifest.js';
 import type { ExtensionManifest } from './types.js';
 
@@ -12,11 +12,11 @@ export const DEFAULT_IDS = Object.freeze(['overview', 'harnesses', 'library', 'p
 export type DefaultId = (typeof DEFAULT_IDS)[number];
 
 /**
- * The owner of every route. The type is Record<RouteName, DefaultId>, so a new member of the Route union (shared/harness/route.ts) is a type error here
+ * The owner of every route. The type is Record<BaseRouteName, DefaultId>, so a new member of the Route union (shared/harness/route.ts) is a type error here
  * until it has an owner. An extra key that is not a route is not a type error: tests/extensions-registry.test.ts catches it by comparing BASE_ROUTES with the 15 expected routes.
  * The key order is the order of the base routes.
  */
-export const ROUTE_OWNERS: Readonly<Record<RouteName, DefaultId>> = Object.freeze({
+export const ROUTE_OWNERS: Readonly<Record<BaseRouteName, DefaultId>> = Object.freeze({
   welcome: 'first-run',
   choose: 'first-run',
   read: 'first-run',
@@ -35,7 +35,7 @@ export const ROUTE_OWNERS: Readonly<Record<RouteName, DefaultId>> = Object.freez
 });
 
 /** The 15 base routes of the harness app (RouteName in shared/harness/route.ts), taken from the owner table. */
-export const BASE_ROUTES: readonly RouteName[] = Object.freeze(Object.keys(ROUTE_OWNERS) as RouteName[]);
+export const BASE_ROUTES: readonly BaseRouteName[] = Object.freeze(Object.keys(ROUTE_OWNERS) as BaseRouteName[]);
 
 const TITLES: Readonly<Record<DefaultId, string>> = Object.freeze({
   overview: 'Overview',

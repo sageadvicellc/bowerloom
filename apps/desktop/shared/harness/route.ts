@@ -27,9 +27,15 @@ export type Route =
   | { readonly name: 'compare'; readonly group: string }
   | { readonly name: 'interfaces'; readonly id?: string }
   | { readonly name: 'history' }
-  | { readonly name: 'help' };
+  | { readonly name: 'help' }
+  /** The route of the bundled Local models extension. It is not a base route: the registry owns it only while main loaded that extension (shared/extensions/defaults.ts). */
+  | { readonly name: 'local-models' };
 
 export type RouteName = Route['name'];
+/** The routes of extensions that ship in the bundle. The 15 base routes are every other name. */
+export const EXTENSION_ROUTES = Object.freeze(['local-models'] as const);
+export type ExtensionRouteName = (typeof EXTENSION_ROUTES)[number];
+export type BaseRouteName = Exclude<RouteName, ExtensionRouteName>;
 
 const under = (hash: string, base: string): boolean => hash === base || hash.startsWith(`${base}/`);
 /** True for an address that belongs to the preview, in either launch. */
@@ -79,6 +85,7 @@ export function parseRoute(hash: string): Route | null {
     case 'interfaces': return id === undefined ? { name: 'interfaces' } : { name: 'interfaces', id };
     case 'history': return { name: 'history' };
     case 'help': return { name: 'help' };
+    case 'local-models': return { name: 'local-models' };
     default: return { name: 'harnesses' };
   }
 }
@@ -89,7 +96,7 @@ const seg = (value: string): string => encodeURIComponent(value);
 export function formatRoute(route: Route, base: string = BASE): string {
   switch (route.name) {
     case 'welcome': return base;
-    case 'choose': case 'read': case 'notes': case 'overview': case 'history': case 'help': return `${base}/${route.name}`;
+    case 'choose': case 'read': case 'notes': case 'overview': case 'history': case 'help': case 'local-models': return `${base}/${route.name}`;
     case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${base}/${route.name}` : `${base}/${route.name}/${seg(route.id)}`;
     case 'builder': return `${base}/builder/${seg(route.id)}`;
     case 'file': return `${base}/file/${seg(route.partId)}`;
@@ -99,7 +106,7 @@ export function formatRoute(route: Route, base: string = BASE): string {
 }
 
 /** Which item of the navigation a route belongs to. The builder and the file view belong to the place they were opened from. */
-export type NavKey = 'overview' | 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help';
+export type NavKey = 'overview' | 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help' | 'local-models';
 export function navKeyOf(route: Route): NavKey | null {
   switch (route.name) {
     case 'overview': return 'overview';
@@ -110,6 +117,7 @@ export function navKeyOf(route: Route): NavKey | null {
     case 'interfaces': return 'interfaces';
     case 'history': return 'history';
     case 'help': return 'help';
+    case 'local-models': return 'local-models';
     default: return null;
   }
 }

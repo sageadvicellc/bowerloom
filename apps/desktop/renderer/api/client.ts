@@ -11,6 +11,7 @@ import type { EngineBridge } from '../../shared/engine/types.js';
 import { createSampleEngine } from '../../shared/engine/sample.js';
 import { LOCAL_CALLS } from '../../shared/api/local.js';
 import type { LocalBridge } from '../../shared/api/local.js';
+import { createSampleLocal } from '../../shared/local-models/sample.js';
 import { pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
@@ -53,3 +54,11 @@ export const readerCodeOf = (error: unknown): string => refusalCode(error, 'read
 export const engineCodeOf = (error: unknown): string => refusalCode(error, 'engine');
 /** The short code in an error from a local call ('NOT_ALLOWED', 'BAD_ARGUMENT'), or 'FAILED'. */
 export const localCodeOf = (error: unknown): string => refusalCode(error, 'local');
+
+/**
+ * The local calls of a page that was handed none: the in-memory sample for the sample launch, and the preload's bridge (or none) for the launch on the person's own folders.
+ * The sample is never used for the real launch.
+ */
+export function fallbackLocal(realMode: boolean): LocalBridge | null {
+  return realMode ? getApiClient().local : createSampleLocal();
+}

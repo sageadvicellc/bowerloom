@@ -27,6 +27,9 @@ import { Compare } from './screens/Compare.js';
 import { Interfaces } from './screens/Interfaces.js';
 import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
+import { LocalModels } from './local-models/LocalModels.js';
+import type { ExtensionManifest } from '../../shared/extensions/types.js';
+import { registerLoaded } from '../../shared/extensions/register.js';
 
 /** What a mount is given: the route as the page address named it (its parameters unchanged), and the launch. */
 export interface MountProps { readonly route: Route; readonly bridge: RealBridge | null; readonly realMode: boolean }
@@ -109,4 +112,25 @@ export function createScreenRegistry(): Registry<ScreenMount> {
 export function RouteScreen({ registry, ...props }: MountProps & { registry: Registry<ScreenMount> }): ReactElement {
   const found = registry.resolve(props.route.name);
   return found.found ? found.mount(props) : <RouteNotFound route={found.route} />;
+}
+
+/** The screens of bundled extensions, by extension id. An extension in the bundle that has no screen here is not registered: a manifest carries no code. */
+const BUNDLED_MOUNTS: Readonly<Record<string, ScreenMount>> = Object.freeze({
+  'local-models': ({ route }) => (route.name === 'local-models' ? <LocalModels /> : stray(route)),
+});
+
+/** The ids of the bundled extensions this build has a screen for. */
+export const BUNDLED_IDS: readonly string[] = Object.freeze(Object.keys(BUNDLED_MOUNTS));
+
+/**
+ * Registers the screen of each listed manifest that has one, and gives back the manifests that are registered (also those that were before). A manifest with no screen, or one the registry refuses
+ * (RESERVED, ROUTE_TAKEN), is left out. Calling it again with the same list changes nothing.
+ */
+export function registerBundled(registry: Registry<ScreenMount>, manifests: readonly ExtensionManifest[]): readonly ExtensionManifest[] {
+  const known = manifests.filter(m => Object.hasOwn(BUNDLED_MOUNTS, m.id));
+  const have = new Set(registry.list().map(m => m.id));
+  const fresh = known.filter(m => !have.has(m.id));
+  registerLoaded(registry, fresh, m => BUNDLED_MOUNTS[m.id]!);
+  const now = new Set(registry.list().map(m => m.id));
+  return Object.freeze(known.filter(m => now.has(m.id)));
 }

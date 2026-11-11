@@ -33,7 +33,11 @@ import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { FolderDraftProvider } from './folder-draft.js';
 import { useCloseGuard } from './close-guard.js';
-import { fallbackEngine } from '../api/client.js';
+import { fallbackEngine, fallbackLocal } from '../api/client.js';
+import type { LocalBridge } from '../../shared/api/local.js';
+import { LocalProvider, useLocal } from './local-models/local.js';
+import { LocalModelsPending } from './local-models/LocalModels.js';
+import { useBundledExtensions } from './bundled-extensions.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 
 function Overlays(): ReactElement {
@@ -55,22 +59,27 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
   const route = useRoute();
   // The title is the app's name, and carries the count of unsaved changes for main (which keeps the title bar to the name). The close guard holds the unload while there are any.
   useCloseGuard();
+  // The bundled extensions follow `listExtensions`. Until its first answer, their route waits with a plain line: a failure at launch is "not ready yet", never the not-found state.
+  const bundled = useBundledExtensions(registry, useLocal().bridge);
   if (isFirstRun(route)) return <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />;
-  return <Shell route={route} overlays={<Overlays />}><RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /></Shell>;
+  const waiting = route.name === 'local-models' && !bundled.ready;
+  return <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>{waiting ? <LocalModelsPending /> : <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />}</Shell>;
 }
 
 /**
  * `realMode` is true for the launch on the person's own folders (the default launch, the address `#app`); `real` is its read-only bridge, null when the window has none or a partial one.
  * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
  */
-export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine, registry: givenRegistry }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined; registry?: Registry<ScreenMount> }): ReactElement {
+export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine, local: givenLocal, registry: givenRegistry }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined; local?: LocalBridge | null | undefined; registry?: Registry<ScreenMount> }): ReactElement {
   // The world is made once, from the sample, dated from the clock now (the runs started 12 minutes ago). Runs that are running at the start finish by themselves after about 15 seconds.
   // On the person's own folders it starts empty, and the first read replaces it.
   const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
   useEffect(() => () => store.dispose(), [store]);
   // The adopt and install sheets: the sample answers in memory and writes nothing; real mode uses the window's engine bridge, or none (the sheets then say so). Both come from the API client.
   const [engine] = useState<EngineBridge | null>(() => (givenEngine !== undefined ? givenEngine : fallbackEngine(realMode)));
+  // The local models calls: the sample bridge in the sample launch, the preload's bridge (or none) on the person's own folders.
+  const [local] = useState<LocalBridge | null>(() => (givenLocal !== undefined ? givenLocal : fallbackLocal(realMode)));
   // The registry is the only route table. It holds the six default extensions unless a caller (a test) gives its own.
   const [registry] = useState(() => givenRegistry ?? createScreenRegistry());
-  return <HarnessProvider store={store}><EngineProvider engine={engine}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></EngineProvider></HarnessProvider>;
+  return <HarnessProvider store={store}><EngineProvider engine={engine}><LocalProvider bridge={local} sample={!realMode && local !== null}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></LocalProvider></EngineProvider></HarnessProvider>;
 }
