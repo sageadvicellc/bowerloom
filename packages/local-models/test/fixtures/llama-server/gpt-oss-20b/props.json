@@ -1,0 +1,16 @@
+{
+  "total_slots": 4,
+  "model_alias": "gpt-oss-20b/gpt-oss-20b-MXFP4.gguf",
+  "model_ftype": "MXFP4 MoE",
+  "model_path": "gpt-oss-20b/gpt-oss-20b-MXFP4.gguf",
+  "modalities": {
+    "vision": false,
+    "video": false,
+    "audio": false
+  },
+  "endpoint_slots": true,
+  "endpoint_props": false,
+  "endpoint_metrics": true,
+  "build_info": "b12110-cd959bae9",
+  "is_sleeping": false
+}

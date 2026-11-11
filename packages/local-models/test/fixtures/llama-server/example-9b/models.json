@@ -1,0 +1,17 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "example-9b/Example-9B-Q8_0.gguf",
+      "object": "model",
+      "owned_by": "llamacpp",
+      "meta": {
+        "n_ctx": 8192,
+        "n_ctx_train": 262144,
+        "n_params": 8955900928,
+        "size": 9518764032,
+        "ftype": "Q8_0"
+      }
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+/**
+ * The llama-server provider. It reads /health, /props, /slots, /metrics and /v1/models and keeps only the fields the report names. Nothing is copied by spread or by loop:
+ * each field is picked by name, checked for its type, and cleaned. A prompt, an output, a chat template, a token text or a generation setting is never read, so it cannot
+ * reach the report, the cache or a file. A model file and a model name are shown by their base name. A field the server did not give is left out, never set to 0.
+ */
+import { parsePrometheus } from '../prometheus.js';
+import { failureOf } from '../provider.js';
+import { baseName, clean } from '../text.js';
+import type { LocalModelRowNote, RowNotePath } from '../types.js';
+import type { BoundGet, GetResult, LocalModelProvider, ProviderProbe, ProviderResult } from '../provider.js';
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+type Json = Readonly<Record<string, unknown>>;
+
+const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
+const text = (value: unknown): string | undefined => (typeof value === 'string' && value !== '' ? value : undefined);
+/** A count: a whole number, zero or more. */
+const count = (value: unknown): number | undefined => (typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined);
+/** A rate: a number, zero or more, that is not infinite. */
+const rate = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined);
+
+/** The body as JSON, only for a 200 answer. Anything else gives undefined. */
+function jsonOf(result: GetResult): unknown {
+  if (!result.ok || result.status !== 200) return undefined;
+  try { return JSON.parse(result.body) as unknown; } catch { return undefined; }
+}
+
+/** A name for display: always cut to its base name, so a folder, absolute or relative, never shows. */
+function shownName(value: unknown): string | undefined {
+  const raw = text(value);
+  if (raw === undefined) return undefined;
+  const name = clean(baseName(raw));
+  return name === '' ? undefined : name;
+}
+
+function shownFile(value: unknown): string | undefined {
+  const raw = text(value);
+  if (raw === undefined) return undefined;
+  const name = clean(baseName(raw));
+  return name === '' ? undefined : name;
+}
+
+function shownText(value: unknown): string | undefined {
+  const raw = text(value);
+  return raw === undefined ? undefined : clean(raw);
+}
+
+const METRIC = {
+  peak: 'llamacpp:n_tokens_max', processing: 'llamacpp:requests_processing', deferred: 'llamacpp:requests_deferred',
+  promptRate: 'llamacpp:prompt_tokens_seconds', generationRate: 'llamacpp:predicted_tokens_seconds',
+} as const;
+
+/** Only the HTTP answers that say "this endpoint is switched off". */
+const isOff = (result: GetResult): boolean => result.ok && (result.status === 404 || result.status === 501);
+/** A read that did not work and is not a switched-off endpoint: a failure, or an answer that is neither 200 nor 404 nor 501. */
+const isLost = (result: GetResult): boolean => !result.ok || (result.status !== 200 && !isOff(result));
+
+/** A 200 answer whose body parsed to the shape asked for. A 200 that did not is a lost read, the same as a failed one. */
+const unreadable = (result: GetResult, shaped: (json: unknown) => boolean): boolean => result.ok && result.status === 200 && !shaped(jsonOf(result));
+const PROPS_KEYS = ['model_path', 'model_alias', 'total_slots', 'build_info', 'model_ftype'] as const;
+const propsShaped = (json: unknown): boolean => isObject(json) && PROPS_KEYS.some(key => key in json);
+const slotsShaped = (json: unknown): boolean => Array.isArray(json);
+const modelsShaped = (json: unknown): boolean => isObject(json) && Array.isArray(json['data']);
+
+async function probe(get: BoundGet): Promise<ProviderResult> {
+  const [health, props, slots, metrics, models] = await Promise.all([get('/health'), get('/props'), get('/slots'), get('/metrics'), get('/v1/models')]);
+
+  if (!health.ok) return failureOf(health.code);
+  const unsupported: ProviderResult = { ok: false, state: 'unsupported', reason: 'BAD_RESPONSE' };
+  const healthJson = (() => { try { return JSON.parse(health.body) as unknown; } catch { return undefined; } })();
+  if (health.status === 503) {
+    const error = isObject(healthJson) ? healthJson['error'] : undefined;
+    if (isObject(error) && error['code'] === 503) return { ok: true, rows: [{ state: 'starting', reason: 'LOADING' }], notes: [] };
+    return unsupported;
+  }
+  if (health.status !== 200 || !isObject(healthJson) || healthJson['status'] !== 'ok') return unsupported;
+
+  const row: Mutable<ProviderProbe> = { state: 'up' };
+  const notes: string[] = [];
+
+  const propsJson = jsonOf(props);
+  const props_: Json = isObject(propsJson) ? propsJson : {};
+  const modelsJson = jsonOf(models);
+  const list = isObject(modelsJson) && Array.isArray(modelsJson['data']) ? (modelsJson['data'] as readonly unknown[]) : [];
+  const first: Json = isObject(list[0]) ? list[0] : {};
+  const meta: Json = isObject(first['meta']) ? first['meta'] : {};
+  const slotsJson = jsonOf(slots);
+  const slotList: readonly Json[] = Array.isArray(slotsJson) ? (slotsJson as readonly unknown[]).filter(isObject) : [];
+
+  const name = shownName(props_['model_alias']) ?? shownName(first['id']);
+  if (name !== undefined) row.modelName = name;
+  const file = shownFile(props_['model_path']);
+  if (file !== undefined) row.modelFile = file;
+  const quantization = shownText(props_['model_ftype']) ?? shownText(meta['ftype']);
+  if (quantization !== undefined) row.quantization = quantization;
+  const parameterCount = count(meta['n_params']);
+  if (parameterCount !== undefined) row.parameterCount = parameterCount;
+  const fileBytes = count(meta['size']);
+  if (fileBytes !== undefined) row.fileBytes = fileBytes;
+  const contextSize = count(meta['n_ctx']) ?? count(slotList[0]?.['n_ctx']);
+  if (contextSize !== undefined) row.contextSize = contextSize;
+  const contextTrain = count(meta['n_ctx_train']);
+  if (contextTrain !== undefined) row.contextTrain = contextTrain;
+  const slotsTotal = count(props_['total_slots']) ?? (slotList.length > 0 ? slotList.length : undefined);
+  if (slotsTotal !== undefined) row.slotsTotal = slotsTotal;
+  const build = shownText(props_['build_info']);
+  if (build !== undefined) row.build = build;
+
+  // Each path that failed, or answered 200 with a body that is not what it should be, is named in the PARTIAL_READ note of the row.
+  const lostPaths: RowNotePath[] = [];
+  if (isLost(props) || unreadable(props, propsShaped)) lostPaths.push('/props');
+  if (isLost(slots) || unreadable(slots, slotsShaped)) lostPaths.push('/slots');
+  if (isLost(models) || unreadable(models, modelsShaped)) lostPaths.push('/v1/models');
+  if (isLost(metrics)) lostPaths.push('/metrics');
+  const rowNotes: LocalModelRowNote[] = [];
+  if (lostPaths.length > 0) { notes.push('PARTIAL_READ'); rowNotes.push({ code: 'PARTIAL_READ', paths: lostPaths }); }
+  if (isOff(metrics)) { notes.push('METRICS_OFF'); rowNotes.push({ code: 'METRICS_OFF', paths: ['/metrics'] }); }
+  else if (metrics.ok && metrics.status === 200) {
+    const found = parsePrometheus(metrics.body, Object.values(METRIC));
+    if (found.size === 0) { notes.push('METRICS_UNREADABLE'); rowNotes.push({ code: 'METRICS_UNREADABLE', paths: ['/metrics'] }); }
+    const peak = count(found.get(METRIC.peak));
+    if (peak !== undefined) row.contextUsedPeak = peak;
+    const processing = count(found.get(METRIC.processing));
+    if (processing !== undefined) row.activeRequests = processing;
+    const deferred = count(found.get(METRIC.deferred));
+    if (deferred !== undefined) row.deferredRequests = deferred;
+    const promptRate = rate(found.get(METRIC.promptRate));
+    if (promptRate !== undefined) row.promptTokensPerSecond = promptRate;
+    const generationRate = rate(found.get(METRIC.generationRate));
+    if (generationRate !== undefined) row.generationTokensPerSecond = generationRate;
+  }
+  if (rowNotes.length > 0) row.notes = rowNotes;
+  return { ok: true, rows: [row], notes };
+}
+
+export const llamaServer: LocalModelProvider = Object.freeze({ id: 'llama-server' as const, defaultPort: 8080, probe });
