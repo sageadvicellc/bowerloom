@@ -7,6 +7,7 @@ import {
   ENGINE_IDS, HARNESS_FORMAT, isDefinitionFolder, isEngineId, jsonValueFault, loadDefinition, parseStrictJson,
 } from '../../../dist/packages/harness-definition/src/index.js';
 import { FULL_PARTS, agent, cleanup, codes, fullFiles, harness, json, makeDefinition, skill } from './fixture.mjs';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 test.after(cleanup);
 
@@ -338,7 +339,7 @@ test('R3: a .bowerloom folder is a 0.8 definition only when it holds harness.jso
   assert.equal(isDefinitionFolder('/nonexistent-bowerloom-definition-folder'), false);
 });
 
-test('silent 2: a file or folder that cannot be read is a problem, not a throw', () => {
+test('silent 2: a file or folder that cannot be read is a problem, not a throw', { skip: skipAsRoot('a file and a folder at mode 000 cannot be read') }, () => {
   const dir = makeDefinition(fullFiles());
   fs.chmodSync(path.join(dir, 'scripts', 'lint.sh'), 0o000);
   let r = loadDefinition(dir);

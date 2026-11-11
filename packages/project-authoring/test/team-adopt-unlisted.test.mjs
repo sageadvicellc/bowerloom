@@ -11,6 +11,7 @@ import { withProjectLock, discoverProject } from '../../../dist/packages/project
 import { planCreate, applyCreate } from '../../../dist/packages/project-authoring/src/index.js';
 import { renderAdopt } from '../../../dist/apps/cli/src/adopt.js';
 import { canonicalJson } from '../../../dist/packages/contracts/src/index.js';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const readJson = (w, rel) => JSON.parse(fs.readFileSync(path.join(w.projectDir, rel), 'utf8'));
 const input = (w, id = 'research') => ({ project: discoverProject(w.projectDir, w.home), home: w.home, stateRoot: w.stateRoot, id });
@@ -131,7 +132,7 @@ test('H2. an unlisted adopt that failed after the copy says so, and finishes aft
   assert.equal(fs.existsSync(path.join(w.projectDir, '.bowerloom/teams/research/notes.md')), false, 'the project keeps its copy');
 });
 
-test('H2. a read error of the recovery check propagates, and TEAM_EXISTS on the unlisted path names a next step', async t => {
+test('H2. a read error of the recovery check propagates, and TEAM_EXISTS on the unlisted path names a next step', { skip: skipAsRoot('a team folder at mode 000 cannot be read') }, async t => {
   const w = await world(t);
   fs.mkdirSync(path.join(w.projectDir, '.bowerloom/teams/research'), { recursive: true });
   await assert.rejects(planAdopt(input(w)), e => e?.code === 'TEAM_EXISTS' && typeof e.next === 'string' && e.next.includes('.bowerloom/teams/research') && e.next.includes('bowerloom use team research --project'));

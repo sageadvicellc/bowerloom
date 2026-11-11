@@ -11,6 +11,7 @@ import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { smallResult } from './fixtures-real/small-result.js';
 import { writeSync as writeSyncReal } from 'node:fs';
 import { tempDir } from './support.js';
+import { skipAsRoot, skipOnCoarseFileTimes } from '../../../tests/support/machine-skips.js';
 
 const place: RealPlace = {
   id: 'place-0123456789ab', label: 'Claude Code at home', kind: 'home', apps: ['Claude Code'], appLabel: 'Claude Code', counts: { agents: 1, skills: 2, tools: 0, hooks: 0, notes: 0 }, empty: false,
@@ -113,7 +114,7 @@ test('a folder that is a link is refused for a load, and a save moves it aside a
   assert.deepEqual(readdirSync(elsewhere), ['last-read.json'], 'nothing was written through the link');
 });
 
-test('a file that is a folder, or cannot be opened, is damaged and never throws', t => {
+test('a file that is a folder, or cannot be opened, is damaged and never throws', { skip: skipAsRoot('a cache file at mode 000 cannot be opened') }, t => {
   const root = tempDir(t), cache = createScanCache({ stateRoot: root });
   mkdirSync(cachePath(root), { recursive: true });
   assert.deepEqual(cache.load(), { status: 'damaged', why: 'linked' }, 'not a plain file');
@@ -259,7 +260,7 @@ test('the saved read is checked again on its way out: a text the loader would re
   assert.equal(back.status === 'ok' ? back.scan.savedAtMs : null, 1_000, 'the cache itself leaves the old file; the caller (keepRead) removes it');
 });
 
-test('a save keeps only the newest of the folders it moved aside, and leaves everything that is not one of them', t => {
+test('a save keeps only the newest of the folders it moved aside, and leaves everything that is not one of them', { skip: skipOnCoarseFileTimes('which of several folders was made last') }, t => {
   const root = tempDir(t), cache = createScanCache({ stateRoot: root }), elsewhere = tempDir(t);
   writeFileSync(join(elsewhere, 'keep'), 'keep');
   // The oldest is a link, then three folders; the newest (by the time it was made) is the one that stays.
@@ -273,7 +274,7 @@ test('a save keeps only the newest of the folders it moved aside, and leaves eve
   assert.ok(existsSync(join(root, 'other')));
 });
 
-test('an aside entry that vanishes between the listing and the look does not stop the sweep of the others', t => {
+test('an aside entry that vanishes between the listing and the look does not stop the sweep of the others', { skip: skipOnCoarseFileTimes('which of several folders was made last') }, t => {
   const root = tempDir(t), warnings: string[] = [];
   for (const name of ['last-read.bad.aaaaaaaaaaaa', 'last-read.bad.bbbbbbbbbbbb', 'last-read.bad.cccccccccccc']) { mkdirSync(join(root, name)); writeFileSync(join(root, name, 'x'), 'x'); }
   // The listing names a folder that was removed after it was made: it is in the list and not on the disk.
@@ -284,7 +285,7 @@ test('an aside entry that vanishes between the listing and the look does not sto
   assert.ok(warnings.every(m => !m.includes(root) && !m.includes('eeeeeeeeeeee')), 'a report names no path');
 });
 
-test('an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path', t => {
+test('an aside entry that cannot be removed does not stop the sweep of the older ones, and is reported without a path', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') || skipOnCoarseFileTimes('which of several folders was made last') }, t => {
   const root = tempDir(t), warnings: string[] = [];
   // Made in this order, so aaa is the oldest, bbb the one that cannot be removed, ccc the newest (kept). The locked child is made before ccc, so it does not make bbb the newest.
   const locked = join(root, 'last-read.bad.bbbbbbbbbbbb', 'locked');

@@ -11,6 +11,7 @@ import { FAKE_SECRET, FAKE_TOKEN_IN_TEXT, buildFixture } from './fixtures-real/b
 import { fingerprint } from './fixtures-real/fingerprint.js';
 import { tempDir } from './support.js';
 import type { TestContext } from 'node:test';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 function fixture(t: TestContext): ReturnType<typeof buildFixture> {
   const f = buildFixture();
@@ -38,12 +39,18 @@ test('step one finds one place for each program under the home folder, and count
   assert.deepEqual(byLabel(d, 'Codex at home').counts, { agents: 1, skills: 1, tools: 3, hooks: 0, notes: 0 });
   assert.deepEqual(byLabel(d, 'OpenCode at home').counts, { agents: 2, skills: 1, tools: 1, hooks: 0, notes: 0 });
   assert.deepEqual(byLabel(d, 'Hermes at home').counts, { agents: 1, skills: 1, tools: 1, hooks: 0, notes: 1 });
-  assert.ok(d.couldNotRead >= 3, 'a shortcut that leads out, a name with a direction mark and a folder that will not open are counted');
   const claude = byLabel(d, 'Claude Code at home');
   assert.equal(claude.details.path, '~');
   assert.deepEqual(claude.details.folders, ['.claude', '.claude.json']);
   assert.ok(claude.details.notes.some(n => /shortcut/.test(n)), claude.details.notes.join(' | '));
   assert.equal(claude.appLabel, 'Claude Code');
+});
+
+// Split from the test above: the count of what could not be read includes the folder at mode 000, which root opens. The assertion is the same.
+test('step one counts what it could not read', { skip: skipAsRoot('a folder at mode 000 cannot be opened') }, async t => {
+  const f = fixture(t), scanner = createScanner({ home: f.home });
+  const d = await scanner.discover();
+  assert.ok(d.couldNotRead >= 3, 'a shortcut that leads out, a name with a direction mark and a folder that will not open are counted');
 });
 
 test('step one gives no file name, no text and no key value; the only paths are in the details field', async t => {
@@ -114,7 +121,7 @@ test('step two refuses an id that was not listed, a bad argument, and too many p
   const code = async (ids: unknown): Promise<string> => { try { await scanner.read(ids); return 'accepted'; } catch (e) { assert.ok(e instanceof RealRefusal); return e.code; } };
   assert.equal(await code(undefined), 'BAD_ARGUMENT'); assert.equal(await code(null), 'BAD_ARGUMENT'); assert.equal(await code('place-1'), 'BAD_ARGUMENT'); assert.equal(await code({ length: 1, 0: d.places[0]!.id }), 'BAD_ARGUMENT');
   assert.equal(await code([]), 'BAD_ARGUMENT'); assert.equal(await code([5]), 'BAD_ARGUMENT'); assert.equal(await code([{}]), 'BAD_ARGUMENT'); assert.equal(await code(['x'.repeat(100)]), 'BAD_ARGUMENT');
-  assert.equal(await code(['place-000000000000']), 'UNKNOWN_PLACE'); assert.equal(await code(['../../etc', d.places[0]!.id]), 'UNKNOWN_PLACE'); assert.equal(await code(['/etc/passwd']), 'UNKNOWN_PLACE'); assert.equal(await code([f.home]), 'BAD_ARGUMENT', 'a long path is not an id'); assert.equal(await code(['__proto__']), 'UNKNOWN_PLACE');
+  assert.equal(await code(['place-000000000000']), 'UNKNOWN_PLACE'); assert.equal(await code(['../../etc', d.places[0]!.id]), 'UNKNOWN_PLACE'); assert.equal(await code(['/etc/passwd']), 'UNKNOWN_PLACE'); assert.equal(await code([`${f.home}/${'x'.repeat(64)}`]), 'BAD_ARGUMENT', 'a long path is not an id') /* the home folder alone is under 64 characters on a short temporary folder, so a long name goes on the end */; assert.equal(await code(['__proto__']), 'UNKNOWN_PLACE');
   assert.equal(await code(Array.from({ length: REAL_LIMITS.places + 1 }, () => d.places[0]!.id)), 'TOO_MANY');
   assert.equal(await code([d.places[0]!.id, d.places[0]!.id]), 'accepted', 'a repeated id is read once');
   // A second look forgets the first list.

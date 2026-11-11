@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { INPUT_INVALID_TEXT } from '../apps/cli/src/guard-run.js';
 import { approve, denyJson, envFor, folder, guardArgs, guardMain, hookInput, put, run, sliceProject, tamperCatalog } from './support/slice-project.js';
 import { safeReference } from '../apps/cli/src/guard-view.js';
+import { skipOnReusedFolderIdentity } from './support/machine-skips.js';
 
 const tree = (dir: string): string => JSON.stringify(readdirSync(dir, { recursive: true }).map(String).sort().map(rel => { const s = lstatSync(join(dir, rel)); return [rel, s.isFile() ? createHash('sha256').update(readFileSync(join(dir, rel))).digest('hex') : 'dir']; }));
 const guard = (p: { dir: string; home: string }, args: string[], input: string, env?: NodeJS.ProcessEnv) => run(p.dir, args, p.home, { input, ...(env ? { env } : {}) }, guardMain);
@@ -242,7 +243,7 @@ test('B4. a folder record that is gone or points elsewhere denies every call wit
   writeFileSync(record, saved, { mode: 0o644 }); assert.equal(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, '', 'the record put back');
   writeFileSync(record, '{"format":"x"}\n', { mode: 0o644 }); assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, ROOT, 'an invalid record');
 });
-test('B5. a registered folder replaced by a new folder at the same path denies every call with GUARD_ROOT_MISSING', t => {
+test('B5. a registered folder replaced by a new folder at the same path denies every call with GUARD_ROOT_MISSING', { skip: skipOnReusedFolderIdentity('a registered folder replaced by a new folder from the one it replaced') }, t => {
   const p = registered(t), args = guardArgs(p);
   cpSync(join(p.kb!, 'wiki'), join(p.home, 'copy'), { recursive: true }); rmSync(join(p.kb!, 'wiki'), { recursive: true }); cpSync(join(p.home, 'copy'), join(p.kb!, 'wiki'), { recursive: true });
   assert.match(guard(p, args, read(outside(p, 'wiki/a.md'), p.dir)).stdout, /the folder of slice wiki cannot be found, or it changed since apply/);

@@ -23,6 +23,7 @@ import { FAKE_TOKEN_IN_TEXT } from './fixtures-real/build.js';
 import { fingerprint } from './fixtures-real/fingerprint.js';
 import { OUTSIDE_MARKER, SCRATCH_FILES, buildToolHomes } from './fixtures-real/tool-homes.js';
 import { tempDir } from './support.js';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 const put = (file: string, text = 'x\n'): void => { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, text); };
 const budget = () => makeBudget(() => 0);
@@ -35,7 +36,7 @@ const isSkillFolder = (names: readonly string[]): boolean => names.some(n => n.t
 
 // ---------------------------------------------------------------------------------------------------------------------- the walk: allowlist, leaf, truncated
 
-test('rootDirs: only the named top-level folders are entered (any case), top-level files still count, and a folder left out is neither listed nor flagged', t => {
+test('rootDirs: only the named top-level folders are entered (any case), top-level files still count, and a folder left out is neither listed nor flagged', { skip: skipAsRoot('a folder at mode 000 cannot be opened') }, t => {
   const dir = tempDir(t);
   put(join(dir, 'Agents', 'a.md')); put(join(dir, 'skills', 's', 'b.md')); put(join(dir, 'top.md')); put(join(dir, 'jobs', 'x', 'c.md'));
   put(join(dir, 'other', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h.md'));
@@ -126,7 +127,7 @@ test('a broken link is counted by itself, named, and not counted as a thing that
   assert.equal(couldNotRead(tally), 1, 'it is one of the things the person is told were not read');
 });
 
-test('a link that leads outside, a folder that will not open, a file over 2 MB and a file that is not text are named too; five names at most, each one plain line of at most 80 characters', t => {
+test('a link that leads outside, a folder that will not open, a file over 2 MB and a file that is not text are named too; five names at most, each one plain line of at most 80 characters', { skip: skipAsRoot('a folder at mode 000 cannot be opened') }, t => {
   const dir = tempDir(t), outside = tempDir(t, 'bowerloom-outside-');
   put(join(outside, 'x.md'));
   for (let i = 0; i < 7; i += 1) symlinkSync(join(outside, 'x.md'), join(dir, `out-${i}.md`));

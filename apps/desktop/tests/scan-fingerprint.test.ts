@@ -13,6 +13,7 @@ import { buildFixture } from './fixtures-real/build.js';
 import type { Fixture } from './fixtures-real/build.js';
 import { tempDir } from './support.js';
 import type { TestContext } from 'node:test';
+import { skipAsRoot } from '../../../tests/support/machine-skips.js';
 
 const fixture = (t: TestContext): Fixture => { const f = buildFixture(); t.after(() => f.cleanup()); return f; };
 const watchOf = (places: readonly RealPlace[]): WatchedPlace[] => places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
@@ -225,7 +226,7 @@ test('the fingerprint holds no name, no path and no text of the folders', async 
   assert.doesNotMatch((await fingerprintOf(other, watchOf(found))).fingerprint, /secret/);
 });
 
-test('a parent folder that cannot be listed cannot be told apart from its neighbours, so the check says it is not complete', async t => {
+test('a parent folder that cannot be listed cannot be told apart from its neighbours, so the check says it is not complete', { skip: skipAsRoot('a parent folder at mode 311 cannot be listed') }, async t => {
   const f = fixture(t), parent = join(f.home, 'pk', 'perm'), dir = join(parent, 'child');
   put(join(dir, '.claude', 'skills', 'one', 'SKILL.md'), '---\nname: One\n---\n');
   const found = (await createScanner({ home: f.home }).addFolder(dir)).places.filter(p => p.kind === 'picked');

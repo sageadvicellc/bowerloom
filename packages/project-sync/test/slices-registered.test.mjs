@@ -272,7 +272,7 @@ test('N5. a project root slice has no copy note and no tracked-skills warning', 
 });
 test('S6. a folder replaced at the same path plans root changed, with the same members', async t => {
   const { f, kb } = await registeredProject(t); await applied(f, ['claude-code']);
-  fs.cpSync(kb.wiki, kb.wiki + '-copy', { recursive: true }); fs.rmSync(kb.wiki, { recursive: true }); fs.cpSync(kb.wiki + '-copy', kb.wiki, { recursive: true });
+  fs.cpSync(kb.wiki, kb.wiki + '-copy', { recursive: true }); fs.renameSync(kb.wiki, kb.wiki + '-old'); fs.cpSync(kb.wiki + '-copy', kb.wiki, { recursive: true }); // the old folder stays, so its inode cannot be reused
   const p = await plan(f, ['claude-code']), s = slice(p);
   assert.deepEqual([s.action, s.changes.rootChanged, s.changes.added, s.changes.gone], ['update', true, 0, 0]); assert.match(review(p), /\(0 added, 0 gone, 0 summaries changed, root changed\)$/m);
 });

@@ -13,6 +13,8 @@ import { STARTUP_CLOCK, startupCopy, startupHr, StartupDeadline, assertStartupPr
 import { readDarwinBootSession } from '../../mcp-connections/src/darwin-boot-session.js';
 import { startGuardian } from '../src/supervisor.js';
 import { MODEL_ROUTE } from '../src/policy.js';
+// The startup guardian binds the macOS boot session (readDarwinBootSession). On any other platform it refuses: STARTUP_VALIDATION or MCP_GUARDIAN_BOOT_UNKNOWN.
+const needsMacOS=process.platform!=='darwin'&&'macOS only: the startup guardian reads the macOS boot session and refuses every other platform';
 const hash=(v:Buffer|string)=>createHash('sha256').update(v).digest('hex');
 function authorization(wall=1000,hr=1000000n):StartupAuthorization {
  const value:StartupAuthorization={format:'bowerloom/codex-startup/v1',clock:STARTUP_CLOCK,runtime:{executable:process.execPath,sha256:'a'.repeat(64),nodeVersion:'v24.11.0',uvVersion:'1.51.0',platform:'darwin',arch:'arm64'},
@@ -53,11 +55,11 @@ async function direct(cwd:string,change:(packet:any)=>void,duplicate=false){
  const messages:any[]=[];child.on('message',m=>messages.push(m));const closed=once(child,'close');child.send(packet);if(duplicate)child.send(packet);
  await closed;return messages;
 }
-test('real private guardian accepts one correctly bound synthetic Node fixture and verifies its acknowledgment',()=>fixture(async cwd=>{
+test('real private guardian accepts one correctly bound synthetic Node fixture and verifies its acknowledgment',{skip:needsMacOS},()=>fixture(async cwd=>{
  const startup=await actualAuthorization();let output='';const p=await startGuardian({...job(cwd,'process.stdin.on("data",d=>process.stdout.write(d));process.stdin.on("end",()=>process.exit(0));'),startup},new AbortController().signal,(_,b)=>output+=b.toString());
  p.write('synthetic prompt');p.end();const done=await p.done;assert.equal(done.code,0);assert.equal(done.reason,null);assert.equal(done.leaderReaped,true);assert.equal(done.groupGone,true);assert.equal(output,'synthetic prompt');
 }));
-test('real guardian refuses expired, future-parent, wrong runtime/boot, tampered and duplicate startup before fixture spawn',()=>fixture(async cwd=>{
+test('real guardian refuses expired, future-parent, wrong runtime/boot, tampered and duplicate startup before fixture spawn',{skip:needsMacOS},()=>fixture(async cwd=>{
  const changes=[
   (p:any)=>{p.startup.admission.parentWallMs-=20000;p.startup.admission.claimedAtMs-=20000;p.startup.admission.notAfterWallMs-=20000;},
   (p:any)=>{p.startup.admission.parentHrNs=String(process.hrtime.bigint()+5000000000n);},
@@ -71,13 +73,13 @@ test('real guardian refuses expired, future-parent, wrong runtime/boot, tampered
  }
  const messages=await direct(cwd,()=>{},true);assert.equal(messages.some(m=>m.type==='started'),false);assert.ok(messages.some(m=>m.type==='done'&&m.groupCheckStatus==='no-child'));
 }));
-test('controlled guardian rejects changed prompt and still reaps only its owned child',()=>fixture(async cwd=>{
+test('controlled guardian rejects changed prompt and still reaps only its owned child',{skip:needsMacOS},()=>fixture(async cwd=>{
  const startup=await actualAuthorization();const p=await startGuardian({...job(cwd,'setInterval(()=>{},1000)'),startup},new AbortController().signal,()=>{});
  p.write('different prompt');const done=await p.done;assert.equal(done.reason,'GUARDIAN_PROTOCOL');assert.equal(done.leaderReaped,true);assert.equal(done.groupGone,true);
 }));
 
 
-test('supervisor refuses a missing or mismatched controlled started acknowledgment and cleans its guardian',async t=>{
+test('supervisor refuses a missing or mismatched controlled started acknowledgment and cleans its guardian',{skip:needsMacOS},async t=>{
  for(const digest of [undefined,'0'.repeat(64),'late']){
   const signals:string[]=[];let fake:any;
   t.mock.method(childProcess,'fork',()=>{
@@ -114,7 +116,7 @@ test('final transfer carries latest parent samples without renewing deadlines or
  startupPacket({type:'start-v2',job,startup:transfer,bootSession,bindingDigest});
  parent.close();assert.throws(()=>parent.transferSnapshot());
 });
-test('supervisor sends final post-fork parent sample and binds that exact transferred snapshot',async t=>{
+test('supervisor sends final post-fork parent sample and binds that exact transferred snapshot',{skip:needsMacOS},async t=>{
  const original=await actualAuthorization(),wall=Date.now()+1000;let fake:any,captured:any;
  t.mock.method(childProcess,'fork',()=>{
   t.mock.method(Date,'now',()=>wall);

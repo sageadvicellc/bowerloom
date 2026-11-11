@@ -43,7 +43,8 @@ test('the worker file of export and import loads and answers from inside an asar
   const asar = require('@electron/asar') as { createPackage(src: string, dest: string): Promise<void> };
   const archive = join(work, 'app.asar');
   await asar.createPackage(app, archive);
-  const started = await electronLauncher.launch({ args: [archive], env: { PATH: process.env.PATH ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1', HOME: work } });
+  // DISPLAY and XAUTHORITY go through because a screen that is not the desktop (a virtual one, in the sandbox) needs them; macOS has neither, so nothing changes there.
+  const started = await electronLauncher.launch({ args: [archive], env: { PATH: process.env.PATH ?? '', ELECTRON_DISABLE_SECURITY_WARNINGS: '1', HOME: work, ...Object.fromEntries(['DISPLAY', 'XAUTHORITY'].flatMap(name => (process.env[name] === undefined ? [] : [[name, process.env[name]!]]))) } });
   try {
     const answer = await started.evaluate(async () => {
       const g = globalThis as unknown as { __asarAnswer?: unknown };

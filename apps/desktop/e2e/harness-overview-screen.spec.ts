@@ -89,12 +89,10 @@ test('one header is the tab stop and "Skip to the parts" is the first control', 
 test('the name of a place button begins with the words on it (Label in Name)', async () => {
   const p = page();
   const buttons = p.locator('[data-choose-folder], [data-open-builder]');
-  const n = await buttons.count();
-  expect(n).toBeGreaterThan(0);
-  for (let i = 0; i < n; i += 1) {
-    const { text, name } = await buttons.nth(i).evaluate(el => ({ text: (el.textContent ?? '').trim(), name: el.getAttribute('aria-label') ?? '' }));
-    expect(name.startsWith(text), `${name} / ${text}`).toBe(true);
-  }
+  // One look at every button at once. Counting them first and reading them one by one failed on a slow screen when a view was still drawing between the two.
+  const names = await buttons.evaluateAll(els => els.map(el => ({ text: (el.textContent ?? '').trim(), name: el.getAttribute('aria-label') ?? '' })));
+  expect(names.length).toBeGreaterThan(0);
+  for (const { text, name } of names) expect(name.startsWith(text), `${name} / ${text}`).toBe(true);
   // Some sample places are in Bowerloom, so the sample shows "Open in builder" too.
   await p.getByRole('radio', { name: 'List view' }).click();
   expect(await p.locator('[data-open-builder]').count()).toBeGreaterThan(0);

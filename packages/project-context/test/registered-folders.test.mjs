@@ -14,6 +14,7 @@ import {
 } from '../../../dist/packages/project-context/src/registered-folders.js';
 import { syncBuiltinESMExports } from 'node:module';
 import { inspectStoreWith } from '../../../dist/packages/project-context/src/store.js';
+import { skipOnReusedFolderIdentity } from '../../../dist/tests/support/machine-skips.js';
 
 const code = expected => error => { if (error?.code !== expected) throw new Error(`expected ${expected}, got ${error?.code ?? error} ${error?.message ?? ''}`); return true; };
 const signal = () => new AbortController().signal;
@@ -241,7 +242,7 @@ test('22. the plan revision binds the store, the folders list, the path, and the
   await w.add('x', '~/other'); const b = planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks); assert.equal(b.storeCreate, false); assert.notEqual(b.revision, a.revision);
   await w.add('y', '~/other'); assert.notEqual(planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks).revision, b.revision, 'the names in folders');
 });
-test('23. folder add refuses STALE_APPROVAL, and writes nothing, when the folder was replaced after the plan', async t => {
+test('23. folder add refuses STALE_APPROVAL, and writes nothing, when the folder was replaced after the plan', { skip: skipOnReusedFolderIdentity('a replaced folder from the one it replaced') }, async t => {
   const w = world(t); w.make('kb'); const plan = planFolderAddWith(w.home, w.home, 'kb', '~/kb', w.hooks);
   fs.rmSync(path.join(w.home, 'kb'), { recursive: true }); fs.mkdirSync(path.join(w.home, 'kb'), { mode: 0o755 });
   await assert.rejects(applyFolderAddWith(w.home, w.home, 'kb', '~/kb', plan.revision, signal(), w.hooks), code('STALE_APPROVAL'));
@@ -352,7 +353,7 @@ test('35. folder deny removes the grant, and a project without a grant cannot de
   assert.equal(resolveRegisteredFolderWith(w.home, 'kb', w.access, w.hooks).code, 'FOLDER_NOT_ALLOWED');
   assert.throws(() => planFolderDenyWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_NOT_ALLOWED'));
 });
-test('36. folder allow refuses an unknown name, a folder that is gone or unsafe, and a stale plan', async t => {
+test('36. folder allow refuses an unknown name, a folder that is gone or unsafe, and a stale plan', { skip: skipOnReusedFolderIdentity('a replaced folder from the one it replaced') }, async t => {
   const w = world(t); w.make('kb');
   assert.throws(() => planFolderAllowWith(w.home, w.project, 'kb', w.hooks), code('FOLDER_NOT_FOUND'));
   await w.add('kb', '~/kb');
