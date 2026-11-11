@@ -379,9 +379,9 @@ A skipped test is not a passed test, and the run cannot see a skip that a later 
 |---|---|---|
 | `root-test` | 222 | 212 skipped in the last full run, 10 more for the guardian tests that passed only by refusal, and 1 for the item-sources test split off for root, less 1 for the bundle test that now runs as root. |
 | `desktop-test` | 18 | 20 skipped in the last full run, less 1 for `real-map` and 1 for `real-scan`, which now run as root. |
-| `desktop-e2e` | 27 | 27 skipped in the last full run. |
+| `desktop-e2e` | 29 | 27 skipped in an earlier full run, plus the 2 close-guard specs that now skip off macOS, because the app quits when its last window closes there. Measured: 29. |
 
-These ceilings were worked out from the counts, and they have not been measured in a run. If the first full run reports more, check why, and raise the number only when the extra skips are right.
+A full run on 2026-11-11 measured 216 root, 18 desktop and 29 end-to-end skips, all at or under these ceilings. If a later run reports more, check why, and raise the number only when the extra skips are right.
 
 To raise a ceiling, change the number in `skip-ceilings.json` and the count in this doc in the same pull request, and say why in the pull request. To lower one, do the same when tests stop skipping.
 
