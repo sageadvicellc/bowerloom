@@ -10,15 +10,17 @@ npm run sandbox:test
 
 The command is close to a gate, and it is not one yet. It can still exit 1 when a test fails by chance. Do not use the exit code as a release gate until the last item below is settled.
 
-The last full run of `npm run sandbox:test` was on 2026-11-10, on the source of commit `265c170b`. It exited 1:
+The last full run of `npm run sandbox:test` was on 2026-11-11, on the source of commit `865f96a6`, with the release branch merged in:
 
 - Root typecheck and desktop typecheck passed.
-- Root tests: 6078 tests, 5860 passed, 2 failed, 210 skipped, 6 todo.
-- Desktop unit tests: 1980 tests, 1960 passed, 0 failed, 20 skipped.
-- Desktop end-to-end tests: 303 tests, 275 passed, 1 failed, 27 skipped.
+- Root tests: 5839 passed, 0 failed, 216 skipped.
+- Desktop unit tests: 2029 passed, 0 failed, 18 skipped.
+- Desktop end-to-end tests: 303 tests, 274 passed, 0 failed, 29 skipped.
 - The four machine-dependent tests all passed, as root.
 
-The two root failures were B5 of the context guard, which needs a new folder identity, and the lock race test, which met one lock slot collision in 600 tries. B5 and one more test of the same cause now skip on a file system that reuses folder identity. After that, the root tests ran twice more as root in the same image, in the same container limits. Both runs had 6078 tests, 5860 passed, 0 failed and 212 skipped. Those two runs did not go through the script. A second full run through the script did not start: the build failed because the disk of the host was full.
+That run exited 1 only because the end-to-end step skipped 29 tests against a ceiling of 27. The two extra skips are the close-guard specs, which cannot run off macOS. The ceiling is now 29, with the reason under "Skip ceilings".
+
+Earlier runs on 2026-11-10 and 2026-11-11 failed on tests that fail by chance in the container: the lock race test (one lock slot collision in 600 tries), tests that need a new folder identity or distinct times on sibling folders, and close-guard specs that read the app after it quits. Each now passes or skips with its reason in the tables below. The lock race test still fails by chance, and the last item below covers it.
 
 ## What runs
 
@@ -144,7 +146,7 @@ Each failing test was sorted by cause. Two checks told root causes from the rest
 | A fixture that depended on the machine | 1 | 1 | 0 | Fixed. A preload now waits for its output to drain. A test input is now really long. |
 | The sandbox renamed Electron's binary, so every app counted as packaged | 0 | 0 | 4 | Fixed in the Dockerfile. |
 | A hidden window under X11 gets no frames, so a screenshot, the wheel and hover never finish | 0 | 0 | 3 | The sandbox shows the windows on its own virtual screen. |
-| Specs that need macOS: the native Quit action, and the app staying alive with no window | 0 | 0 | 4 | The specs skip off macOS, with a reason. |
+| Specs that need macOS: the native Quit action, the app staying alive with no window, and the close guard after the last window closes | 0 | 0 | 6 | The specs skip off macOS, with a reason. |
 | Specs that read the page before it was drawn, or passed no screen to Electron | 0 | 0 | 4 | Fixed in the specs. No assertion changed. |
 
 The totals are 140, 17 and 15. Nothing was deleted. No assertion changed to make a test pass. Where a test skips, the test body is as it was.
