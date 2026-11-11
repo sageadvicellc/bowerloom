@@ -45,8 +45,8 @@ const MAIN_POLICY: Policy = {
   modules: { 'node:fs': FS_READ, 'node:path': '*', 'node:url': ['fileURLToPath'] },
 };
 const PRELOAD_POLICY: Policy = {
-  // The bridge also names the calls of the adopt and install sheets (shared/engine/types.ts) and the two local calls (shared/api/local.ts): names and channels only, no code that runs.
-  allowFile: rel => SHARED_REAL(rel) || /^preload\/real-[\w-]+\.ts$/.test(rel) || rel === 'shared/engine/types.ts' || rel === 'shared/api/local.ts',
+  // The bridge also names the calls of the adopt and install sheets (shared/engine/types.ts) and the two local calls (shared/api/local.ts) and the five runs calls (shared/api/runs.ts): names and channels only, no code that runs.
+  allowFile: rel => SHARED_REAL(rel) || /^preload\/real-[\w-]+\.ts$/.test(rel) || rel === 'shared/engine/types.ts' || rel === 'shared/api/local.ts' || rel === 'shared/api/runs.ts',
   deadOk: {},
   modules: { electron: ['contextBridge', 'ipcRenderer'] },
 };
@@ -332,7 +332,9 @@ test('usableHome accepts an absolute folder only', () => {
 
 test('the bridge file exposes the reader\'s object with exactly three functions and the sheets\' object with one function per engine call, each sending on its own channel, and nothing generic', () => {
   const code = strip(read('preload/real-preload.ts')).replace(/^import .*$/gm, '');
-  assert.equal([...code.matchAll(/exposeInMainWorld\(/g)].length, 3);
+  assert.equal([...code.matchAll(/exposeInMainWorld\(/g)].length, 4);
+  assert.match(code, /exposeInMainWorld\('bowerloomRuns', Object\.freeze\(runs as unknown as RunsBridge\)\)/);
+  assert.match(code, /for \(const call of RUN_CALLS\) runs\[call\] = \(\.\.\.args: unknown\[\]\) => ipcRenderer\.invoke\(RUN_CHANNELS\[call\], \.\.\.args\.slice\(0, RUN_ARITY\[call\]\)\)/, 'a runs call sends no more arguments than its count');
   assert.match(code, /exposeInMainWorld\('bowerloomLocal', Object\.freeze\(local as unknown as LocalBridge\)\)/);
   assert.match(code, /for \(const call of LOCAL_CALLS\) local\[call\] = \(\) => ipcRenderer\.invoke\(LOCAL_CHANNELS\[call\]\)/, 'a local call sends no argument');
   assert.match(code, /exposeInMainWorld\('bowerloomEngine', Object\.freeze\(engine as unknown as EngineBridge\)\)/);
@@ -341,7 +343,7 @@ test('the bridge file exposes the reader\'s object with exactly three functions 
   const start = code.indexOf('const api: RealBridge = {'), body = code.slice(start, code.indexOf('\n};', start));
   for (const call of REAL_CALLS) assert.match(body, new RegExp(`${call}: .*ipcRenderer\\.invoke\\(REAL_CHANNELS\\.${call}`), call);
   assert.equal([...body.matchAll(/^ {2}(\w+):/gm)].length, 3, 'three properties');
-  assert.deepEqual([...code.matchAll(/ipcRenderer\.(\w+)/g)].map(m => m[1]), ['invoke', 'invoke', 'invoke', 'invoke', 'invoke']);
+  assert.deepEqual([...code.matchAll(/ipcRenderer\.(\w+)/g)].map(m => m[1]), ['invoke', 'invoke', 'invoke', 'invoke', 'invoke', 'invoke']);
   assert.doesNotMatch(code, /ipcRenderer\s*[,}]|exposeInMainWorld\('[^']+',\s*ipcRenderer|require\(|process\.|\.on\(|\.send\w*\(|webFrame|shell|clipboard|remote/);
 });
 

@@ -24,6 +24,9 @@ import { Library } from './screens/Library.js';
 import { Projects } from './screens/Projects.js';
 import { Runs } from './screens/Runs.js';
 import { Compare } from './screens/Compare.js';
+import { RunsReal } from './runs-real/RunsReal.js';
+import { CompareReal } from './runs-real/CompareReal.js';
+import { useHarnessState } from './session.js';
 import { Interfaces } from './screens/Interfaces.js';
 import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
@@ -71,11 +74,15 @@ function harnesses({ route }: MountProps): ReactElement {
   }
 }
 
+/** Runs and Compare: the made-up runs of the store in the sample, and the person's recorded runs from main (the runs bridge) on their own folders. */
+function RunsRoute({ id }: { id: string | null }): ReactElement { return useHarnessState().real === undefined ? <Runs id={id} /> : <RunsReal id={id} />; }
+function CompareRoute({ group }: { group: string }): ReactElement { return useHarnessState().real === undefined ? <Compare group={group} /> : <CompareReal group={group} />; }
+
 function projects({ route }: MountProps): ReactElement {
   switch (route.name) {
     case 'projects': return <Projects id={route.id ?? null} />;
-    case 'runs': return <Runs id={route.id ?? null} />;
-    case 'compare': return <Compare group={route.group} />;
+    case 'runs': return <RunsRoute id={route.id ?? null} />;
+    case 'compare': return <CompareRoute group={route.group} />;
     default: return stray(route);
   }
 }

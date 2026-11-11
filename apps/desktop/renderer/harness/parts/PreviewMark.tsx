@@ -42,8 +42,13 @@ export function PreviewMark({ rail }: { rail: boolean }): ReactElement {
         <div className="kit-popover hx-preview-pop" id={id} role="group" aria-label={aboutName} data-budget="popover" data-leaving={shown.leaving ? '' : undefined}>
           <p>{real ? REAL.paragraph.betaAbout : WORDS.paragraph.previewAbout}</p>
           {real ? null : <p>{WORDS.paragraph.previewFull}</p>}
-          <h3 className="hx-pop-head">{real ? REAL.label.notInBeta : WORDS.label.previewNot}</h3>
-          <ul className="hx-pop-list" data-real={real ? '' : undefined}>{(real ? REAL.notInBeta : WORDS.notInPreview).map(line => <li key={line}>{line}</li>)}</ul>
+          {/* The list on the person's own folders is empty since beta.2: a heading over no list would say there is something missing. */}
+          {(real ? REAL.notInBeta : WORDS.notInPreview).length === 0 ? null : (
+            <>
+              <h3 className="hx-pop-head">{real ? REAL.label.notInBeta : WORDS.label.previewNot}</h3>
+              <ul className="hx-pop-list" data-real={real ? '' : undefined}>{(real ? REAL.notInBeta : WORDS.notInPreview).map(line => <li key={line}>{line}</li>)}</ul>
+            </>
+          )}
         </div>
       ) : null}
     </span>

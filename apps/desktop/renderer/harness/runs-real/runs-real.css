@@ -1,0 +1,13 @@
+/* Runs and Compare on the person's own folders (beta.2). Every rule starts at [data-home]. The rows, groups and columns are those of the sample screens (runs.css, compare.css); these rules add the figures and the form. */
+[data-home] .hrr-figures { display: flex; flex-direction: column; gap: var(--hm-space-2); }
+[data-home] .hrr-figures .hx-text { margin: 0; }
+[data-home] .hrr-rows { display: flex; flex-direction: column; gap: var(--hm-space-2); margin: 0; }
+[data-home] .hrr-row { display: flex; justify-content: space-between; gap: var(--hm-space-3); font-size: var(--hm-text-base); line-height: 1.4; }
+[data-home] .hrr-row dt { color: var(--text-muted); }
+[data-home] .hrr-row dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+[data-home] .hrr-row dd[data-unread] { color: var(--text-muted); }
+[data-home] .hrr-field { display: flex; flex-direction: column; gap: var(--hm-space-2); margin-bottom: var(--hm-space-4); }
+[data-home] .hrr-label { font-size: var(--hm-text-base); font-weight: 600; line-height: 1.4; }
+[data-home] .hrr-control { box-sizing: border-box; width: 100%; padding: var(--hm-space-3); font: inherit; font-size: var(--hm-text-base); line-height: 1.45; color: var(--text); background: var(--surface); border: 1px solid var(--hm-border); border-radius: var(--hm-radius-small); }
+[data-home] .hrr-control:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+[data-home] .hrr-recorded { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hm-space-3); margin: var(--hm-space-2) 0 0; }

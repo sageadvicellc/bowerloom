@@ -1,7 +1,7 @@
 /**
  * Runs (route `runs`, with the optional id) on the sample launch (--sample), as it behaves at the base: three sample runs, two of one instruction in a group with "Open compare"; picking a run fills the details
  * column; "Bring window to the front" does nothing and says so; the search filters; an id that is not here shows a named empty state. Compare has its own spec (harness-compare). Route-to-spec matrix row: runs, sample mode only
- * (Runs has no real mode at the base).
+ * (Runs on the person's own folders has its own spec, harness-runs-real).
  */
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -73,4 +73,11 @@ test('a run id that is not here shows the named empty state with a way back to R
   await expect(p.locator('[data-run]')).toHaveCount(0);
   await p.locator('[data-screen="runs"]').getByRole('button', { name: 'Runs', exact: true }).click();
   await expect(p.locator('[data-run]')).toHaveCount(3);
+});
+
+test('the sample Runs screen is saved as a picture of the screen, with the three made-up runs', async ({}, testInfo) => {
+  const p = page();
+  await fresh(p, '#sample/runs');
+  await expect(p.locator('[data-run]')).toHaveCount(3);
+  await p.screenshot({ path: testInfo.outputPath('runs-screen.png'), scale: 'css' });
 });

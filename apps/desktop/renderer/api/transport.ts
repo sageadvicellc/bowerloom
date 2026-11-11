@@ -1,21 +1,22 @@
 /**
- * The transport of the page: the one file that reads `bowerloomReal`, `bowerloomEngine` and `bowerloomLocal` from the window by name. The real-mode preload puts them there and nowhere else.
+ * The transport of the page: the one file that reads `bowerloomReal`, `bowerloomEngine`, `bowerloomLocal` and `bowerloomRuns` from the window by name. The real-mode preload puts them there and nowhere else.
  * In the sample launch and in any other window they are missing. This file only hands back what it finds, unchecked. renderer/api/client.ts checks it.
  * It also reads the one attribute main puts on the body of the sample launch (shared/engine/sample-switch.ts), because it is the one file that reads the page.
  */
 import { SAMPLE_PREVIEW_ATTRIBUTE } from '../../shared/engine/sample-switch.js';
 
-/** What the window holds under the three names, as found. */
+/** What the window holds under the four names, as found. */
 export interface RawBridges {
   readonly reader: unknown;
   readonly engine: unknown;
   readonly local?: unknown;
+  readonly runs?: unknown;
 }
 
 /** The bridges of this window, or undefined for each one that is missing. */
 export function pageTransport(): RawBridges {
-  const found = typeof window === 'undefined' ? undefined : (window as unknown as { bowerloomReal?: unknown; bowerloomEngine?: unknown; bowerloomLocal?: unknown });
-  return { reader: found?.bowerloomReal, engine: found?.bowerloomEngine, local: found?.bowerloomLocal };
+  const found = typeof window === 'undefined' ? undefined : (window as unknown as { bowerloomReal?: unknown; bowerloomEngine?: unknown; bowerloomLocal?: unknown; bowerloomRuns?: unknown });
+  return { reader: found?.bowerloomReal, engine: found?.bowerloomEngine, local: found?.bowerloomLocal, runs: found?.bowerloomRuns };
 }
 
 /** Whether main marked this page as the sample launch with the preview engines locked. Read once, to make the sample engine. */

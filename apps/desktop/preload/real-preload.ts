@@ -1,8 +1,8 @@
 /**
- * The bridge of the real-setup reader: three named calls, the calls of the adopt and install sheets (shared/engine/types.ts), and the two read-only calls of the local models report and the extension list (shared/api/local.ts), which the main
+ * The bridge of the real-setup reader: three named calls, the calls of the adopt and install sheets (shared/engine/types.ts), the two read-only calls of the local models report and the extension list (shared/api/local.ts), and the five calls of the run record (shared/api/runs.ts), which the main
  * process answers only for the harness-first window on the person's own folders (the default launch). It is the only preload the real mode loads (the normal bridge is not loaded in the
- * preview). It exposes all three objects or none: main loads this file only for the plan whose `preload` is 'real', and for that plan it registers the reader, the engine calls and the local calls together
- * (main/launch.ts; tests/launch.test.ts holds that every plan has the three on or the three off), so a window never holds a call that main does not answer. Each call sends one message on its own channel. The page gets no Node, no path, no generic send, and no way to listen.
+ * preview). It exposes all four objects or none: main loads this file only for the plan whose `preload` is 'real', and for that plan it registers the reader, the engine calls, the local calls and the runs calls together
+ * (main/launch.ts; tests/launch.test.ts holds that every plan has them all on or all off), so a window never holds a call that main does not answer. Each call sends one message on its own channel. The page gets no Node, no path, no generic send, and no way to listen.
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import { REAL_CHANNELS } from '../shared/real/types.js';
@@ -11,6 +11,8 @@ import { ENGINE_CALLS, ENGINE_CHANNELS } from '../shared/engine/types.js';
 import type { EngineBridge } from '../shared/engine/types.js';
 import { LOCAL_CALLS, LOCAL_CHANNELS } from '../shared/api/local.js';
 import type { LocalBridge } from '../shared/api/local.js';
+import { RUN_ARITY, RUN_CALLS, RUN_CHANNELS } from '../shared/api/runs.js';
+import type { RunsBridge } from '../shared/api/runs.js';
 
 /** Electron wraps a refusal in a long sentence; the page gets only the short code in it. */
 const refusal = (error: unknown): Error => {
@@ -43,3 +45,12 @@ const localRefusal = (error: unknown): Error => {
 const local: Record<string, unknown> = {};
 for (const call of LOCAL_CALLS) local[call] = () => ipcRenderer.invoke(LOCAL_CHANNELS[call]).catch((error: unknown) => { throw localRefusal(error); });
 contextBridge.exposeInMainWorld('bowerloomLocal', Object.freeze(local as unknown as LocalBridge));
+
+/** The runs calls send exactly as many arguments as the call takes, so the page cannot pass main more than main expects. They refuse with one short code, never Electron's long sentence. */
+const runsRefusal = (error: unknown): Error => {
+  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_FOLDER|UNKNOWN_RUN|RUN_LIMIT|STORE_DAMAGED|TOO_LONG|FOLDER_CHARACTER|FOLDER_LINK)\b/);
+  return new Error(found === null ? 'FAILED' : found[1]);
+};
+const runs: Record<string, unknown> = {};
+for (const call of RUN_CALLS) runs[call] = (...args: unknown[]) => ipcRenderer.invoke(RUN_CHANNELS[call], ...args.slice(0, RUN_ARITY[call])).catch((error: unknown) => { throw runsRefusal(error); });
+contextBridge.exposeInMainWorld('bowerloomRuns', Object.freeze(runs as unknown as RunsBridge));

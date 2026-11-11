@@ -236,3 +236,10 @@ test('a note stops its timer while the pointer is on it, and starts again when t
   await p.mouse.move(5, 5);
   await expect(toast).toHaveCount(0, { timeout: 15_000 });
 });
+
+test('the sample Compare screen is saved as a picture of the screen, with the two runs of one instruction', async ({}, testInfo) => {
+  const p = page();
+  await fresh(p, '#sample/compare/group-1');
+  await expect(p.locator('.hc-col')).toHaveCount(2);
+  await p.screenshot({ path: testInfo.outputPath('compare-screen.png'), scale: 'css' });
+});

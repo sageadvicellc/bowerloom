@@ -1,6 +1,7 @@
 /**
  * The Start sheet on the person's own folders (beta.2). Start runs nothing: the sheet shows the command to start an engine in a folder, with the instruction already in it, and
- * copies it for the person to paste into their own Terminal. No engine starts, no model is called, and no run is recorded.
+ * copies it for the person to paste into their own Terminal. No engine starts and no model is called. Right after a copy the sheet offers "Record this run": that saves a note of the run in Bowerloom's own
+ * state folder (the runs bridge), so Runs and Compare can show it. It records nothing unless the person presses it, and it never writes into the project.
  * It picks a project (a folder main knows, by its id), ticks the engines that folder's harness lists (Claude Code and Codex), and takes the instruction. "Show the command" asks main for one
  * command for each ticked engine. An engine that is not installed in the folder, or an install that stopped part way, opens the install review first (the folder install sheet) and the
  * Start sheet stays under it; when the review closes, the folder list is read again. Main builds the line, so the window never holds a folder's full path: it shows the line with `~`.
@@ -17,6 +18,11 @@ import { Sheet } from '../parts/Sheet.js';
 import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon } from '../icons.js';
 import { useEngine } from '../engine.js';
+import { go } from '../router.js';
+import { useRuns } from '../runs-real/runs-session.js';
+import { runsCode as runsCodeOf } from '../../../shared/api/runs-shape.js';
+import { runsRefusalWords } from '../../../shared/harness/runs-real.js';
+import { RUNS_REAL } from '../runs-real-words.js';
 import { useUi } from '../ui.js';
 import { START, commandFor, copyName, whyWords } from '../words-start.js';
 import { ENGINE_WORDS } from '../words-engine.js';
@@ -26,6 +32,7 @@ import { foldersCall, useCall } from './use-call.js';
 import './engine.css';
 import './start.css';
 import './start-real.css';
+import '../runs-real/runs-real.css';
 
 // A recorded install is neutral, not green: the record says Bowerloom wrote the files, not that they are current.
 const STATE_TONE: Readonly<Record<EngineState, 'quiet' | 'warn'>> = { ready: 'quiet', 'not-installed': 'warn', stopped: 'warn' };
@@ -59,6 +66,11 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   const [instruction, setInstruction] = useState('');
   const [shown, setShown] = useState<readonly StartCommandView[] | null>(null);
   const [copied, setCopied] = useState<EngineId | null>(null);
+  const runs = useRuns();
+  /** The runs recorded from this sheet's commands, by engine, and the engine whose record is being saved or failed. */
+  const [recorded, setRecorded] = useState<Readonly<Partial<Record<EngineId, string>>>>({});
+  const [recording, setRecording] = useState<EngineId | null>(null);
+  const [recordFailed, setRecordFailed] = useState<string | null>(null);
   /** The refusal the person has already moved past: a change hides it, so an old refusal never lingers beside a good choice. */
   const [passed, setPassed] = useState(0);
   const results = useRef<HTMLHeadingElement>(null);
@@ -71,7 +83,7 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   // Each time the sheet opens it starts again: the folder list is read, and the folder is the one asked for, or none.
   useEffect(() => {
     if (!open) return;
-    setFolders(null); setFolder(''); setTicks([]); setInstruction(''); setShown(null); setCopied(null); call.clear();
+    setFolders(null); setFolder(''); setTicks([]); setInstruction(''); setShown(null); setCopied(null); setRecorded({}); setRecording(null); setRecordFailed(null); call.clear();
     readFolders();
   }, [open, folderId, engine]);
 
@@ -106,14 +118,14 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
   const why = status.kind === 'no-harness' && current !== undefined ? startFolderLine(current).words : whyWords(status);
   const offered = offeredEngines(current);
   const phase = startSheetPhase(folders, call.refusal !== null);
-  const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); setPassed(call.refusalId); };
+  const changed = (): void => { stamp.current += 1; setShown(null); setCopied(null); setRecorded({}); setRecordFailed(null); setPassed(call.refusalId); };
   const pickFolder = (id: string): void => { setFolder(id); setTicks(firstStartEngines(folders?.find(f => f.id === id))); changed(); };
   const tick = (id: EngineId): void => { setTicks(now => (now.includes(id) ? now.filter(x => x !== id) : [...now, id])); changed(); };
   const press = (): void => {
     if (status.kind === 'needs-install') { ui.openProject({ folderId: folder, mode: 'install' }); return; }
     if (status.kind !== 'ready' || engine === null) return;
     const engines = status.engines;
-    setCopied(null);
+    setCopied(null); setRecorded({}); setRecordFailed(null);
     stamp.current += 1;
     const mine = stamp.current;
     void call.plan(START.label.working, () => showAll(engine, folder, engines, instruction), list => { if (stamp.current === mine) setShown(list); });
@@ -122,6 +134,12 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
     if (engine === null || call.writing) return;
     setCopied(null);
     void call.write(START.label.copying, () => engine.startCommandToClipboard(folder, id, instruction), () => setCopied(id));
+  };
+  // Record this run: main saves what the person is looking at (the folder, the engine, the instruction) and the time now. The copy is what the person pastes; the record is only a note.
+  const record = (id: EngineId): void => {
+    if (runs === null || recording !== null) return;
+    setRecording(id); setRecordFailed(null);
+    runs.recordRun({ folderId: folder, engine: id, instruction, startedAt: null }).then(run => { setRecording(null); setRecorded(now => ({ ...now, [id]: run.id })); }, error => { setRecording(null); setRecordFailed(runsCodeOf(error)); });
   };
   // While Bowerloom works on a call, the choices are held: an answer (or a refusal) that comes back is always for the choices on screen.
   const held = call.writing || call.busy !== null;
@@ -199,6 +217,18 @@ export function StartRealSheet({ open, folderId, fromHarness, onClose }: StartRe
                       </p>
                       <CodeText text={view.command} label={commandFor(view.engine)} />
                       {copied === view.engine ? <p className="hxe-text hs-copied" aria-hidden="true" data-copied="">{START.hint.copiedLine}</p> : null}
+                      {copied !== view.engine || runs === null ? null : recorded[view.engine] === undefined ? (
+                        <div className="hs-record" data-record-block={view.engine}>
+                          <p className="hxe-text hxe-muted">{RUNS_REAL.paragraph.recordNote}</p>
+                          <HButton size="small" data-record={view.engine} aria-disabled={recording !== null ? true : undefined} onClick={() => record(view.engine)}>{recording === view.engine ? RUNS_REAL.label.recording : RUNS_REAL.label.recordRun}</HButton>
+                          {recordFailed !== null ? <p className="hxe-text" role="alert" data-record-failed="">{runsRefusalWords(recordFailed)}</p> : null}
+                        </div>
+                      ) : (
+                        <p className="hxe-text hrr-recorded" role="status" data-recorded={view.engine}>
+                          <span>{RUNS_REAL.hint.recordedToast}</span>
+                          <HButton size="small" data-open-runs="" onClick={() => { const id = recorded[view.engine]; onClose(); go({ name: 'runs', ...(id === undefined ? {} : { id }) }); }}>{RUNS_REAL.label.openRuns}</HButton>
+                        </p>
+                      )}
                     </div>
                   ))}
                   {shown.some(v => v.differs) ? <p className="hxe-text hxe-muted" data-start-differs="">{START.paragraph.differs}</p> : null}

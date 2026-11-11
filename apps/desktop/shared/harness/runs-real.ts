@@ -1,0 +1,117 @@
+/**
+ * Selectors and words for the runs of the person's own folders (beta.2). A run here is a manual record (shared/api/runs.ts): the person adds it, and Bowerloom cannot see a process, so a run
+ * is "Recorded" or "Done" and never "Running". Pure functions of the list main answered, so Runs and Compare always say the same thing.
+ * The figures of a run come from the engine's own session log. A figure the log did not hold is shown as "Not read", never as a zero.
+ */
+import { ENGINE_NAMES } from '../engine/types.js';
+import { LOG_CANDIDATE_CAP, LOG_MAX_MB, RUN_RECORD_LIMIT } from '../api/runs.js';
+import type { FiguresReason, FiguresState, RecordedStatus, RunFigures, RunOutcome, RunRating, RunView } from '../api/runs.js';
+
+/** The runs of one instruction in one project, newest first. Compare shows a group of two or more. */
+export interface RealGroup {
+  readonly id: string;
+  readonly runs: readonly RunView[];
+  readonly instruction: string;
+  readonly projectName: string;
+  /** True when Compare has something to compare: two or more runs. */
+  readonly comparable: boolean;
+}
+
+/** The runs in the order of the list, with the runs of one group kept together at the place of the first one. */
+export function realGroups(runs: readonly RunView[]): RealGroup[] {
+  const order: string[] = [], byId = new Map<string, RunView[]>();
+  for (const run of runs) {
+    const known = byId.get(run.groupId);
+    if (known === undefined) { byId.set(run.groupId, [run]); order.push(run.groupId); } else known.push(run);
+  }
+  return order.map(id => { const rs = byId.get(id)!; return { id, runs: rs, instruction: rs[0]!.instruction, projectName: rs[0]!.projectName, comparable: rs.length > 1 }; });
+}
+
+export const realGroupById = (runs: readonly RunView[], id: string): RealGroup | undefined => realGroups(runs).find(g => g.id === id);
+export const realRunById = (runs: readonly RunView[], id: string): RunView | undefined => runs.find(r => r.id === id);
+/** The group a run belongs to, when Compare has something to show for it. */
+export const realCompareGroupOf = (runs: readonly RunView[], run: RunView): string | null => (realGroups(runs).find(g => g.id === run.groupId)?.comparable === true ? run.groupId : null);
+
+export const engineName = (run: Pick<RunView, 'engine'>): string => ENGINE_NAMES[run.engine];
+
+const STATUS: Readonly<Record<RecordedStatus, string>> = { recorded: 'Recorded', done: 'Done' };
+export const realStatusWords = (status: RecordedStatus): string => STATUS[status];
+/** A rating needs a run that is done. */
+export const canRateReal = (run: Pick<RunView, 'status'>): boolean => run.status === 'done';
+export const realRateQuestion = (run: Pick<RunView, 'status'>): string => (canRateReal(run) ? 'How did it do?' : 'How did it do? Mark the run as done to rate it.');
+
+const OUTCOME: Readonly<Record<RunOutcome, string>> = { finished: 'Finished', stopped: 'Stopped', unknown: 'Not read' };
+export const outcomeWords = (outcome: RunOutcome): string => OUTCOME[outcome];
+
+/** "45 seconds", "4 minutes", "1 hour 5 minutes". Null in, "Not read" out. */
+export function durationWords(ms: number | null): string {
+  if (ms === null) return 'Not read';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} ${s === 1 ? 'second' : 'seconds'}`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} ${m === 1 ? 'minute' : 'minutes'}`;
+  const h = Math.floor(m / 60), rest = m % 60;
+  return `${h} ${h === 1 ? 'hour' : 'hours'}${rest === 0 ? '' : ` ${rest} ${rest === 1 ? 'minute' : 'minutes'}`}`;
+}
+
+/** "12,345". Null in, "Not read" out. */
+export const countWords = (n: number | null): string => (n === null ? 'Not read' : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+/** A model name, or "Not read". */
+export const modelWords = (model: string | null): string => model ?? 'Not read';
+
+/**
+ * The line that says why a figure is missing, or null when the log was read whole. Each reason has its own words. `label` is the folder written with `~`, never a full path: with it the line says where Bowerloom
+ * looked and how near the start the log had to begin.
+ */
+export function figuresStateWords(state: FiguresState, reason: FiguresReason | null = null, label: string | null = null): string | null {
+  switch (state) {
+    case 'found':
+      if (reason === 'capped') return `Searched the newest ${LOG_CANDIDATE_CAP} logs only. This log may not be the right one.`;
+      return reason === 'partial' ? 'Part of the log could not be read. Counts are not shown.' : reason === 'still-writing' ? 'The log may still be written. Figures can change.' : reason === 'no-figures' ? 'The log holds no figures.' : null;
+    case 'not-found':
+      if (reason === 'capped') return `Searched the newest ${LOG_CANDIDATE_CAP} logs only. Details stay as you recorded them.`;
+      return label === null ? 'No session log found. Details stay as you recorded them.' : `No session log found in ${label}, within an hour of the start. Details stay as you recorded them.`;
+    case 'ambiguous': return 'More than one session log fits this run. Not read.';
+    case 'unreadable':
+      return reason === 'too-large' ? `The log is over ${LOG_MAX_MB} MB. Not read.` : reason === 'unplaced' ? 'Could not tell when the log began. Not read.' : reason === 'no-permission' ? 'Bowerloom may not open the log. Check its permissions.' : 'Could not read the log.';
+    case 'not-available': return 'Figures are not available for this engine.';
+  }
+}
+
+/** The words of a refusal of a runs call, each code with its own. A code Bowerloom does not know gets the plain failure. */
+export function runsRefusalWords(code: string): string {
+  switch (code) {
+    case 'BAD_ARGUMENT': return 'Bowerloom could not use what was sent. Check the fields.';
+    case 'UNKNOWN_FOLDER': return 'That project is not there. Choose it again.';
+    case 'FOLDER_CHARACTER': return 'The project name has a character Bowerloom cannot use.';
+    case 'FOLDER_LINK': return 'That project is a link. Choose the real folder.';
+    case 'UNKNOWN_RUN': return 'That run is not saved any more.';
+    case 'RUN_LIMIT': return `${RUN_RECORD_LIMIT} runs are saved. Remove some first. Bowerloom cannot remove runs yet.`;
+    case 'STORE_DAMAGED': return 'Your saved runs file is damaged. Nothing was changed.';
+    case 'TOO_LONG': return 'The text is too long. Shorten it.';
+    default: return 'Bowerloom could not do that. Try again.';
+  }
+}
+
+export interface FigureRow { readonly key: 'duration' | 'input' | 'output' | 'model' | 'outcome'; readonly label: string; readonly value: string }
+/** The rows of the figures: always the same five, each "Not read" when the log did not hold it or was not read. */
+export function figureRows(figures: RunFigures | null): FigureRow[] {
+  return [
+    { key: 'duration', label: 'Time taken', value: durationWords(figures?.durationMs ?? null) },
+    { key: 'input', label: 'Input', value: countWords(figures?.inputTokens ?? null) },
+    { key: 'output', label: 'Output', value: countWords(figures?.outputTokens ?? null) },
+    { key: 'model', label: 'Model', value: modelWords(figures?.model ?? null) },
+    { key: 'outcome', label: 'Outcome', value: outcomeWords(figures?.outcome ?? 'unknown') },
+  ];
+}
+
+/** "Saved Claude Code. Codex was not saved: That run is not saved any more." One line that says, for each run, whether it was saved. */
+export function saveReportWords(report: readonly { readonly name: string; readonly code: string | null }[]): string {
+  const saved = report.filter(r => r.code === null).map(r => r.name), failed = report.filter(r => r.code !== null);
+  const head = saved.length === 0 ? '' : `Saved ${saved.join(' and ')}. `;
+  return `${head}${failed.map(r => `${r.name} was not saved: ${runsRefusalWords(r.code ?? '')}`).join(' ')}`.trim();
+}
+
+export const REAL_RATINGS: readonly RunRating[] = Object.freeze(['better', 'same', 'worse']);
+/** "Write a weekly report in team", the name of a run in a list. */
+export const realRunName = (run: RunView): string => `${engineName(run)} in ${run.projectName}`;

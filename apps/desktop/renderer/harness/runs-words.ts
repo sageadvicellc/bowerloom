@@ -21,7 +21,7 @@ export const RUN_WORDS = deepFreeze({
     emptyHarness: 'This harness is empty. Add parts before you start it.',
     needsInstall: 'Install first, then start.',
     bringTip: 'Brings the engine window forward.',
-    noRuns: 'No runs yet. Press Start on a harness.', noRunsReal: 'Runs are not in beta.1.',
+    noRuns: 'No runs yet. Press Start on a harness.', noRunsReal: 'No runs yet. Record one after you start an engine.',
     noGroup: 'That group of runs is not here.', noRun: 'That run is not here.',
     needInstruction: 'Write an instruction to start.', needInterface: 'Tick an engine to start.', needProject: 'Pick a project to start.',
     saved: 'Saved on this computer, in Bowerloom. Your project files do not change.',
