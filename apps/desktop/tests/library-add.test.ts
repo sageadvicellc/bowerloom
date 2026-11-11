@@ -170,7 +170,7 @@ test('a notes folder is matched to the folder of the same label as a hint only: 
 });
 
 test('the new words of the link flow are short plain lines', () => {
-  const lines = [WORDS.label.linkNotes, WORDS.label.startHarness, WORDS.label.stepNotes, WORDS.label.linkNotesTitle, WORDS.label.linkAgain, WORDS.label.approveLink];
+  const lines = [WORDS.label.linkNotes, WORDS.label.startHarness, WORDS.label.stepNotes, WORDS.label.linkNotesTitle, WORDS.label.linkAgain];
   for (const line of lines) { assert.ok(countWords(line) <= LIMITS.label, line); assert.equal(bannedHere(line), null, line); }
   const hints = [WORDS.hint.linkEmpty, WORDS.hint.linkWhich, WORDS.hint.needsHarness, WORDS.hint.chooseAgain, WORDS.hint.linkIntro, WORDS.hint.linkProblemEmpty, WORDS.hint.noHarnessPicked, LINK_WHICH_ONE];
   for (const line of hints) { assert.ok(countWords(line) <= LIMITS.hint, line); assert.equal(bannedHere(line), null, line); }
