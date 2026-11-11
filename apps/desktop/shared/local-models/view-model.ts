@@ -21,6 +21,7 @@ export const LOCAL_WORDS = Object.freeze({
   list: 'Local model servers',
   idle: 'Idle',
   updated: 'Updated.',
+  readFailed: 'Could not read the servers.',
   noteUnknown: 'The app got a note it has no words for.',
   rowNoteUnknown: 'A note about this server has no words yet.',
   reasonUnknown: 'The server gave a reason this app has no words for.',

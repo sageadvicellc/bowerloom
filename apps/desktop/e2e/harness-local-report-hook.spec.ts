@@ -107,7 +107,7 @@ test('a failed refresh keeps the last report, marks it stale, and shows the code
   await expect(probe(p, 'code')).toHaveText('HOST_NOT_STARTED');
   await expect(probe(p, 'report')).toHaveText('2026-11-11T10:00:00Z|3');
   await expect(probe(p, 'busy')).toHaveText('false');
-  await expect(probe(p, 'announce')).toHaveText('none');
+  await expect(probe(p, 'announce')).toHaveText('failed');
   await p.getByRole('button', { name: 'Refresh' }).click();
   await answer(p, REPORT_B);
   await expect(probe(p, 'failed')).toHaveText('false');
@@ -123,6 +123,7 @@ test('a bridge that throws at once leaves no stuck busy state, and the next read
   await expect(probe(p, 'failed')).toHaveText('true');
   await expect(probe(p, 'busy')).toHaveText('false');
   await expect(probe(p, 'code')).toHaveText('FAILED');
+  await expect(probe(p, 'announce')).toHaveText('failed');
   await expect(probe(p, 'report')).toHaveText('2026-11-11T10:00:00Z|3');
   await p.evaluate(() => { (window as unknown as { __driver: { throwNow: boolean } }).__driver.throwNow = false; });
   await p.getByRole('button', { name: 'Refresh' }).click();
@@ -151,4 +152,20 @@ test('unmounting stops the interval and the listener, and a late answer after un
   await p.waitForTimeout(200);
   expect(await callCount(p)).toBe(at);
   await expect(p.locator('[data-probe]')).toHaveCount(0);
+});
+
+test('the body of the screen survives the bridge going away and coming back, with no hook error', async () => {
+  const p = await open();
+  const errors: string[] = [];
+  p.on('pageerror', e => errors.push(e.message));
+  await answer(p, REPORT_A);
+  await expect(p.locator('[data-model]')).toHaveCount(3);
+  const flip = (value: boolean): Promise<void> => p.evaluate(v => (window as unknown as { __driver: { setAvailable(v: boolean): void } }).__driver.setAvailable(v), value);
+  await flip(false);
+  await expect(p.locator('[data-local-state="no-bridge"]')).toBeVisible();
+  await flip(true);
+  await expect(p.locator('[data-model]')).toHaveCount(3);
+  await flip(false);
+  await expect(p.locator('[data-local-state="no-bridge"]')).toBeVisible();
+  expect(errors).toEqual([]);
 });

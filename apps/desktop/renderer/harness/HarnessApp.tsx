@@ -35,9 +35,9 @@ import { FolderDraftProvider } from './folder-draft.js';
 import { useCloseGuard } from './close-guard.js';
 import { fallbackEngine, fallbackLocal } from '../api/client.js';
 import type { LocalBridge } from '../../shared/local-models/types.js';
-import { LocalProvider, useLocal } from './local-models/local.js';
+import { LocalProvider, SkippedProvider, useLocal } from './local-models/local.js';
 import { LocalModelsPending } from './local-models/LocalModels.js';
-import { useBundledExtensions } from './bundled-extensions.js';
+import { localRouteState, useBundledExtensions } from './bundled-extensions.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 
 function Overlays(): ReactElement {
@@ -60,11 +60,20 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
   // The title is the app's name, and carries the count of unsaved changes for main (which keeps the title bar to the name). The close guard holds the unload while there are any.
   useCloseGuard();
   // The bundled extensions follow `listExtensions`. Until its first answer, their route waits with a plain line: a failure at launch is "not ready yet", never the not-found state.
-  const bundled = useBundledExtensions(registry, useLocal().bridge);
+  const localBridge = useLocal().bridge;
+  const bundled = useBundledExtensions(registry, localBridge);
   if (isFirstRun(route)) return <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />;
   // The line also stands for a route whose extension main skipped, so that the skipped names and codes are shown and not a bare not-found state.
-  const waiting = route.name === 'local-models' && (!bundled.ready || (bundled.skipped.length > 0 && !bundled.extensions.some(x => x.id === 'local-models')));
-  return <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>{waiting ? <LocalModelsPending problem={bundled.problem} skipped={bundled.skipped} loading={!bundled.ready} /> : <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />}</Shell>;
+  const at = route.name === 'local-models' ? localRouteState(bundled, localBridge !== null) : 'screen';
+  // When the extension is absent, only the skipped entries of that extension are listed: another extension's skip is not this screen's.
+  const own = bundled.skipped.filter(x => x.name === 'local-models');
+  return (
+    <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>
+      <SkippedProvider skipped={bundled.skipped}>
+        {at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /> : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
+      </SkippedProvider>
+    </Shell>
+  );
 }
 
 /**

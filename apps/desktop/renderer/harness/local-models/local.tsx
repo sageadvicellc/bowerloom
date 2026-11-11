@@ -4,7 +4,7 @@
  */
 import { createContext, useContext } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import type { LocalBridge } from '../../../shared/local-models/types.js';
+import type { LocalBridge, SkippedExtension } from '../../../shared/local-models/types.js';
 
 export interface LocalValue { readonly bridge: LocalBridge | null; readonly sample: boolean }
 const Context = createContext<LocalValue>({ bridge: null, sample: false });
@@ -14,3 +14,10 @@ export function LocalProvider({ bridge, sample, children }: { bridge: LocalBridg
 }
 
 export const useLocal = (): LocalValue => useContext(Context);
+
+/** The extensions main skipped, from the list the app asked for at launch: the Local models screen says so when any was. */
+const SkippedContext = createContext<readonly SkippedExtension[]>([]);
+export function SkippedProvider({ skipped, children }: { skipped: readonly SkippedExtension[]; children?: ReactNode }): ReactElement {
+  return <SkippedContext value={skipped}>{children}</SkippedContext>;
+}
+export const useSkipped = (): readonly SkippedExtension[] => useContext(SkippedContext);

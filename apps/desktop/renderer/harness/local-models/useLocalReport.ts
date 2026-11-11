@@ -11,8 +11,8 @@ import { realNowMs } from '../clock.js';
 import type { LocalBridge, LocalModelsReport } from '../../../shared/local-models/types.js';
 import { REFRESH_MS, isStale } from '../../../shared/local-models/view-model.js';
 
-/** What a manual Refresh says to a screen reader: that it reads, then that it updated. An automatic read says nothing. */
-export type Announce = 'reading' | 'updated' | null;
+/** What a manual Refresh says to a screen reader: that it reads, then that it updated or could not read. An automatic read says nothing. */
+export type Announce = 'reading' | 'updated' | 'failed' | null;
 
 export interface ReportState {
   readonly report: LocalModelsReport | null;
@@ -63,11 +63,15 @@ export function useLocalReport(bridge: LocalBridge | null, now: () => number = r
         },
         (error: unknown) => {
           if (!live) return;
-          manual = false;
+          const wasAsked = manual; manual = false;
           const code = refusalCode(error, 'local');
-          setState(s => (s.failed && s.code === code && s.stale && !s.busy && s.announce === null ? s : { ...s, failed: true, code, stale: true, busy: false, announce: null }));
+          const announce: Announce = wasAsked ? 'failed' : null;
+          setState(s => (s.failed && s.code === code && s.stale && !s.busy && s.announce === announce ? s : { ...s, failed: true, code, stale: true, busy: false, announce }));
         },
-      ).finally(() => { running = false; });
+      ).catch((error: unknown) => {
+        // A handler above threw. Log the class only, and leave the hook ready for the next read.
+        console.error('local models: unexpected error in a read', error instanceof Error ? error.name : typeof error);
+      }).finally(() => { running = false; });
     };
     // The age of the last good read, checked on every tick: a read that never ends must still turn the figures stale.
     const age = (): void => setState(s => { const stale = isStale(s.failed, lastGood, now()); return stale === s.stale ? s : { ...s, stale }; });

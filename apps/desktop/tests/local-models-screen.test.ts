@@ -9,10 +9,10 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HIcon } from '../renderer/harness/icons.js';
 import { HarnessApp } from '../renderer/harness/HarnessApp.js';
-import { LocalModelsBody, PendingBody, ReadAnnouncer } from '../renderer/harness/local-models/LocalModels.js';
+import { LocalModelsBody, PendingBody, ReadAnnouncer, SkippedNotice } from '../renderer/harness/local-models/LocalModels.js';
 import type { BodyProps, PendingProps } from '../renderer/harness/local-models/LocalModels.js';
 import { BUNDLED_IDS, createScreenRegistry, registerBundled } from '../renderer/harness/extension-mounts.js';
-import { followExtensions } from '../renderer/harness/bundled-extensions.js';
+import { followExtensions, localRouteState } from '../renderer/harness/bundled-extensions.js';
 import type { Bundled, Scheduler } from '../renderer/harness/bundled-extensions.js';
 import { LOCAL_MODELS_MANIFEST, createSampleLocal, sampleLocalReport } from '../shared/local-models/sample.js';
 import { LOCAL_WORDS, REFRESH_MS } from '../shared/local-models/view-model.js';
@@ -151,7 +151,7 @@ test('two notes with the same sentence, and a row with two equal notes, render w
 });
 
 test('the read announcer is a status line that is always there, and says "Reading the servers." or "Updated." only when told', () => {
-  const html = (announce: 'reading' | 'updated' | null): string => renderToStaticMarkup(createElement(ReadAnnouncer, { announce }) as ReactElement);
+  const html = (announce: 'reading' | 'updated' | 'failed' | null): string => renderToStaticMarkup(createElement(ReadAnnouncer, { announce }) as ReactElement);
   assert.match(html('reading'), /role="status"[^>]*>Reading the servers\.</);
   assert.match(html('updated'), /role="status"[^>]*>Updated\.</);
   const quiet = html(null);
@@ -160,6 +160,7 @@ test('the read announcer is a status line that is always there, and says "Readin
   const css = readFileSync(join(DESKTOP, 'renderer/harness/local-models/local-models.css'), 'utf8');
   assert.match(css, /\.hxl-sr-only\s*\{[^}]*clip|\.hxl-sr-only\s*\{[^}]*position:\s*absolute/);
   assert.equal(LOCAL_WORDS.refreshing, 'Reading the servers.');
+  assert.match(html('failed'), /role="status"[^>]*>Could not read the servers\.</); assert.equal(LOCAL_WORDS.readFailed, 'Could not read the servers.');
 });
 
 test('the Refresh button stays enabled during a read, so keyboard focus is not lost, and the staleness comes from the hook', () => {
@@ -332,4 +333,38 @@ test('a listExtensions that throws at once, not as a rejected promise, is a fail
   assert.doesNotThrow(() => followExtensions(registry, bridge, s => answers.push(s), clock));
   await settle();
   assert.equal(clock.queue.length, 1); assert.equal(answers.length, 0);
+});
+
+test('the Local models route: waits before the list answers, shows the screen when it loaded, and says it did not load when it is absent (but not with no bridge)', () => {
+  const have = [LOCAL_MODELS_MANIFEST];
+  const ans = (over: Partial<Bundled>): Bundled => ({ extensions: [], ready: true, problem: null, skipped: [], ...over });
+  assert.equal(localRouteState(ans({ ready: false }), true), 'wait');
+  assert.equal(localRouteState(ans({ extensions: have }), true), 'screen');
+  assert.equal(localRouteState(ans({ extensions: have, skipped: [{ name: 'other', code: 'X' }] }), true), 'screen', 'another skipped extension does not hide the screen');
+  assert.equal(localRouteState(ans({}), true), 'absent', 'absent with nothing skipped is not the bare not-found page');
+  assert.equal(localRouteState(ans({ skipped: [{ name: 'other', code: 'X' }] }), true), 'absent');
+  assert.equal(localRouteState(ans({}), false), 'screen', 'with no bridge the registry decides, and it says not found');
+});
+
+test('the skipped notice lists names and codes only, and nothing when none was skipped', () => {
+  const html = (skipped: NonNullable<PendingProps['skipped']>): string => renderToStaticMarkup(createElement(SkippedNotice, { skipped }) as ReactElement);
+  assert.equal(html([]), '');
+  const out = html([{ name: 'alpha', code: 'BAD_MANIFEST' }]);
+  assert.ok(out.includes('alpha') && out.includes('BAD_MANIFEST') && out.includes('data-local-skipped'));
+});
+
+test('the absent screen lists only the skipped entries of local-models itself', () => {
+  const html = renderToStaticMarkup(createElement(PendingBody, { loading: false, skipped: [{ name: 'local-models', code: 'BAD_MANIFEST' }] }) as ReactElement);
+  assert.match(html, /did not load/); assert.match(html, /BAD_MANIFEST/);
+  const src = readFileSync(join(DESKTOP, 'renderer/harness/HarnessApp.tsx'), 'utf8');
+  assert.match(src, /name === 'local-models'/);
+});
+
+test('every hook of the body runs before its early return, so the bridge can come and go', () => {
+  const text = readFileSync(join(DESKTOP, 'renderer/harness/local-models/LocalModels.tsx'), 'utf8');
+  const fn = text.slice(text.indexOf('export function LocalModelsBody'), text.indexOf('export function LocalModels()'));
+  const early = fn.indexOf('if (!available) return');
+  assert.ok(early > 0);
+  assert.doesNotMatch(fn.slice(early), /\buse[A-Z]\w*\(/, 'no hook after the early return');
+  assert.equal((text.match(/viewOf\(/g) ?? []).length, 2, 'viewOf is called in one place for the screen and one for a body drawn alone');
 });

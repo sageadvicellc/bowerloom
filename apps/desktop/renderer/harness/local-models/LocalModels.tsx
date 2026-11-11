@@ -12,9 +12,10 @@ import { HIcon } from '../icons.js';
 import { LOCAL_WORDS, viewOf } from '../../../shared/local-models/view-model.js';
 import type { Row } from '../../../shared/local-models/view-model.js';
 import type { LocalModelsReport, SkippedExtension } from '../../../shared/local-models/types.js';
-import { useLocal } from './local.js';
+import { useLocal, useSkipped } from './local.js';
 import { useLocalReport } from './useLocalReport.js';
 import type { Announce } from './useLocalReport.js';
+import type { ReportView } from '../../../shared/local-models/view-model.js';
 import './local-models.css';
 
 /** One card. The rows of a view are the same objects while the figures are the same, so a read of the same figures draws no card again. */
@@ -71,13 +72,19 @@ export function PendingBody({ problem = null, skipped = [], loading = true }: Pe
       {problem === null
         ? <p className="kit-hint hx-hint" role="status" data-local-pending="">{loading ? LOCAL_WORDS.loading : HOST_WORDS.unavailable}</p>
         : <p className="kit-hint hx-hint" role="status" data-local-pending="" data-local-problem={problem}>{HOST_WORDS.notStarted} Code: {problem}.</p>}
-      {skipped.length === 0 ? null : (
-        <div data-local-skipped="">
-          <p className="hx-text">{HOST_WORDS.skipped}</p>
-          <ul>{skipped.map((x, i) => <li key={`${i}-${x.name}`} data-skipped={x.name}>{x.name}. Code: {x.code}.</li>)}</ul>
-        </div>
-      )}
+      <SkippedNotice skipped={skipped} />
     </>
+  );
+}
+
+/** The extensions main skipped: names and short codes only. Nothing when none was skipped. */
+export function SkippedNotice({ skipped = [] }: { skipped?: readonly SkippedExtension[] }): ReactElement | null {
+  if (skipped.length === 0) return null;
+  return (
+    <div data-local-skipped="">
+      <p className="hx-text">{HOST_WORDS.skipped}</p>
+      <ul>{skipped.map((x, i) => <li key={`${i}-${x.name}`} data-skipped={x.name}>{x.name}. Code: {x.code}.</li>)}</ul>
+    </div>
   );
 }
 
@@ -93,17 +100,21 @@ export interface BodyProps {
   readonly busy: boolean;
   /** The short code of the newest failed read, shown beside the words of the failure. */
   readonly code?: string | null;
+  /** The view of the report, when the caller has made it already (the screen does), so it is made once. A body drawn alone makes its own. */
+  readonly view?: ReportView | null;
 }
 
 /** A status line that only a screen reader hears. It is always on the page, so that a change in it is read out. */
 export function ReadAnnouncer({ announce }: { announce: Announce }): ReactElement {
-  return <p className="hxl-sr-only" role="status" data-local-announce="">{announce === 'reading' ? LOCAL_WORDS.refreshing : announce === 'updated' ? LOCAL_WORDS.updated : ''}</p>;
+  return <p className="hxl-sr-only" role="status" data-local-announce="">{announce === 'reading' ? LOCAL_WORDS.refreshing : announce === 'updated' ? LOCAL_WORDS.updated : announce === 'failed' ? LOCAL_WORDS.readFailed : ''}</p>;
 }
 
 /** What the stage shows. Every state has words: no bridge, loading, retrying, a failed probe, no server set up, and the rows. A failed probe shows the note's sentence and never the empty state. */
-export function LocalModelsBody({ available, sample, report, failed, stale, busy, code = null }: BodyProps): ReactElement {
+export function LocalModelsBody({ available, sample, report, failed, stale, busy, code = null, view: given }: BodyProps): ReactElement {
+  // Every hook runs before the early return, so the bridge can come and go without a change in the order of hooks.
+  const own = useMemo(() => (given !== undefined || report === null ? null : viewOf(report)), [given, report]);
+  const view = given !== undefined ? given : own;
   if (!available) return <p className="kit-hint hx-hint" role="status" data-local-state="no-bridge">{LOCAL_WORDS.noBridge}</p>;
-  const view = useMemo(() => (report === null ? null : viewOf(report)), [report]);
   const codeLine = code === null ? null : ` Code: ${code}.`;
   return (
     <div className="hxl-body" aria-busy={busy}>
@@ -119,6 +130,7 @@ export function LocalModelsBody({ available, sample, report, failed, stale, busy
 
 export function LocalModels(): ReactElement {
   const { bridge, sample } = useLocal();
+  const skipped = useSkipped();
   const state = useLocalReport(bridge);
   const view = useMemo(() => (state.report === null ? null : viewOf(state.report)), [state.report]);
   // Refresh stays enabled while a read runs, so keyboard focus is never dropped. The hook ignores a click while a read runs.
@@ -126,7 +138,8 @@ export function LocalModels(): ReactElement {
   return (
     <Screen slot="local-models" title={LOCAL_WORDS.title} count={view === null || view.summary === null ? undefined : view.summary} tools={refresh}>
       <ReadAnnouncer announce={state.announce} />
-      <LocalModelsBody available={bridge !== null} sample={sample} report={state.report} failed={state.failed} stale={state.report !== null && state.stale} busy={state.busy} code={state.code} />
+      <SkippedNotice skipped={skipped} />
+      <LocalModelsBody available={bridge !== null} sample={sample} report={state.report} view={view} failed={state.failed} stale={state.report !== null && state.stale} busy={state.busy} code={state.code} />
     </Screen>
   );
 }

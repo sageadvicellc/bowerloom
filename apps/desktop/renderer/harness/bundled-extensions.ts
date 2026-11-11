@@ -52,6 +52,15 @@ export function followExtensions(registry: Registry<ScreenMount>, bridge: LocalB
   return () => { live = false; if (handle !== undefined) clock.cancel(handle); };
 }
 
+/**
+ * What the Local models route draws. 'wait': the list has not answered. 'absent': it answered and this extension is not in it (and the window has a bridge), so the screen says it did not load.
+ * 'screen': the registry draws it (or, with no bridge, says the route is not available).
+ */
+export function localRouteState(bundled: Bundled, hasBridge: boolean): 'wait' | 'absent' | 'screen' {
+  if (!bundled.ready) return 'wait';
+  return hasBridge && !bundled.extensions.some(x => x.id === 'local-models') ? 'absent' : 'screen';
+}
+
 export function useBundledExtensions(registry: Registry<ScreenMount>, bridge: LocalBridge | null): Bundled {
   const [state, setState] = useState<Bundled>({ extensions: [], ready: bridge === null, problem: null, skipped: [] });
   useEffect(() => {

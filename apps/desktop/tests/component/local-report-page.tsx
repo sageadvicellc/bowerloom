@@ -2,6 +2,7 @@
 // The probe prints what the hook gives back and has a Refresh button and an Unmount button. Nothing is read or written.
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { LocalModelsBody } from '../../renderer/harness/local-models/LocalModels.js';
 import { useLocalReport } from '../../renderer/harness/local-models/useLocalReport.js';
 import type { LocalBridge, LocalModelsReport } from '../../shared/local-models/types.js';
 
@@ -13,12 +14,15 @@ interface Driver {
   answer(id: number, report: LocalModelsReport): void;
   fail(id: number, message: string): void;
   unmount(): void;
+  /** Draws the body of the screen with or without a bridge, on the same mounted tree. */
+  setAvailable(value: boolean): void;
 }
 const driver: Driver = {
   calls: [], throwNow: new URLSearchParams(location.search).get('throw') === '1',
   answer(id, report) { const c = driver.calls[id]; if (c && !c.settled) { c.settled = true; c.resolve(report); } },
   fail(id, message) { const c = driver.calls[id]; if (c && !c.settled) { c.settled = true; c.reject(new Error(message)); } },
   unmount() { root.unmount(); },
+  setAvailable(value) { setAvailableNow(value); },
 };
 (window as unknown as { __driver: Driver }).__driver = driver;
 
@@ -31,12 +35,13 @@ const bridge: LocalBridge = {
 };
 
 let renders = 0;
+let setAvailableNow: (value: boolean) => void = () => undefined;
 function Probe(): React.ReactElement {
   const state = useLocalReport(bridge);
-  const [, setTick] = useState(0);
+  const [available, setAvailable] = useState(true);
+  setAvailableNow = setAvailable;
   renders += 1;
   (window as unknown as { __renders: number }).__renders = renders;
-  void setTick;
   return (
     <div>
       <button onClick={state.refresh}>Refresh</button>
@@ -46,6 +51,7 @@ function Probe(): React.ReactElement {
       <p data-probe="stale">{String(state.stale)}</p>
       <p data-probe="busy">{String(state.busy)}</p>
       <p data-probe="announce">{state.announce ?? 'none'}</p>
+      <div data-probe="body"><LocalModelsBody available={available} sample={false} report={state.report} failed={state.failed} stale={state.stale} busy={state.busy} code={state.code} /></div>
     </div>
   );
 }
