@@ -8,6 +8,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { discoverProject, checkProjectPath, projectId, privateStateRoot, verifyProjectPins, adoptCreatedMarker, checkConfigFile } from '../../../dist/packages/project-context/src/index.js';
 // Test hooks live in the internal module only. The package index exports no hook.
 import { discoverProjectWith, checkProjectPathWith } from '../../../dist/packages/project-context/src/discovery.js';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const code = expected => error => error?.code === expected;
 /** A fresh real folder with a HOME inside it. Nothing here touches the real HOME. */
@@ -188,7 +189,7 @@ test('checkProjectPath treats a marker link that resolves to HOME/Documents thro
   assert.throws(() => checkProjectPath(path.join(home, 'Documents', 'a'), home), code('PROJECT_IN_CLOUD_FOLDER'));
 });
 
-test('checkProjectPath refuses when macOS or permissions block the marker: lstat or realpath EACCES', t => {
+test('checkProjectPath refuses when macOS or permissions block the marker: lstat or realpath EACCES', { skip: skipAsRoot('a folder at mode 000 cannot be searched') }, t => {
   const { home } = world(t);
   const mobile = mk(path.join(home, 'Library', 'Mobile Documents')), cloudDocs = mk(path.join(mobile, 'com~apple~CloudDocs')); mk(path.join(home, 'Documents'));
   fs.symlinkSync(path.join(home, 'Documents'), path.join(cloudDocs, 'Documents'));
@@ -277,7 +278,7 @@ test('a case or long-s alias of HOME is HOME on a case-insensitive disk, for the
   if (checked === 0) t.skip('this disk is case-sensitive');
 });
 
-test('an unreadable folder on the way up refuses PROJECT_UNREADABLE instead of being skipped', t => {
+test('an unreadable folder on the way up refuses PROJECT_UNREADABLE instead of being skipped', { skip: skipAsRoot('a folder at mode 311 cannot be listed') }, t => {
   const { home } = world(t);
   const outer = mk(path.join(home, 'outer')); mk(path.join(outer, '.bowerloom'));
   const mid = mk(path.join(outer, 'mid')), inner = mk(path.join(mid, 'inner'));

@@ -248,7 +248,7 @@ const canRun = process.getuid?.() === 0 && spawnSync('sh', ['-c', 'command -v ti
 const sandboxRun = (extraEnv = {}) => {
   const cwd = tmp(); const out = path.join(cwd, 'out'); const bin = path.join(cwd, 'bin');
   fs.mkdirSync(path.join(cwd, 'tools/sandbox'), { recursive: true }); fs.mkdirSync(path.join(cwd, 'apps/desktop'), { recursive: true }); fs.mkdirSync(bin);
-  for (const f of ['summarize-gates.mjs', 'summarize-e2e.mjs', 'machine-dependent.mjs']) fs.symlinkSync(path.join(root, 'tools/sandbox', f), path.join(cwd, 'tools/sandbox', f));
+  for (const f of ['summarize-gates.mjs', 'summarize-e2e.mjs', 'machine-dependent.mjs', 'probe-report.mjs', 'skip-ceilings.json']) fs.symlinkSync(path.join(root, 'tools/sandbox', f), path.join(cwd, 'tools/sandbox', f));
   fs.symlinkSync(path.join(root, 'tools/inventory-reporter.mjs'), path.join(cwd, 'tools/inventory-reporter.mjs'));
   fs.writeFileSync(path.join(cwd, 'tools/gates.mjs'), `const step=process.argv[process.argv.indexOf('--only')+1];const bad=process.env.FAKE_GATE_FAIL===step;
 console.log(JSON.stringify({ok:!bad,steps:[{name:step,passed:!bad,exitCode:bad?1:0,counts:{pass:1,fail:bad?1:0,skipped:0}}],notRun:[]}));process.exit(bad?1:0);\n`);
@@ -376,4 +376,47 @@ test('the e2e summary fails when the frozen count cannot be read, and when --exi
   assert.equal(missing.status, 1); assert.match(missing.stdout, /frozen count unavailable/);
   const noValue = e2eRun(e2eReport({}), ['--exit-code']);
   assert.equal(noValue.status, 1); assert.match(noValue.stdout + noValue.stderr, /exit-code/);
+});
+
+// ---- skip ceilings and the probe report ----
+const ceilingsFile = ceilings => { const f = path.join(tmp(), 'ceilings.json'); fs.writeFileSync(f, JSON.stringify(ceilings)); return f; };
+
+test('the gates summary fails when a step skips more tests than its ceiling, and passes at the ceiling', () => {
+  const dir = tmp();
+  const file = path.join(dir, 'gates-root-test.json');
+  const record = skipped => JSON.stringify({ ok: true, steps: [{ name: 'root-test', passed: true, exitCode: 0, counts: { pass: 3, fail: 0, skipped } }], notRun: [] });
+  fs.writeFileSync(file, record(11));
+  const over = spawnSync('node', [SUMMARY, file, '--ceilings', ceilingsFile({ 'root-test': 10 })], { encoding: 'utf8' });
+  assert.equal(over.status, 1);
+  assert.match(over.stdout, /root-test +FAILED +skipped 11, above the ceiling of 10/);
+  fs.writeFileSync(file, record(10));
+  assert.equal(spawnSync('node', [SUMMARY, file, '--ceilings', ceilingsFile({ 'root-test': 10 })], { encoding: 'utf8' }).status, 0);
+});
+
+test('the gates summary fails closed when the ceilings file cannot be read', () => {
+  const file = path.join(tmp(), 'gates-root-test.json');
+  fs.writeFileSync(file, JSON.stringify({ ok: true, steps: [{ name: 'root-test', passed: true, exitCode: 0, counts: { pass: 3, fail: 0, skipped: 0 } }], notRun: [] }));
+  const result = spawnSync('node', [SUMMARY, file, '--ceilings', path.join(tmp(), 'none.json')], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /cannot read the skip ceilings/);
+});
+
+test('the e2e summary fails when more tests skipped than the desktop-e2e ceiling', () => {
+  const run = (skipped, ceiling) => e2eRun(e2eReport({ stats: { expected: 300, unexpected: 0, flaky: 0, skipped } }), ['--ceilings', ceilingsFile({ 'desktop-e2e': ceiling })]);
+  const over = run(6, 5);
+  assert.equal(over.status, 1);
+  assert.match(over.stdout, /6 tests skipped, above the ceiling of 5/);
+  assert.equal(run(5, 5).status, 0);
+});
+
+test('the e2e summary fails closed when the ceilings file cannot be read', () => {
+  const result = e2eRun(e2eReport({}), ['--ceilings', path.join(tmp(), 'none.json')]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /cannot read the skip ceilings/);
+});
+
+test('the shipped ceilings name the three suites with whole numbers, and the run prints the probes', () => {
+  const ceilings = JSON.parse(fs.readFileSync(path.join(root, 'tools/sandbox/skip-ceilings.json'), 'utf8'));
+  for (const name of ['root-test', 'desktop-test', 'desktop-e2e']) assert.ok(Number.isInteger(ceilings[name]) && ceilings[name] > 0, name);
+  assert.match(fs.readFileSync(inContainer, 'utf8'), /node tools\/sandbox\/probe-report\.mjs/);
 });

@@ -12,6 +12,7 @@ import { readDarwinBootSession } from '../../../dist/packages/mcp-connections/sr
 import {canonicalJson} from '../../../dist/packages/contracts/src/index.js';
 import {guardianSignaturePayload} from '../../../dist/packages/mcp-connections/src/container-guardian-provenance.js';
 import {createGuardianCheckpoint,createGuardianClosure,guardianTerminalPayload,terminalDeclaration} from '../../../dist/packages/mcp-connections/src/container-guardian-checkpoint.js';
+import {needsMacOS} from './support/macos-only.mjs';
 const hash=v=>'sha256:'+createHash('sha256').update(v).digest('hex');
 const DIGEST='sha256:'+'a'.repeat(64), MANIFEST='application/vnd.oci.image.manifest.v1+json';
 const initial={protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'bowerloom-discovery',version:'0.8.0-beta.1'}};
@@ -65,70 +66,70 @@ async function setup(t,mode='normal'){
  });syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
  return{root,context,options,signal,notifications,writes,opens,get job(){return job;},get kills(){return kills;},get sends(){return sends;},get terminalWrites(){return terminalWrites;}};
 }
-test('container factory pins exact launch and deadline while exposing discovery only',async t=>{
+test('container factory pins exact launch and deadline while exposing discovery only',{skip:needsMacOS},async t=>{
  const f=await setup(t),a=await createMcpContainerDiscoveryFactory(f.options)(f.context);
  assert.equal((await a.initialize(initial)).protocolVersion,'2025-11-25');await a.initialized();assert.equal((await a.listTools({})).nextCursor,'second');assert.deepEqual((await a.listTools({cursor:'second'})).tools,[]);await a.close();
  assert.deepEqual(Object.keys(a).sort(),['close','initialize','initialized','listTools']);assert.deepEqual(f.writes.map(x=>x.method),['initialize','notifications/initialized','tools/list','tools/list']);assert.equal(JSON.stringify(f.job.launch),JSON.stringify(f.context.effect.launch));assert.equal(f.job.operationKey,f.context.operationKey);assert.notEqual(f.job.operationKey,f.job.launch.spec.operationKey);assert.ok(f.job.deadlineMs<=f.context.deadlineMs);assert.ok(f.job.deadlineMs<=Date.now()+5000);
  assert.deepEqual(f.opens[0].opts.execArgv,[]);assert.deepEqual(Object.keys(f.opens[0].opts.env),['NODE_V8_COVERAGE']);assert.equal(f.opens[0].opts.env.NODE_V8_COVERAGE,undefined);assert.equal(f.opens[0].opts.detached,true);
 });
-test('launch changes, missing deadline, secrets and unsupported effects cannot fork a guardian',async t=>{
+test('launch changes, missing deadline, secrets and unsupported effects cannot fork a guardian',{skip:needsMacOS},async t=>{
  const f=await setup(t);for(const alter of [c=>c.effect.launch.spec.args.push('PRIVATE'),c=>c.effect.launchRevision=DIGEST,c=>c.binding.transport.executable='/bin/sh',c=>c.binding.transport.workingDirectory='/elsewhere',c=>c.binding.transport.secretReferences=[{environmentVariable:'PRIVATE',reference:'secret-ref:private/x'}],c=>delete c.guardianCheckpoints,c=>c.guardianCheckpoints={checkpoint:1,closed:2},c=>delete c.bindGuardian,c=>c.bindGuardian=true,c=>delete c.renewAuthority,c=>c.renewAuthority=true,c=>delete c.deadlineMs,c=>c.deadlineMs=Date.now()-1,c=>c.operationKey='PRIVATE',c=>c.effect.kind='stdio',c=>c.extra='PRIVATE']){
   const c={...f.context,binding:structuredClone(f.context.binding),effect:structuredClone(f.context.effect)};alter(c);await assert.rejects(createMcpContainerDiscoveryFactory(f.options)(c),refused);
  }assert.equal(f.opens.length,0);
 });
-test('options and context getters stay inert; explicit trust and private canonical state root required',async t=>{
+test('options and context getters stay inert; explicit trust and private canonical state root required',{skip:needsMacOS},async t=>{
  const f=await setup(t);let reads=0;const options={...f.options};Object.defineProperty(options,'stateRoot',{get(){reads++;return 'PRIVATE';},enumerable:true});assert.throws(()=>createMcpContainerDiscoveryFactory(options),refused);
  const c={...f.context};Object.defineProperty(c,'effect',{get(){reads++;return {};},enumerable:true});await assert.rejects(createMcpContainerDiscoveryFactory(f.options)(c),refused);assert.equal(reads,0);
  assert.throws(()=>createMcpContainerDiscoveryFactory({...f.options,trustedDockerDesktop:false}),refused);
  await chmod(f.root,0o755);await assert.rejects(createMcpContainerDiscoveryFactory(f.options)(f.context),refused);await chmod(f.root,0o700);
  const alias=f.root+'-alias';await symlink(f.root,alias);t.after(()=>rm(alias,{force:true}));await assert.rejects(createMcpContainerDiscoveryFactory({...f.options,stateRoot:alias})(f.context),refused);assert.equal(f.opens.length,0);
 });
-test('abort before or during queued filesystem preflight starts nothing',async t=>{
+test('abort before or during queued filesystem preflight starts nothing',{skip:needsMacOS},async t=>{
  const f=await setup(t);const pending=createMcpContainerDiscoveryFactory(f.options)(f.context);const observed=assert.rejects(pending,refused);f.signal.abort();await observed;assert.equal(f.opens.length,0);
  await assert.rejects(createMcpContainerDiscoveryFactory(f.options)(f.context),refused);assert.equal(f.opens.length,0);
 });
-test('unsolicited data, invalid UTF8, duplicate keys, wrong IDs, extra envelopes and flood close safely',async t=>{
+test('unsolicited data, invalid UTF8, duplicate keys, wrong IDs, extra envelopes and flood close safely',{skip:needsMacOS},async t=>{
  for(const mode of ['notification','utf8','duplicate','wrong-id','extra','flood'])await t.test(mode,async t=>{
   const f=await setup(t,mode),a=await createMcpContainerDiscoveryFactory(f.options)(f.context);await assert.rejects(a.initialize(initial),refused);await a.close();if(mode==='notification')assert.deepEqual(f.notifications,[{method:'notifications/tools/list_changed'}]);
  });
 });
-test('request timeout and local close observe pending rejection and require guardian closure',async t=>{
+test('request timeout and local close observe pending rejection and require guardian closure',{skip:needsMacOS},async t=>{
  for(const action of ['timeout','close','abort'])await t.test(action,async t=>{const f=await setup(t,'hang'),a=await createMcpContainerDiscoveryFactory(f.options)(f.context),pending=a.initialize(initial),observed=assert.rejects(pending,refused);if(action==='close')await a.close();if(action==='abort')f.signal.abort();await observed;await a.close();});
 });
-test('uncertain container absence or unreaped attach prevents successful close',async t=>{
+test('uncertain container absence or unreaped attach prevents successful close',{skip:needsMacOS},async t=>{
  for(const mode of ['uncertain','unreaped','no-seal','nonzero','signal'])await t.test(mode,async t=>{const f=await setup(t,mode),a=await createMcpContainerDiscoveryFactory(f.options)(f.context);await assert.rejects(a.close(),e=>e.code==='MCP_CONTAINER_CLEANUP_UNCERTAIN');});
 });
-test('method order and overlapping requests fail without tool calls or retry',async t=>{
+test('method order and overlapping requests fail without tool calls or retry',{skip:needsMacOS},async t=>{
  const f=await setup(t,'hang'),a=await createMcpContainerDiscoveryFactory(f.options)(f.context);const pending=a.initialize(initial),observed=assert.rejects(pending,refused);await assert.rejects(a.listTools({}),refused);await observed;await a.close();assert.ok(f.writes.length<=1);assert.equal(f.opens.length,1);
 });
 
-test('stale connected IPC callback and synchronous errors never recursively cancel or leak',async t=>{
+test('stale connected IPC callback and synchronous errors never recursively cancel or leak',{skip:needsMacOS},async t=>{
  for(const mode of ['ipc-throw','ipc-callback'])await t.test(mode,async t=>{const f=await setup(t,mode),a=await createMcpContainerDiscoveryFactory(f.options)(f.context);await assert.rejects(a.initialize(initial),refused);await assert.rejects(a.close(),refused);assert.equal(f.kills,1);assert.ok(f.sends<=7);});
 });
 
-test('failed initial durable renewal opens no protocol session and cancels the owned guardian',async t=>{
+test('failed initial durable renewal opens no protocol session and cancels the owned guardian',{skip:needsMacOS},async t=>{
  const f=await setup(t);let checks=0;f.context.renewAuthority=async()=>{checks++;throw Error('PRIVATE_DB_FAILURE');};
  await assert.rejects(createMcpContainerDiscoveryFactory(f.options)(f.context),refused);
  assert.equal(checks,1);assert.equal(f.writes.length,0);assert.equal(f.opens.length,1);
 });
-test('renewal completion after cancellation never sends an authority response or protocol request',async t=>{
+test('renewal completion after cancellation never sends an authority response or protocol request',{skip:needsMacOS},async t=>{
  const f=await setup(t);let release,called;const checking=new Promise(r=>called=r);
  f.context.renewAuthority=()=>{called();return new Promise(r=>release=r);};
  const opening=createMcpContainerDiscoveryFactory(f.options)(f.context),observed=assert.rejects(opening,refused);await checking;
  f.signal.abort();await observed;const sends=f.sends;release();await new Promise(r=>setImmediate(r));assert.equal(f.sends,sends);assert.equal(f.writes.length,0);
 });
 
-test('missing durable binding capability or failed acknowledgement never reaches a lease or protocol',async t=>{
+test('missing durable binding capability or failed acknowledgement never reaches a lease or protocol',{skip:needsMacOS},async t=>{
  const f=await setup(t);let checks=0,renewals=0;f.context.bindGuardian=async()=>{checks++;throw Error('PRIVATE_DB_UNKNOWN');};f.context.renewAuthority=async()=>{renewals++;};
  await assert.rejects(createMcpContainerDiscoveryFactory(f.options)(f.context),refused);assert.equal(checks,1);assert.equal(renewals,0);assert.equal(f.writes.length,0);
 });
-test('binding completion after cancellation cannot start lease or protocol',async t=>{
+test('binding completion after cancellation cannot start lease or protocol',{skip:needsMacOS},async t=>{
  const f=await setup(t);let release,called,renewals=0;const checking=new Promise(r=>called=r),original=f.context.bindGuardian;
  f.context.bindGuardian=async descriptor=>{called();await new Promise(r=>release=r);return original(descriptor);};f.context.renewAuthority=async()=>{renewals++;};
  const opening=createMcpContainerDiscoveryFactory(f.options)(f.context),observed=assert.rejects(opening,refused);await checking;f.signal.abort();await observed;const sends=f.sends;release();await wait(20);assert.equal(f.sends,sends);assert.equal(renewals,0);assert.equal(f.writes.length,0);
 });
 
-test('checkpoint failure and delayed acknowledgement after stop never forward or reopen',async t=>{
+test('checkpoint failure and delayed acknowledgement after stop never forward or reopen',{skip:needsMacOS},async t=>{
  for(const action of ['failure','stop','late'])await t.test(action,async t=>{
   const f=await setup(t);let release,called;const reached=new Promise(r=>called=r),original=f.context.guardianCheckpoints.checkpoint;
   f.context.guardianCheckpoints.checkpoint=async(...args)=>{called();if(action==='failure')throw Error('PRIVATE_CHECKPOINT');await new Promise(r=>release=r);return original(...args);};
@@ -136,14 +137,14 @@ test('checkpoint failure and delayed acknowledgement after stop never forward or
   if(action!=='failure')f.signal.abort();await observed;const count=f.sends;release?.();await wait(20);assert.equal(f.sends,count);assert.equal(f.writes.length,0);assert.equal(f.opens.length,1);
  });
 });
-test('terminal received with pending normal callback uses last acknowledged head and does not rebase',async t=>{
+test('terminal received with pending normal callback uses last acknowledged head and does not rebase',{skip:needsMacOS},async t=>{
  const f=await setup(t);let release,called;const reached=new Promise(r=>called=r),original=f.context.guardianCheckpoints.checkpoint;let closedHead='unset';
  f.context.guardianCheckpoints.checkpoint=async(...args)=>{called();await new Promise(r=>release=r);return original(...args);};
  f.context.guardianCheckpoints.closed=async(head)=>{closedHead=head;throw Error('PRIVATE_UNSEEN_COMMIT');};
  const opening=createMcpContainerDiscoveryFactory(f.options)(f.context),observed=assert.rejects(opening,refused);await reached;f.signal.abort();await observed;release();await wait(20);assert.equal(closedHead,null);assert.equal(f.writes.length,0);assert.equal(f.opens.length,1);
 });
 
-test('checkpoint callback getters are inert before guardian fork',async t=>{
+test('checkpoint callback getters are inert before guardian fork',{skip:needsMacOS},async t=>{
  const f=await setup(t);let reads=0;const callbacks={closed:async()=>{}};Object.defineProperty(callbacks,'checkpoint',{enumerable:true,get(){reads++;return async()=>{};}});
  await assert.rejects(createMcpContainerDiscoveryFactory(f.options)({...f.context,guardianCheckpoints:callbacks}),refused);assert.equal(reads,0);assert.equal(f.opens.length,0);
 });

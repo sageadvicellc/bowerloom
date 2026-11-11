@@ -19,6 +19,7 @@ import { ManagedSkillError } from '../../../dist/packages/managed-skills/src/obs
 import { serializeManifest, validateManifest, MANIFEST_LIMITS, STORE_MANIFEST_LIMITS } from '../../../dist/packages/skill-manifest/src/schema.js';
 import { configWorld, writeLock, storeItem, storePin, storeFiles, authoredLockItem } from './config-fixture.mjs';
 import { denyNetwork, npmPackage, store as storeOperation, exactTree, fakeAcquirer } from './sync-fixture.mjs';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const network = denyNetwork();
 after(() => assert.deepEqual(network, []));
@@ -651,7 +652,7 @@ function stuckEntries(t, w) {
   t.after(() => { for (const n of fs.existsSync(w.cacheRoot) ? fs.readdirSync(w.cacheRoot) : []) { try { fs.chmodSync(path.join(w.cacheRoot, n, 'locked'), 0o700); } catch { /* gone */ } } });
   return ids;
 }
-test('M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes last, and its refusal and cache list name the fix', async t => {
+test('M-A. a folder that cannot be deleted never blocks a rerun: a leftover goes last, and its refusal and cache list name the fix', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, async t => {
   const w = world(t), ids = stuckEntries(t, w), input = { ...w.input(), selectors: sel({ all: true }) };
   const plan = await planCachePrune(input); assert.deepEqual(plan.picked.map(p => p.id), ids);
   let leftover = '';
@@ -749,7 +750,7 @@ test('M2 (round 4). every next step quotes its path, whatever the leftover name 
   assert.deepEqual(list.unlistedNames.map(u => u.next).sort(), [...dirs.map(p => `chmod -- 700 ${q(p)}`), ...files.map(p => `rm -- ${q(p)}`)].sort());
 });
 
-test('L3 (round 4). a .tmp- leftover that fails at the delete step names the .prune- folder it became', async t => {
+test('L3 (round 4). a .tmp- leftover that fails at the delete step names the .prune- folder it became', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, async t => {
   const w = world(t), rows = SKILL_FILES.map(f => ({ path: f.path, bytes: Buffer.from(f.text) }));
   const { hash } = (await import('../../../dist/packages/skill-manifest/src/resolve-store-git.js')).authoredRows(rows), key = `skill-house-style-${hash}`;
   stateFolders(w); folder(w.storeCacheRoot);
@@ -778,7 +779,7 @@ test('L4 (round 4). selectorFor: a linked cache folder, or one the plan did not 
 
 // --- Round 5 of the reviews of PR 99 ---
 
-test('L-2 (round 5). a blocked .prune- leftover goes after every leftover that can be deleted', async t => {
+test('L-2 (round 5). a blocked .prune- leftover goes after every leftover that can be deleted', { skip: skipAsRoot('a folder at mode 500 cannot be deleted') }, async t => {
   const w = world(t); stateFolders(w);
   const blocked = folder(path.join(w.cacheRoot, '.prune-op-' + '0'.repeat(32) + '-00000000')), free = folder(path.join(w.cacheRoot, '.prune-op-' + '9'.repeat(32) + '-99999999'));
   fs.writeFileSync(path.join(free, 'a.md'), 'x\n');

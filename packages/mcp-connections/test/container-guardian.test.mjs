@@ -18,6 +18,7 @@ function fixture({config,manifest,index}={}){
 import {verifyGuardianJournal,guardianSignaturePayload} from '../../../dist/packages/mcp-connections/src/container-guardian-provenance.js';
 import {verifyGuardianTerminal} from '../../../dist/packages/mcp-connections/src/container-guardian-checkpoint.js';
 import {canonicalJson} from '../../../dist/packages/contracts/src/index.js';
+import {needsMacOS} from './support/macos-only.mjs';
 const guardianUrl=new URL('../../../dist/packages/mcp-connections/src/container-guardian.js',import.meta.url).href;
 async function run(t,mode,prepare){
  const directory=await mkdtemp(join(await realpath(tmpdir()),'bowerloom-guardian-unit-'));await chmod(directory,0o700);t.after(()=>rm(directory,{recursive:true,force:true}));
@@ -31,73 +32,73 @@ async function run(t,mode,prepare){
  let calls=[];try{calls=JSON.parse(await readFile(log,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
  return{done,calls,journalPath,job,descriptor,bindingRevision,terminal,checkpoints};
 }
-test('unknown create result stays uncertain and never discovers or removes a container by name',async t=>{
+test('unknown create result stays uncertain and never discovers or removes a container by name',{skip:needsMacOS},async t=>{
  const r=await run(t,'unknown');assert.equal(r.done.stage,'UNCERTAIN');assert.equal(r.done.noContainerCreated,false);assert.equal(r.done.containerAbsent,false);assert.equal(r.done.attachReaped,true);
  const methods=r.calls.map(x=>x[3]);assert.deepEqual(methods,['ls','create']);const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.equal(j.cid,null);assert.equal(j.stage,'UNCERTAIN');
 });
-test('corrupt persisted journal prevents rewriting ownership and prevents cleanup by guessed identity',async t=>{
+test('corrupt persisted journal prevents rewriting ownership and prevents cleanup by guessed identity',{skip:needsMacOS},async t=>{
  const r=await run(t,'corrupt');assert.equal(r.done.stage,'UNCERTAIN');assert.equal(await readFile(r.journalPath,'utf8'),'PRIVATE_CORRUPT');assert.deepEqual(r.calls.map(x=>x[3]),['ls','create']);
 });
-test('mismatched inspected container identity never starts or removes that container',async t=>{
+test('mismatched inspected container identity never starts or removes that container',{skip:needsMacOS},async t=>{
  const r=await run(t,'mismatch');assert.equal(r.done.stage,'UNCERTAIN');assert.equal(r.done.containerAbsent,false);assert.deepEqual(r.calls.map(x=>x[3]),['ls','create','inspect','inspect']);const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.equal(j.cid,'c'.repeat(64));assert.equal(j.stage,'UNCERTAIN');
 });
-test('existing name collision is never adopted or removed, even when public labels can match',async t=>{
+test('existing name collision is never adopted or removed, even when public labels can match',{skip:needsMacOS},async t=>{
  const r=await run(t,'collision');assert.equal(r.done.stage,'CANCELLED');assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls.map(x=>x[3]),['ls']);
 });
-test('existing operation directory never resumes or retries creation',async t=>{
+test('existing operation directory never resumes or retries creation',{skip:needsMacOS},async t=>{
  const r=await run(t,'unknown',async({journalPath})=>{await mkdir(join(journalPath,'..'),{mode:0o700});await writeFile(journalPath,'PRIVATE_EXISTING',{mode:0o600});});assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls,[]);assert.equal(await readFile(r.journalPath,'utf8'),'PRIVATE_EXISTING');
 });
 
-test('journal replaced by symlink is refused without touching its target',async t=>{
+test('journal replaced by symlink is refused without touching its target',{skip:needsMacOS},async t=>{
  const r=await run(t,'symlink');assert.equal(r.done.stage,'UNCERTAIN');assert.deepEqual(r.calls.map(x=>x[3]),['ls','create']);assert.equal(await readFile(join(r.job.stateRoot,'external'),'utf8'),'PRIVATE_EXTERNAL');
 });
 
-test('IPC forwarding checks absolute deadline even before the scheduled timer runs',async t=>{
+test('IPC forwarding checks absolute deadline even before the scheduled timer runs',{skip:needsMacOS},async t=>{
  const r=await run(t,'deadline');assert.equal(r.done.stage,'REAPED');assert.equal(r.done.reason,'GUARDIAN_PROTOCOL');assert.equal(r.done.containerAbsent,true);assert.equal(r.done.attachReaped,true);assert.equal(r.calls.some(x=>x[0]==='FORBIDDEN_FORWARD'),false);assert.deepEqual(r.calls.map(x=>x[3]),['ls','create','inspect','start','inspect','inspect','rm','ls']);
 });
 
-test('monotonic lease is checked at IPC forwarding before a delayed expiry timer can run',async t=>{
+test('monotonic lease is checked at IPC forwarding before a delayed expiry timer can run',{skip:needsMacOS},async t=>{
  const r=await run(t,'lease-boundary');assert.equal(r.done.stage,'REAPED');assert.equal(r.done.reason,'GUARDIAN_PROTOCOL');
  assert.equal(r.calls.some(x=>x[0]==='FORBIDDEN_FORWARD'),false);
  const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.equal(j.lease.sequence,1);assert.ok(j.lease.lastRenewedAtMs);assert.ok(j.lease.containerAbsentAtMs>=j.lease.stopRequestedAtMs);assert.ok(j.lease.attachReapedAtMs);
 });
-test('live container loses authority when renewal stops, with exact owned cleanup and no redispatch',async t=>{
+test('live container loses authority when renewal stops, with exact owned cleanup and no redispatch',{skip:needsMacOS},async t=>{
  const r=await run(t,'lease-expiry');assert.equal(r.done.reason,'AUTHORITY_LEASE_EXPIRED');assert.equal(r.done.stage,'REAPED');assert.equal(r.done.containerAbsent,true);assert.equal(r.done.attachReaped,true);
  const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.equal(j.lease.sequence,1);assert.ok(j.lease.stopRequestedAtMs-j.lease.lastRenewedAtMs<2600);
  assert.equal(r.calls.filter(x=>x[3]==='create').length,1);assert.equal(r.calls.some(x=>x[0]==='FORBIDDEN_FORWARD'),false);
 });
-test('replayed and wrong-session renewal frames fail closed without extending authority',async t=>{
+test('replayed and wrong-session renewal frames fail closed without extending authority',{skip:needsMacOS},async t=>{
  for(const mode of ['replay','wrong-nonce'])await t.test(mode,async t=>{const r=await run(t,mode);assert.equal(r.done.reason,'GUARDIAN_PROTOCOL');assert.equal(r.done.stage,'REAPED');const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.equal(j.lease.sequence,1);});
 });
-test('missing or delayed initial authority creates no container',async t=>{
+test('missing or delayed initial authority creates no container',{skip:needsMacOS},async t=>{
  for(const mode of ['no-initial-renewal','delayed-initial'])await t.test(mode,async t=>{const r=await run(t,mode);assert.equal(r.done.reason,'AUTHORITY_LEASE_EXPIRED');assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls,[]);});
 });
-test('repeated valid renewals cannot extend the original absolute deadline',async t=>{
+test('repeated valid renewals cannot extend the original absolute deadline',{skip:needsMacOS},async t=>{
  const r=await run(t,'absolute-cap');assert.ok(['DEADLINE','AUTHORITY_LEASE_EXPIRED'].includes(r.done.reason));assert.equal(r.done.stage,'REAPED');
  const j=JSON.parse(await readFile(r.journalPath,'utf8')).body;assert.ok(j.lease.sequence>=2);assert.ok(j.lease.stopRequestedAtMs<=j.deadlineMs+500);assert.equal(r.calls.filter(x=>x[3]==='create').length,1);
 });
 
-test('queued renewal after its challenge expired is rejected before the expiry timer can run',async t=>{
+test('queued renewal after its challenge expired is rejected before the expiry timer can run',{skip:needsMacOS},async t=>{
  const r=await run(t,'stale-renewal');assert.equal(r.done.reason,'GUARDIAN_PROTOCOL');assert.equal(r.done.noContainerCreated,true);assert.deepEqual(r.calls,[]);
 });
 
-test('real child-generated journal signature binds exact operation and independent public key',async t=>{
+test('real child-generated journal signature binds exact operation and independent public key',{skip:needsMacOS},async t=>{
  const r=await run(t,'deadline'),text=await readFile(r.journalPath,'utf8'),envelope=JSON.parse(text);
  const binding={revision:r.bindingRevision,operationKey:r.job.operationKey,launchRevision:r.job.launchRevision,launchOperationKey:r.job.launch.spec.operationKey,descriptor:r.descriptor,intent:{startedAtMs:r.job.deadlineMs-5000,deadlineMs:r.job.deadlineMs}};
  assert.ok(verifyGuardianJournal(text,binding)>=4);assert.equal(envelope.body.stage,'REAPED');assert.equal(envelope.format,'bowerloom/mcp-container-journal/v1beta2');
  for(const mutate of [v=>v.body.cid='a'.repeat(64),v=>v.sequence++,v=>v.body.stage='CANCELLED',v=>v.bindingRevision='sha256:'+'0'.repeat(64)]){const changed=JSON.parse(text);mutate(changed);assert.throws(()=>verifyGuardianJournal(canonicalJson(changed),binding));}
  assert.equal(JSON.stringify(r.descriptor).includes('PRIVATE KEY'),false);
 });
-test('missing or wrong binding acknowledgement permits no Docker command',async t=>{
+test('missing or wrong binding acknowledgement permits no Docker command',{skip:needsMacOS},async t=>{
  for(const mode of ['no-binding','wrong-binding'])await t.test(mode,async t=>{const r=await run(t,mode);assert.equal(r.calls.length,0);assert.equal(r.done.noContainerCreated,true);});
 });
 
-test('stop during CREATING fsync drains the write, seals CANCELLED and never requests create',async t=>{
+test('stop during CREATING fsync drains the write, seals CANCELLED and never requests create',{skip:needsMacOS},async t=>{
  const r=await run(t,'stop-fsync');assert.deepEqual(r.calls.map(x=>x[3]),['ls']);assert.equal(r.checkpoints.length,0);assert.equal(r.done.stage,'CANCELLED');assert.ok(r.terminal);assert.equal(JSON.parse(r.terminal.envelope).body.stage,'CANCELLED');
 });
-test('missing, stopped and late checkpoint acknowledgements cannot create or resume',async t=>{
+test('missing, stopped and late checkpoint acknowledgements cannot create or resume',{skip:needsMacOS},async t=>{
  for(const mode of ['missing-checkpoint','stop-checkpoint','late-checkpoint'])await t.test(mode,async t=>{const r=await run(t,mode);assert.equal(r.done.stage,'CANCELLED');assert.equal(r.calls.some(x=>x[3]==='create'),false);assert.equal(r.checkpoints.length,1);assert.ok(r.terminal);});
 });
-test('stop or lease expiry while STARTED checkpoint awaits acknowledgement cleans up without forwarding',async t=>{
+test('stop or lease expiry while STARTED checkpoint awaits acknowledgement cleans up without forwarding',{skip:needsMacOS},async t=>{
  for(const mode of ['stop-started-checkpoint','late-started-checkpoint'])await t.test(mode,async t=>{const r=await run(t,mode);assert.equal(r.done.stage,'REAPED');assert.equal(r.calls.filter(x=>x[3]==='create').length,1);assert.equal(r.calls.some(x=>x[0]==='FORBIDDEN_FORWARD'),false);assert.deepEqual(r.checkpoints.map(x=>JSON.parse(x).body.stage),['CREATING','CREATED','STARTED']);assert.ok(r.terminal);const binding={revision:r.bindingRevision,operationKey:r.job.operationKey,launchRevision:r.job.launchRevision,launchOperationKey:r.job.launch.spec.operationKey,descriptor:r.descriptor,intent:{startedAtMs:r.job.deadlineMs-5000,deadlineMs:r.job.deadlineMs}};verifyGuardianTerminal(r.terminal.envelope,r.terminal.seal,binding);assert.equal(await readFile(r.journalPath,'utf8'),r.terminal.envelope);});
 });

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { applyGitInit, planGitInit, readLatestReport, readNotesSummary } from '../../../dist/packages/notes-source/src/index.js';
 import { GIT, needsGit, ownGit, put, refusal, script, tempDir, walkPages } from './fixture.mjs';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 /** A wiki with every case the count must get right. */
 function wiki(t) {
@@ -42,7 +43,7 @@ test('the summary never opens a page: a page nobody can read still counts', asyn
   assert.equal((await readNotesSummary(dir)).pages, 8);
 });
 
-test('a folder that cannot be listed leaves the count incomplete, not wrong', async t => {
+test('a folder that cannot be listed leaves the count incomplete, not wrong', { skip: skipAsRoot('a folder at mode 000 cannot be listed') }, async t => {
   const dir = wiki(t);
   fs.chmodSync(path.join(dir, 'pages', 'deep'), 0o000);
   const s = await readNotesSummary(dir);

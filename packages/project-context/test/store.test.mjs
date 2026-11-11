@@ -8,6 +8,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import '../../../dist/tests/support/isolate-home.js';
 import { inspectStoreWith, openStoreWith, isValidStore, verifyStorePins, pathInsideStore, assertNotInStore, storeRootOf, STORE_FORMAT } from '../../../dist/packages/project-context/src/store.js';
 import { inspectStore, openStore } from '../../../dist/packages/project-context/src/index.js';
+import { skipAsRoot, skipOnCoarseFileTimes } from '../../../dist/tests/support/machine-skips.js';
 
 const code = expected => error => error?.code === expected;
 const BODY = `{"format":"${STORE_FORMAT}"}\n`;
@@ -202,7 +203,7 @@ test('17. two names that fold to store.json throw STORE_UNSAFE', t => {
   assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNSAFE'));
 });
 
-test('18. a home folder at mode 0 throws STORE_UNREADABLE', t => {
+test('18. a home folder at mode 0 throws STORE_UNREADABLE', { skip: skipAsRoot('a home folder at mode 0 cannot be read') }, t => {
   const w = mkStore(world(t)); fs.chmodSync(w.home, 0);
   try { assert.throws(() => inspectStoreWith(w.home, solo(w)), code('STORE_UNREADABLE')); } finally { fs.chmodSync(w.home, 0o700); }
   assert.throws(() => inspectStoreWith('/nonexistent-home-for-bowerloom-test', solo(w)), code('STORE_UNREADABLE'));
@@ -249,18 +250,21 @@ test('a refusal message carries no path', t => {
 });
 
 // ---- Review fixes: S2, S3, S4, S7 ----
-test('S2: verifyStorePins re-checks owner and mode, and the size and change time of store.json', t => {
+test('S2: verifyStorePins re-checks owner and mode, and the size of store.json', t => {
   let w = mkStore(world(t)); let c = openStoreWith(w.home, solo(w));
   fs.chmodSync(w.store, 0o777); assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'store 777'); fs.chmodSync(w.store, 0o700);
   assert.doesNotThrow(() => verifyStorePins(c));
   fs.chmodSync(path.join(w.store, 'store.json'), 0o666); assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'store.json 666');
   w = mkStore(world(t)); c = openStoreWith(w.home, solo(w));
-  fs.writeFileSync(path.join(w.store, 'store.json'), BODY);
-  assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'rewritten in place');
-  w = mkStore(world(t)); c = openStoreWith(w.home, solo(w));
   fs.appendFileSync(path.join(w.store, 'store.json'), ' ');
   assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'size changed');
   assert.ok(typeof c.fileIdentity.size === 'string' && typeof c.fileIdentity.ctimeNs === 'string');
+});
+// Split from the test above: a file rewritten with the same size shows only in its change time, which a coarse file system cannot show.
+test('S2: verifyStorePins re-checks the change time of store.json', { skip: skipOnCoarseFileTimes('store.json change when it is rewritten in place') }, t => {
+  const w = mkStore(world(t)); const c = openStoreWith(w.home, solo(w));
+  fs.writeFileSync(path.join(w.store, 'store.json'), BODY);
+  assert.throws(() => verifyStorePins(c), code('STORE_UNSAFE'), 'rewritten in place');
 });
 
 test('S3: a store folder swapped while the inspection runs is refused', t => {

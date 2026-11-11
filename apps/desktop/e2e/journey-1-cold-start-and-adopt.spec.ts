@@ -209,6 +209,8 @@ test('Journey 1, step 1.5: the first screen after the read is the Overview; ever
   });
 
   await test.step('1.5d the places in Bowerloom are told from the others, and the others offer a folder chooser', async () => {
+    // The Grid is still on the page for a moment after the Graph is chosen, so its marks would be counted twice. Wait until there is one mark for each place.
+    await expect(p.locator('.hxo-mark')).toHaveCount(totals.total);
     const marks = await p.locator('.hxo-mark').allInnerTexts();
     expect(marks.filter(m => m === 'In Bowerloom'), 'the places of the adopted folder').toHaveLength(totals.inBowerloom);
     expect(marks.filter(m => m === 'Not in Bowerloom yet')).toHaveLength(totals.total - totals.inBowerloom);

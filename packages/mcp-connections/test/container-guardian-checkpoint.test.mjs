@@ -35,6 +35,7 @@ function fixture(){
 import {readDarwinBootSession} from '../../../dist/packages/mcp-connections/src/darwin-boot-session.js';
 import {createGuardianBinding,validateGuardianBinding,guardianSignaturePayload,verifyGuardianJournal,inspectMcpGuardianProvenance} from '../../../dist/packages/mcp-connections/src/container-guardian-provenance.js';
 import {PostgresDiscoveryAuthorityStore} from '../../../dist/packages/mcp-connections/src/authority-postgres.js';
+import {needsMacOS} from './support/macos-only.mjs';
 const clone=v=>JSON.parse(JSON.stringify(v));
 async function signedFixture(t){
  const f=fixture(),keys=generateKeyPairSync('ed25519'),bootSessionId=await readDarwinBootSession();
@@ -49,14 +50,14 @@ async function signedFixture(t){
 import {advanceGuardianCheckpoint,createGuardianCheckpoint,createGuardianClosure,guardianTerminalPayload,terminalDeclaration,verifyGuardianTerminal,validateGuardianCheckpointRecords,classifyGuardianCheckpoint,inspectMcpGuardianCheckpoints,collectMcpGuardianOperatorReceipt} from '../../../dist/packages/mcp-connections/src/container-guardian-checkpoint.js';
 function terminal(f,sequence=5){const b=JSON.parse(f.journal.text);b.stage='REAPED';b.lease.containerAbsentAtMs=5001;b.lease.attachReapedAtMs=5002;const envelope=f.signed(b,sequence),body=terminalDeclaration(f.binding.revision,envelope),seal=canonicalJson({...body,signature:sign(null,guardianTerminalPayload(body),f.keys.privateKey).toString('base64')});const witness={format:'bowerloom/mcp-guardian-owned-close/v1beta1',bindingRevision:f.binding.revision,guardianSessionId:f.descriptor.guardianSessionId,guardianPid:f.descriptor.guardianPid,exitCode:0,signal:null,observedAtMs:7000};return{envelope,seal,witness};}
 function started(f,sequence=3){const b=JSON.parse(f.journal.text);b.stage='STARTED';return f.signed(b,sequence);}
-test('checkpoint chain pins exact signed bytes, monotonic sequence and prior revision',async t=>{
+test('checkpoint chain pins exact signed bytes, monotonic sequence and prior revision',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),text=started(f),empty={checkpoints:[],closure:null},first=advanceGuardianCheckpoint(f.binding,empty,null,text);
  assert.equal(first.checkpoints.length,1);const second=advanceGuardianCheckpoint(f.binding,first,first.checkpoints[0].revision,started(f,4));assert.deepEqual(advanceGuardianCheckpoint(f.binding,second,null,text),second);assert.deepEqual(advanceGuardianCheckpoint(f.binding,first,null,text),first);
  for(const [head,envelope] of [[null,started(f,4)],[first.checkpoints[0].revision,started(f,2)],[first.checkpoints[0].revision,f.signed({...JSON.parse(f.journal.text),stage:'STARTED',reason:'DIFFERENT'},3)]])assert.throws(()=>advanceGuardianCheckpoint(f.binding,first,head,envelope));
  assert.throws(()=>advanceGuardianCheckpoint({...f.binding,revision:hash('wrong')},empty,null,text));
  let reads=0;assert.throws(()=>validateGuardianCheckpointRecords(f.binding,[{get envelope(){reads++;return text;}}],null));assert.equal(reads,0);
 });
-test('terminal CAS refuses unseen normal commit, is exactly idempotent and prevents higher signed checkpoints',async t=>{
+test('terminal CAS refuses unseen normal commit, is exactly idempotent and prevents higher signed checkpoints',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),first=advanceGuardianCheckpoint(f.binding,{checkpoints:[],closure:null},null,started(f)),final=terminal(f);
  assert.throws(()=>advanceGuardianCheckpoint(f.binding,first,null,final.envelope,final));
  const closed=advanceGuardianCheckpoint(f.binding,first,first.checkpoints[0].revision,final.envelope,final);
@@ -65,17 +66,17 @@ test('terminal CAS refuses unseen normal commit, is exactly idempotent and preve
  assert.throws(()=>advanceGuardianCheckpoint(f.binding,closed,null,final.envelope,{...final,witness:{...final.witness,observedAtMs:7001}}));
  const corrupt=clone(closed);corrupt.checkpoints[1].previousRevision=null;assert.throws(()=>validateGuardianCheckpointRecords(f.binding,corrupt.checkpoints,corrupt.closure));
 });
-test('seal is domain separated and exact clean owned incarnation is required',async t=>{
+test('seal is domain separated and exact clean owned incarnation is required',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),final=terminal(f),record=createGuardianCheckpoint(f.binding,null,final.envelope);
  for(const change of [v=>v.exitCode=1,v=>v.signal='SIGTERM',v=>v.guardianPid++,v=>v.guardianSessionId='f'.repeat(64),v=>v.bindingRevision=hash('other'),v=>v.extra=true]){const w=clone(final.witness);change(w);assert.throws(()=>createGuardianClosure(f.binding,record,final.seal,w));}
  const unsigned=JSON.parse(final.seal);delete unsigned.signature;const wrong=canonicalJson({...unsigned,signature:sign(null,guardianSignaturePayload(unsigned),f.keys.privateKey).toString('base64')});assert.throws(()=>verifyGuardianTerminal(final.envelope,wrong,f.binding));
  for(const change of [b=>b.lease.containerAbsentAtMs=null,b=>b.lease.attachReapedAtMs=null,b=>b.stage='UNCERTAIN']){const b=JSON.parse(final.envelope).body;change(b);assert.throws(()=>terminalDeclaration(f.binding.revision,f.signed(b,5)));}
 });
-test('rollback, checkpoint equality and newer local snapshots never assert latest state',async t=>{
+test('rollback, checkpoint equality and newer local snapshots never assert latest state',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),first=advanceGuardianCheckpoint(f.binding,{checkpoints:[],closure:null},null,started(f)),final=terminal(f),closed=advanceGuardianCheckpoint(f.binding,first,first.checkpoints[0].revision,final.envelope,final);
  assert.equal(classifyGuardianCheckpoint(started(f),f.binding,{checkpoints:[],closure:null}),'unknown');assert.equal(classifyGuardianCheckpoint(started(f,2),f.binding,first),'rollback');assert.equal(classifyGuardianCheckpoint(started(f),f.binding,first),'matches-checkpoint');assert.equal(classifyGuardianCheckpoint(started(f,4),f.binding,first),'newer-unanchored');assert.equal(classifyGuardianCheckpoint(final.envelope,f.binding,closed),'final-snapshot-verified');assert.equal(classifyGuardianCheckpoint(started(f),f.binding,closed),'rollback');assert.equal(classifyGuardianCheckpoint(started(f,7),f.binding,closed),'terminal-mismatch');assert.equal(classifyGuardianCheckpoint(f.journal.text,f.binding,first),'unknown');
 });
-test('fresh versioned inspection and private operator receipt preserve authority and falsify every effect flag',async t=>{
+test('fresh versioned inspection and private operator receipt preserve authority and falsify every effect flag',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),final=terminal(f),records=advanceGuardianCheckpoint(f.binding,{checkpoints:[],closure:null},null,final.envelope,final);await writeFile(f.path,final.envelope);const original=canonicalJson(f.authority);let reads=0;
  const deps={stateRoot:f.root,trustedDarwinHost:true,store:{async readGuardianCheckpointEvidence(){reads++;return clone({authority:f.authority,binding:f.binding,...records});}}};
  const result=await inspectMcpGuardianCheckpoints(deps,f.authority.scope);assert.equal(result.format,'bowerloom/mcp-guardian-provenance/v1beta2');assert.equal(result.checkpointClassification,'final-snapshot-verified');assert.equal(result.currentExternalState,'unverified');assert.equal(result.processIdentity,'unproved');assert.equal(result.finding,'HOLD_RECOVERY');
@@ -94,13 +95,13 @@ function checkpointDatabase(authority,binding){
  },release(){}});
  return{store:new PostgresDiscoveryAuthorityStore({async connect(){return client;}},{schema:'bowerloom_mcp_checkpoint_test'}),queries,get records(){return records;},set available(v){available=v;},set version(v){version=v;},set hook(v){hook=v;},set ack(v){ack=v;}};
 }
-test('normal PostgreSQL checkpoint compares all authority bytes and invokes live checks under lock; reads create nothing',async t=>{
+test('normal PostgreSQL checkpoint compares all authority bytes and invokes live checks under lock; reads create nothing',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);f.authority.status='IN_FLIGHT';f.authority.reason=null;const db=checkpointDatabase(f.authority,f.binding);let checks=0;const before=canonicalJson(f.authority);
  const check=s=>{checks++;assert.equal(s.status,'IN_FLIGHT');if(s.stopRequested||s.grant.revoked)throw Error('PRIVATE_DENIED');};
  const cp=await db.store.recordGuardianCheckpoint(f.authority,null,started(f),check);assert.ok(checks>=3);assert.ok(db.queries.some(q=>q.includes('.discoveries')&&q.includes('FOR UPDATE')));assert.equal(db.queries.some(q=>q.startsWith('CREATE')||q.startsWith('UPDATE')),false);assert.equal(canonicalJson(f.authority),before);assert.equal((await db.store.readGuardianCheckpointEvidence(f.authority.scope)).checkpoints[0].revision,cp.revision);
  const expected=clone(f.authority);db.hook=sql=>{if(sql.includes('.discoveries'))f.authority.stopRequested=true;};await assert.rejects(db.store.recordGuardianCheckpoint(expected,cp.revision,started(f,4),check));assert.equal(db.records.evidence.checkpoints.length,1);
 });
-test('normal schema, async authorization, late commit acknowledgement and terminal audit remain fail closed',async t=>{
+test('normal schema, async authorization, late commit acknowledgement and terminal audit remain fail closed',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);f.authority.status='IN_FLIGHT';f.authority.reason=null;const db=checkpointDatabase(f.authority,f.binding);
  db.available=false;await assert.rejects(db.store.recordGuardianCheckpoint(f.authority,null,started(f),()=>{}));assert.equal(db.records,null);db.available=true;db.version=2;await assert.rejects(db.store.readGuardianCheckpointEvidence(f.authority.scope));db.version=1;
  await assert.rejects(db.store.recordGuardianCheckpoint(f.authority,null,started(f),async()=>{}));assert.equal(db.records,null);
@@ -111,14 +112,14 @@ test('normal schema, async authorization, late commit acknowledgement and termin
  const closed=await db.store.recordGuardianClosed(f.authority,cp.revision,terminalValue.envelope,terminalValue.seal,terminalValue.witness,()=>{});assert.equal(canonicalJson(f.authority),before);assert.equal(closed.revision,db.records.evidence.closure.revision);
  await assert.rejects(db.store.recordGuardianCheckpoint(f.authority,db.records.evidence.checkpoints.at(-1).revision,started(f,9),()=>{}));assert.equal(db.records.evidence.checkpoints.length,2);
 });
-test('inspector fences changed database evidence and never accepts fabricated observations',async t=>{
+test('inspector fences changed database evidence and never accepts fabricated observations',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t);await writeFile(f.path,started(f));const records=advanceGuardianCheckpoint(f.binding,{checkpoints:[],closure:null},null,started(f));let reads=0;
  const deps={stateRoot:f.root,trustedDarwinHost:true,store:{async readGuardianCheckpointEvidence(){reads++;return clone({authority:f.authority,binding:f.binding,...(reads===2?{checkpoints:[],closure:null}:records)});}}};
  await assert.rejects(inspectMcpGuardianCheckpoints(deps,f.authority.scope),{code:'MCP_GUARDIAN_CHECKPOINT_UNCERTAIN'});
  await assert.rejects(inspectMcpGuardianCheckpoints({...deps,observedAtMs:1},f.authority.scope));
 });
 
-test('lost final COMMIT acknowledgement returns uncertainty while immutable closure remains readable without changing authority',async t=>{
+test('lost final COMMIT acknowledgement returns uncertainty while immutable closure remains readable without changing authority',{skip:needsMacOS},async t=>{
  const f=await signedFixture(t),db=checkpointDatabase(f.authority,f.binding),final=terminal(f),before=canonicalJson(f.authority);
  db.ack=()=>{throw Error('PRIVATE_FINAL_COMMIT_ACK');};
  await assert.rejects(db.store.recordGuardianClosed(f.authority,null,final.envelope,final.seal,final.witness,()=>{}),{code:'MCP_AUTHORITY_COMMIT_UNKNOWN'});

@@ -17,6 +17,7 @@ import { promptNotices } from '../../../dist/packages/project-sync/src/notices.j
 import { authoredRows } from '../../../dist/packages/skill-manifest/src/resolve-store-git.js';
 import { manifestRefusal, githubRequestFailed } from '../../../dist/packages/skill-manifest/src/refusal.js';
 import { withProjectLock, discoverProject } from '../../../dist/packages/project-context/src/index.js';
+import { skipAsRoot } from '../../../dist/tests/support/machine-skips.js';
 
 const network = denyNetwork();
 after(() => assert.deepEqual(network, [], 'no network'));
@@ -180,7 +181,7 @@ test('F7. with a refused store, a store item is held STORE_ITEM_MISSING with the
   assert.deepEqual(r.skills[0].hold, { code: 'STORE_ITEM_MISSING', next: 'Run bowerloom store status.' });
 });
 
-test('F8. the stale check rethrows a store item it cannot read', async t => {
+test('F8. the stale check rethrows a store item it cannot read', { skip: skipAsRoot('a store item at mode 000 cannot be read') }, async t => {
   const w = configWorld(t, { folder: true }); await storeItem(w, 'skill', 'house-style');
   writeConfig(w, { skills: [{ id: 'house-style', source: 'store' }] }); writeLock(w, { skills: [authoredLockItem(w, 'skill', 'house-style')] });
   fs.chmodSync(path.join(w.store, 'skills/house-style'), 0o000);
@@ -323,7 +324,7 @@ test('M1. a live store skill whose frontmatter has no closing fence is held, not
   assert.deepEqual([plan.skills.items[0].action, plan.skills.items[0].hold?.code], ['hold', 'SKILLS_ADD_FRONTMATTER']);
 });
 
-test('M2. an unknown shared state that causes a refusal says so honestly', async t => {
+test('M2. an unknown shared state that causes a refusal says so honestly', { skip: skipAsRoot('a git config at mode 000 cannot be read') }, async t => {
   const w = configWorld(t, { folder: true });
   await storeItem(w, 'skill', 'house-style');
   const config = path.join(w.projectDir, '.git', 'config');

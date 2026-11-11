@@ -19,6 +19,7 @@ import { cli, baseEnv } from './support/config-cli.js';
 import type { CacheList, CachePrunePlan, PickedEntry } from '../packages/project-sync/src/index.js';
 import { readInstalledRelease } from '../apps/cli/src/release.js';
 import { STORE_MANIFEST_LIMITS, serializeManifest, validateManifest } from '../packages/skill-manifest/src/schema.js';
+import { skipAsRoot } from './support/machine-skips.js';
 
 const heading = `Bowerloom ${readInstalledRelease().version}: open beta\n${readInstalledRelease().execution}\n\n`;
 const fixtures = fileURLToPath(new URL('../../packages/skill-manifest/test/fixtures/', import.meta.url));
@@ -351,7 +352,7 @@ test('M2 (round 4). each printed next step, run in a shell, changes only its own
   assert.match(run(w.work, ['cache', 'list'], env).stdout, /^Skills cache: .*\n(?: {2}\.prune-.*\n)+Total: 3 entries, size unknown\n$/);
 });
 
-test('L-1 (round 5). a delete-step refusal gives a bare command as next and fix; run in a shell, it changes only the leftover', t => {
+test('L-1 (round 5). a delete-step refusal gives a bare command as next and fix; run in a shell, it changes only the leftover', { skip: skipAsRoot('a leftover folder at mode 500 cannot be deleted') }, t => {
   const w = world(t), cache = manyEntries(w, 1), op = join(cache, `op-${'0'.repeat(32)}`), sub = join(op, 'locked');
   mkdirSync(sub, { mode: 0o700 }); writeFileSync(join(sub, 'f.md'), 'x\n'); chmodSync(sub, 0o500);
   t.after(() => { for (const n of existsSync(cache) ? readdirSync(cache) : []) try { chmodSync(join(cache, n, 'locked'), 0o700); } catch { /* gone */ } });

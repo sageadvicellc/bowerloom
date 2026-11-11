@@ -9,6 +9,7 @@ import { itemId, itemRef, requestV2, locateV2, catalogItem, planManagedItem, ins
 import { applyManagedItem, planManagedItemRecovery, recoverManagedItem } from '../../../dist/packages/managed-skills/src/v2-transaction.js';
 import { readLocalSlice, readSliceTree } from '../../../dist/packages/managed-skills/src/local-source.js';
 import { project, itemState, inventory, code } from './v2-fixture.mjs';
+import { skipOnCoarseFileTimes, skipOnReusedFolderIdentity } from '../../../dist/tests/support/machine-skips.js';
 
 const live = () => {};
 function restore(t) { t.mock.restoreAll(); syncBuiltinESMExports(); }
@@ -139,7 +140,7 @@ test('13. readSliceTree returns a hold and no index for an invalid file, and thr
   assert.equal(readLocalSliceHold(f), 'MANAGED_SKILL_REFUSED');
 });
 function readLocalSliceHold(f) { try { readLocalSlice(f.projectDir, 'wiki', { kind: 'project' }, live); return 'none'; } catch (e) { return e.code; } }
-test('14. readSliceTree throws MANAGED_SKILL_STALE_APPROVAL when a file changes during the read', t => {
+test('14. readSliceTree throws MANAGED_SKILL_STALE_APPROVAL when a file changes during the read', { skip: skipOnCoarseFileTimes('a folder change when a file is added, or a file change when it is appended to') }, t => {
   const f = wiki(t); const original = fs.readdirSync; let n = 0;
   t.mock.method(fs, 'readdirSync', (p, ...rest) => { const out = original.call(fs, p, ...rest); if (++n === 1) wikiFile(f, 'late.md', '# Late\n'); return out; }); syncBuiltinESMExports();
   assert.throws(() => readSliceTree(f.projectDir, 'wiki', { kind: 'project' }, live), code('MANAGED_SKILL_STALE_APPROVAL')); restore(t);
@@ -284,7 +285,7 @@ test('B9. a transaction installs a slice of a registered folder; the catalog hol
   assert.equal(read(f, '.claude/skills/slice-wiki/SKILL.md').includes(f.base), false);
   assert.equal(currentV2(f.projectDir, req.stateDir, req.item).revision, receipt.revision);
 });
-test('B10. planning refuses when the folder was replaced between the request and the read', async t => {
+test('B10. planning refuses when the folder was replaced between the request and the read', { skip: skipOnReusedFolderIdentity('a replaced wiki folder from the one it replaced') }, async t => {
   const { f, root } = registeredWiki(t), req = registeredRequest(f, root);
   fs.rmSync(path.join(root, 'wiki'), { recursive: true }); kb(f);
   await assert.rejects(planManagedItem(req), e => ['MANAGED_SKILL_STALE_APPROVAL', 'MANAGED_SKILL_REFUSED'].includes(e.code));
@@ -322,7 +323,7 @@ test('S2. a registered root that the managed path rule rejects is a SLICE_ROOT_U
 test('S6. the catalog root carries the id of the root folder: a folder replaced at the same path is another root', async t => {
   const { f, root } = registeredWiki(t), first = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id;
   const again = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id; assert.equal(again, first);
-  const copy = path.join(f.base, 'wiki-copy'); fs.cpSync(path.join(root, 'wiki'), copy, { recursive: true }); fs.rmSync(path.join(root, 'wiki'), { recursive: true }); fs.cpSync(copy, path.join(root, 'wiki'), { recursive: true });
+  const copy = path.join(f.base, 'wiki-copy'); fs.cpSync(path.join(root, 'wiki'), copy, { recursive: true }); fs.renameSync(path.join(root, 'wiki'), path.join(f.base, 'wiki-old')); fs.cpSync(copy, path.join(root, 'wiki'), { recursive: true }); // the old folder stays, so its inode cannot be reused
   const next = readLocalSlice(f.projectDir, 'wiki', regRoot(root), live).source.root.id; assert.match(next, /^[a-f0-9]{32}$/); assert.notEqual(next, first);
 });
 test('S1b. the lookup is asked for the summary kind of the slice (decision 5, option B)', t => {
