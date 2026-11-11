@@ -66,7 +66,7 @@ Local models is a bundled UI extension. Its manifest is `apps/desktop/extensions
 
 - The screen follows `listExtensions`. If main did not load the extension, the route and the navigation entry do not exist. If the call fails at launch, before the extension host starts, the screen waits and asks again every 3 seconds. It shows no error.
 - The screen asks `localModels` every 3 seconds while the window is visible. It also has a Refresh button. It stores nothing.
-- One row for each server: state, model file name, quantization, size, context size, speed, requests, context use and port. Memory and uptime read "not reported".
+- One card for each server. The title is the model name and the port, such as "Example-9B · port 8091". A card that is up shows the model file name, quantization, size, context size, speed (such as "61.2 tokens/s"), requests and context use. Memory and uptime read "not reported". A server that is down, not answering or starting is a compact card: the title, the state and one sentence, with no fields.
 - A server that is down, starting or not answering is a row with a state and a sentence. A figure that is missing reads "not reported", never 0.
 - A note such as `PARTIAL_READ` shows as its sentence. A row shows its own notes too, when the report has them.
 - If the probe itself failed (`PROBE_FAILED`), the report has no rows and a count of 0. The screen shows the note's sentence. It does not say "no servers are set up", and it shows no count.

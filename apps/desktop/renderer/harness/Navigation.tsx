@@ -38,7 +38,7 @@ export interface NavigationProps {
   onHistory(): void;
   onHelp(): void;
   /** The bundled extensions that have a screen (renderer/harness/bundled-extensions.ts), each drawn after Runs. Left out, none. The id is also the nav key of its route. */
-  extensions?: readonly { readonly id: string; readonly title: string; readonly onOpen: () => void }[];
+  extensions?: readonly { readonly id: string; readonly title: string; readonly icon: HarnessIconName; readonly onOpen: () => void }[];
 }
 
 interface ItemProps {
@@ -157,7 +157,7 @@ export function Navigation(p: NavigationProps): ReactElement {
               </li>
               <li><Item {...item} navKey="projects" icon="folder" label={WORDS.label.projects} current={here === 'projects'} onClick={p.onProjects} /></li>
               <li><Item {...item} navKey="runs" icon="play" label={WORDS.label.runs} current={here === 'runs'} onClick={p.onRuns} /></li>
-              {(p.extensions ?? []).map(x => <li key={x.id}><Item {...item} navKey={x.id} icon="monitor" label={x.title} current={here === x.id} onClick={x.onOpen} /></li>)}
+              {(p.extensions ?? []).map(x => <li key={x.id}><Item {...item} navKey={x.id} icon={x.icon} label={x.title} current={here === x.id} onClick={x.onOpen} /></li>)}
             </ul>
           </Fold>
         </div>

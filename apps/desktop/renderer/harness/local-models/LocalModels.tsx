@@ -1,6 +1,6 @@
 /**
- * Local models: which model servers run on this computer, one row each. A row shows the state (up, starting, not answering, not supported, down), the model file name, quantization, size, context size,
- * speed, requests, context use and port, and "not reported" for memory and uptime (no process is read). A figure the server did not give reads "not reported", never 0. A server that is down is a state with a sentence.
+ * Local models: which model servers run on this computer, one card each. The title is the model name and the port. A card shows the state (up, starting, not answering, not supported, down), the model file name, quantization, size, context size,
+ * speed, requests and context use, and "not reported" for memory and uptime (no process is read). A figure the server did not give reads "not reported", never 0. A server that is down, not answering or starting is a compact card: the title, the state and a sentence.
  * The screen reads again every few seconds while the page is visible, and has a Refresh button. It stores nothing. All display logic is in shared/local-models/view-model.ts.
  * Structure copied from Install history (screens/History.tsx): Screen, a hint line, then a list of rows with a tile, a name and a state dot.
  */
@@ -19,7 +19,7 @@ import './local-models.css';
 function ModelRow({ row }: { row: Row }): ReactElement {
   const titleId = `hxl-name-${row.id}`;
   return (
-    <li className="hx-row hxl-row" data-model={row.id} data-state={row.stateText} aria-labelledby={titleId}>
+    <li className="hx-row hxl-row" data-model={row.id} data-state={row.stateText} data-compact={row.compact ? '' : undefined} aria-labelledby={titleId}>
       <span className="hx-tile" aria-hidden="true"><HIcon name="monitor" size={20} /></span>
       <div className="hx-row-text hxl-text">
         <div className="hxl-head">
@@ -28,14 +28,16 @@ function ModelRow({ row }: { row: Row }): ReactElement {
         </div>
         {row.why === null ? null : <p className="hx-text hx-muted hxl-why">{row.why}</p>}
         {row.notes.map(note => <p key={note} className="hx-text hx-muted hxl-why" data-row-note="">{note}</p>)}
-        <dl className="hxl-facts">
-          {row.facts.map(fact => (
-            <div key={fact.key} className="hxl-fact" data-fact={fact.key} data-reported={fact.reported ? '' : undefined}>
-              <dt>{fact.label}</dt>
-              <dd>{fact.value}</dd>
-            </div>
-          ))}
-        </dl>
+        {row.facts.length === 0 ? null : (
+          <dl className="hxl-facts">
+            {row.facts.map(fact => (
+              <div key={fact.key} className="hxl-fact" data-fact={fact.key} data-reported={fact.reported ? '' : undefined}>
+                <dt>{fact.label}</dt>
+                <dd>{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
     </li>
   );

@@ -100,7 +100,7 @@ export function Shell({ route, children, overlays, extensions }: { route: Route;
           onNewHarness={() => { ui.showToast(BUILDER_REFUSALS['new-harness']); ui.openAdopt({}); }}
           onHarnesses={() => go({ name: 'harnesses' })} onLibrary={kind => go({ name: 'library', kind: kind ?? 'skill' })} onProjects={() => go({ name: 'projects' })} onRuns={() => go({ name: 'runs' })}
           onInterfaces={() => go({ name: 'interfaces' })} onHistory={() => go({ name: 'history' })} onHelp={() => go({ name: 'help' })}
-          extensions={(extensions ?? []).flatMap(x => (x.id === 'local-models' ? [{ id: x.id, title: x.title, onOpen: () => go({ name: 'local-models' }) }] : []))} />
+          extensions={(extensions ?? []).flatMap(x => (x.id === 'local-models' ? [{ id: x.id, title: x.title, icon: 'chip' as const, onOpen: () => go({ name: 'local-models' }) }] : []))} />
         {mode === 'hidden' && overlay ? <div className="hm-nav-scrim" data-nav-scrim="" aria-hidden="true" onClick={() => { setOverlay(false); requestAnimationFrame(() => topToggle.current?.focus()); }} /> : null}
         {children}
         <div id="hx-layer" />

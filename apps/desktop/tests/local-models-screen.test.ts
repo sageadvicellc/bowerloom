@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { HIcon } from '../renderer/harness/icons.js';
 import { HarnessApp } from '../renderer/harness/HarnessApp.js';
 import { LocalModelsBody } from '../renderer/harness/local-models/LocalModels.js';
 import type { BodyProps } from '../renderer/harness/local-models/LocalModels.js';
@@ -44,10 +45,12 @@ function renderApp(hash: string, local: LocalBridge | null | undefined, realMode
 test('rows: each server has a name heading, a state in words, and the figures, with memory and uptime "not reported"', () => {
   const html = body();
   assert.equal((html.match(/data-model="/g) ?? []).length, 3);
-  assert.match(html, /<h2[^>]*>Example-9B-Q8_0\.gguf<\/h2>/);
-  for (const word of ['Up', 'Down', 'Q8_0', '9.5 GB', '32,768', '38.4 tokens per second', '1 active', '25% (8,192 of 32,768)', '8091']) assert.ok(html.includes(word), word);
-  assert.equal((html.match(/data-fact="memory"[^>]*><dt>Memory<\/dt><dd>not reported<\/dd>/g) ?? []).length, 3);
-  assert.equal((html.match(/data-fact="uptime"[^>]*><dt>Uptime<\/dt><dd>not reported<\/dd>/g) ?? []).length, 3);
+  assert.match(html, /<h2[^>]*>Example-9B \u00b7 port 8091<\/h2>/);
+  assert.match(html, /<h2[^>]*>Example-20B \u00b7 port 8092<\/h2>/);
+  for (const word of ['Up', 'Down', 'Q8_0', '9.5 GB', '32,768', '38.4 tokens/s', '61.2 tokens/s', '1 active', '25% (8,192 of 32,768)', 'Example-9B-Q8_0.gguf']) assert.ok(html.includes(word), word);
+  assert.doesNotMatch(html, /data-fact="port"|<dt>Port<\/dt>/);
+  assert.equal((html.match(/data-fact="memory"[^>]*><dt>Memory<\/dt><dd>not reported<\/dd>/g) ?? []).length, 2, 'the two cards that are up');
+  assert.equal((html.match(/data-fact="uptime"[^>]*><dt>Uptime<\/dt><dd>not reported<\/dd>/g) ?? []).length, 2);
   assert.match(html, /aria-label="Local model servers"/);
   assert.match(html, /<dl class="hxl-facts">/);
 });
@@ -56,12 +59,15 @@ test('a down server is a row with a state and a sentence, and shows no figure as
   const down = body({ report: { ...SAMPLE, models: [SAMPLE.models[2]!] } });
   assert.match(down, /data-state="Down"/); assert.match(down, /Nothing is listening on this port\./);
   assert.doesNotMatch(down, /<dd>0<\/dd>|0\.0 tokens/);
+  assert.match(down, /<h2[^>]*>llama-server \u00b7 port 8093<\/h2>/);
+  assert.match(down, /data-compact=""/); assert.doesNotMatch(down, /<dl|data-fact|not reported|data-row-note/, 'the compact card has no field');
 });
 
 test('a starting server is a row in the state "Starting"', () => {
   const m = { ...SAMPLE.models[2]!, state: 'starting' as const, stateReason: 'LOADING' };
   const html = body({ report: { ...SAMPLE, models: [m] } });
   assert.match(html, /data-state="Starting"/); assert.match(html, /The server is loading a model\./);
+  assert.doesNotMatch(html, /<dl|not reported/);
 });
 
 test('PARTIAL_READ shows as a plain sentence above the rows', () => {
@@ -196,6 +202,17 @@ test('the sample launch shows the screen route as a waiting line at the first fr
 test('the navigation has no Local models item before the list answers, so a removed extension has no entry', () => {
   assert.doesNotMatch(renderApp('#sample/harnesses', createSampleLocal()), /data-nav-key="local-models"/);
   assert.doesNotMatch(renderApp('#app/harnesses', null, true), /data-nav-key="local-models"/);
+});
+
+test('Local models has its own navigation icon, not the one of Engines', () => {
+  const nav = readFileSync(join(DESKTOP, 'renderer/harness/Navigation.tsx'), 'utf8');
+  assert.match(nav, /navKey=\{x\.id\} icon=\{x\.icon\}/, 'an extension item draws the icon it is given');
+  assert.doesNotMatch(nav, /navKey=\{x\.id\} icon="monitor"/);
+  assert.match(nav, /navKey="interfaces" icon="monitor"/, 'Engines keeps its monitor');
+  const shell = readFileSync(join(DESKTOP, 'renderer/harness/Shell.tsx'), 'utf8');
+  assert.match(shell, /id: x\.id, title: x\.title, icon: 'chip'/);
+  const svg = (name: 'chip' | 'monitor'): string => renderToStaticMarkup(createElement(HIcon, { name }) as ReactElement);
+  assert.notEqual(svg('chip'), svg('monitor')); assert.match(svg('chip'), /<svg[^>]*stroke="currentColor"/);
 });
 
 test('Navigation draws an item for each extension it is given, after Runs, and the item is one of the rove keys', () => {

@@ -117,6 +117,35 @@ test('no source file of the preview, its engine screens or main\'s dialogs has a
   assert.deepEqual([...listed].sort(), Object.keys(CODE_NAMES).sort(), 'every file in the list was scanned');
 });
 
+/**
+ * The one exception to the word "token", for the Local models screen only. A speed there reads "61.2 tokens/s", which is the unit people who run local models know. The exception is one file,
+ * the words of that screen (shared/local-models/view-model.ts), and one piece of text in it: exactly the unit "tokens/s". Any other text in that file, and every other file, keeps the ban.
+ */
+const LOCAL_MODELS_WORDS_FILE = 'shared/local-models/view-model.ts';
+const SPEED_UNIT = 'tokens/s';
+const bannedFor = (file: string, piece: string): string | null => (file === LOCAL_MODELS_WORDS_FILE && piece.trim() === SPEED_UNIT ? null : bannedHere(piece));
+
+test('the Local models speed unit is the only text allowed to say "token", and only in the words of that screen', () => {
+  const source = readFileSync(join(DESKTOP, LOCAL_MODELS_WORDS_FILE), 'utf8');
+  const pieces = textPieces(source);
+  for (const piece of pieces) assert.equal(bannedFor(LOCAL_MODELS_WORDS_FILE, piece), null, piece);
+  const withToken = pieces.filter(piece => /token/i.test(piece));
+  assert.equal(withToken.length, 1, 'one piece of text in the file says token'); assert.equal(withToken[0]!.trim(), SPEED_UNIT);
+  // The ban itself is unchanged.
+  for (const text of ['token', 'tokens', 'tokens/s', 'the token here', 'Tokens per second']) assert.notEqual(bannedHere(text), null, text);
+  // The exception holds for that file and that unit alone.
+  for (const file of ['renderer/harness/local-models/LocalModels.tsx', 'renderer/harness/local-models/local-models.css', 'shared/local-models/sample.ts', 'shared/harness/words.ts', 'renderer/harness/words.ts', 'shared/local-models/view-model.tsx', 'renderer/harness/local-models/view-model.ts']) assert.notEqual(bannedFor(file, SPEED_UNIT), null, file);
+  for (const text of ['tokens per second', 'Speed in tokens/s', 'token', 'tokens', 'tokens/s limit']) assert.notEqual(bannedFor(LOCAL_MODELS_WORDS_FILE, text), null, text);
+  // No file the preview scans, other than the words file of the screen, holds the word in a string or in JSX text.
+  const dirs = ['renderer/harness', 'shared/harness', 'shared/engine'];
+  const files = dirs.flatMap(dir => readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join((e as unknown as { parentPath: string }).parentPath, e.name)));
+  for (const file of files) {
+    const name = relative(DESKTOP, file).split(sep).join('/');
+    if (name === 'shared/harness/sample.ts' || name === 'shared/harness/real-map.ts' || name === 'shared/engine/sample.ts') continue;
+    for (const piece of textPieces(readFileSync(file, 'utf8'))) assert.doesNotMatch(piece, /\btokens?\b/i, `${name}: ${piece}`);
+  }
+});
+
 test('the guard catches the old word as a whole string anywhere that is not a listed name in code', () => {
   assert.notEqual(bannedHere('interface'), null); assert.notEqual(bannedHere('Interfaces'), null); assert.notEqual(bannedHere('last-interface'), null);
   assert.deepEqual(textPieces("const label = 'interface'; const note = `Pick an interface`;"), ['interface', 'Pick an interface'], 'a string that equals the old word is a piece like any other');

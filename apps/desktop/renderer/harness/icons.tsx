@@ -9,7 +9,7 @@ import type { PartKind } from '../../shared/harness/types.js';
 
 export type HarnessIconName =
   | KitIconName
-  | 'harness' | 'robot' | 'folder' | 'play' | 'monitor' | 'eye' | 'list' | 'zoom-in' | 'zoom-out' | 'fit' | 'columns' | 'bolt' | 'plug' | 'page' | 'warning-triangle' | 'save-clock' | 'minus-circle';
+  | 'harness' | 'robot' | 'folder' | 'play' | 'monitor' | 'eye' | 'list' | 'zoom-in' | 'zoom-out' | 'fit' | 'columns' | 'bolt' | 'plug' | 'page' | 'warning-triangle' | 'save-clock' | 'minus-circle' | 'chip';
 
 const PATHS: Readonly<Record<Exclude<HarnessIconName, KitIconName>, readonly string[]>> = {
   // Three nodes joined to one another: a harness.
@@ -31,6 +31,8 @@ const PATHS: Readonly<Record<Exclude<HarnessIconName, KitIconName>, readonly str
   'warning-triangle': ['M12 4l9 16H3z', 'M12 10v4', 'M12 17.2v.1'],
   'save-clock': ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M12 7.5V12l3 2'],
   'minus-circle': ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M8 12h8'],
+  // A chip with a core and a pin on each side: a model that runs on this computer.
+  chip: ['M6.5 6.5h11v11h-11z', 'M10 10h4v4h-4z', 'M9.5 3.5v3', 'M14.5 3.5v3', 'M9.5 17.5v3', 'M14.5 17.5v3', 'M3.5 9.5h3', 'M3.5 14.5h3', 'M17.5 9.5h3', 'M17.5 14.5h3'],
 };
 
 const OWN = new Set<string>(Object.keys(PATHS));

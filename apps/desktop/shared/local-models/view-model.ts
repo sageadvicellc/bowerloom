@@ -1,7 +1,7 @@
 /**
  * The display logic of the local models screen, pure: no React, no Node, no clock. The screen draws what these functions return, and a terminal view could reuse them.
  * A figure the server did not give is null and reads "not reported". It is never 0 and never blank. A server that is down, starting or unreachable is a state with words, never a crash.
- * The words live here, not in renderer/harness, because the speed unit is "tokens per second" and the preview's word test bans the word "token" in its own folders.
+ * The words live here. The speed unit "tokens/s" says "token", which the preview's word test bans everywhere else. That test (tests/harness-words.test.ts) lets this file, and only the text "tokens/s" in it, say the word.
  */
 import type { LocalModel, LocalModelsNote, LocalModelsReport, ModelState } from './types.js';
 
@@ -48,8 +48,8 @@ export function formatBytes(n: number | null): string {
   return `${(n / 1e6).toFixed(n >= 1e8 ? 0 : 1)} MB`;
 }
 
-/** A speed as "12.3 tokens per second", or "not reported". */
-export const formatRate = (n: number | null): string => (finite(n) ? `${n.toFixed(1)} tokens per second` : LOCAL_WORDS.notReported);
+/** A speed as "12.3 tokens/s", or "not reported". */
+export const formatRate = (n: number | null): string => (finite(n) ? `${n.toFixed(1)} tokens/s` : LOCAL_WORDS.notReported);
 
 /** The last part of a path, whatever the separator. A folder never shows, even if a server sent one. */
 export function baseName(value: string | null): string | null {
@@ -90,7 +90,6 @@ export function factsOf(model: LocalModel): readonly Fact[] {
     fact('speed', 'Speed', formatRate(model.generationTokensPerSecond), finite(model.generationTokensPerSecond)),
     fact('requests', 'Requests', requestsWords(model), model.activeRequests !== null),
     fact('use', 'Context use', contextWords(model), model.contextSize !== null),
-    fact('port', 'Port', String(model.port), true),
     fact('memory', 'Memory', LOCAL_WORDS.notReported, false),
     fact('uptime', 'Uptime', LOCAL_WORDS.notReported, false),
   ]);
@@ -103,6 +102,8 @@ export interface Row {
   readonly tone: Tone;
   /** A plain sentence for a state that is not "up", or null. */
   readonly why: string | null;
+  /** True for a card that shows only the title, the state and the reason: it has no facts and no notes. */
+  readonly compact: boolean;
   readonly facts: readonly Fact[];
   /** The row's own notes as plain sentences, when the report carries them (a later report version). Empty when it does not. */
   readonly notes: readonly string[];
@@ -127,9 +128,37 @@ export function rowNotes(model: LocalModel): readonly string[] {
   return Object.freeze(out);
 }
 
+/** The file ending that a model file name carries. Only this one is cut: a dot inside a name ("Name-3.5-9B") is not an ending. */
+const FILE_ENDING = /\.gguf$/i;
+/** A quantization suffix, with the separator before it: "-Q8_0", "-Q4_K_M", "-IQ3_XS", "-MXFP4", "-F16", "-BF16". */
+const QUANT_SUFFIX = /[-_.](?:I?Q\d(?:_[A-Z0-9]+)*|MXFP\d|BF16|F16|F32)$/i;
+
+/** The title of a card: the model name without its ending and quantization, then the port. With no model name, the file base name without its ending. With neither, the kind of server. */
+export function titleOf(model: LocalModel): string {
+  const named = baseName(model.modelName);
+  let what: string;
+  if (named !== null) {
+    what = named.replace(FILE_ENDING, '');
+    const quant = model.quantization;
+    if (quant !== null && quant !== '' && what.toLowerCase().endsWith(`-${quant}`.toLowerCase())) what = what.slice(0, what.length - quant.length - 1);
+    else what = what.replace(QUANT_SUFFIX, '');
+    if (what === '') what = named;
+  } else {
+    const file = baseName(model.modelFile);
+    what = file === null ? model.provider : file.replace(FILE_ENDING, '') || file;
+  }
+  return `${what} \u00b7 port ${model.port}`;
+}
+
+/** A server that is down, not answering or starting has nothing to show but its state and the reason, so its card is compact. */
+const COMPACT_STATES: readonly ModelState[] = Object.freeze(['down', 'unreachable', 'starting'] as ModelState[]);
+
 export function rowOf(model: LocalModel): Row {
-  const name = baseName(model.modelName) ?? `${model.provider} on port ${model.port}`;
-  return Object.freeze({ id: model.id, name, stateText: stateWords(model.state), tone: stateTone(model.state), why: model.state === 'up' ? null : reasonWords(model.stateReason), facts: factsOf(model), notes: rowNotes(model) });
+  const compact = COMPACT_STATES.includes(model.state);
+  return Object.freeze({
+    id: model.id, name: titleOf(model), stateText: stateWords(model.state), tone: stateTone(model.state), why: model.state === 'up' ? null : reasonWords(model.stateReason),
+    compact, facts: compact ? Object.freeze([]) : factsOf(model), notes: compact ? Object.freeze([]) : rowNotes(model),
+  });
 }
 
 /** Up first, then starting, not answering, not supported and down; then by name, then by port. */

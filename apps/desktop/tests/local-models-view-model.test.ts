@@ -17,14 +17,14 @@ const NULLS: Partial<LocalModel> = { modelName: null, modelFile: null, quantizat
 
 test('a missing figure reads "not reported" and a real 0 reads 0', () => {
   for (const f of [formatCount, formatBytes, formatRate]) assert.equal(f(null), NR);
-  assert.equal(formatCount(0), '0'); assert.equal(formatBytes(0), '0.0 MB'); assert.equal(formatRate(0), '0.0 tokens per second');
+  assert.equal(formatCount(0), '0'); assert.equal(formatBytes(0), '0.0 MB'); assert.equal(formatRate(0), '0.0 tokens/s');
   for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1]) { assert.equal(formatCount(bad), NR); assert.equal(formatBytes(bad), NR); assert.equal(formatRate(bad), NR); }
 });
 
 test('numbers are formatted the same way every time', () => {
   assert.equal(formatCount(32768), '32,768'); assert.equal(formatCount(1234567), '1,234,567');
   assert.equal(formatBytes(9518764032), '9.5 GB'); assert.equal(formatBytes(250_000_000), '250 MB'); assert.equal(formatBytes(12_300_000), '12.3 MB');
-  assert.equal(formatRate(38.44), '38.4 tokens per second');
+  assert.equal(formatRate(38.44), '38.4 tokens/s'); assert.equal(formatRate(61.2), '61.2 tokens/s');
 });
 
 test('a file name is the last part of a path, with any separator, and never a folder', () => {
@@ -48,23 +48,49 @@ test('every row shows memory and uptime as "not reported", and the figures it ha
   assert.equal(facts.memory!.value, NR); assert.equal(facts.memory!.reported, false);
   assert.equal(facts.uptime!.value, NR); assert.equal(facts.uptime!.reported, false);
   assert.equal(facts.file!.value, 'Example-9B-Q8_0.gguf'); assert.equal(facts.quantization!.value, 'Q8_0'); assert.equal(facts.size!.value, '9.5 GB');
-  assert.equal(facts.context!.value, '32,768'); assert.equal(facts.speed!.value, '38.4 tokens per second'); assert.equal(facts.requests!.value, '1 active'); assert.equal(facts.port!.value, '8091');
+  assert.equal(facts.context!.value, '32,768'); assert.equal(facts.speed!.value, '38.4 tokens/s'); assert.equal(facts.requests!.value, '1 active');
+  assert.equal(facts.port, undefined, 'the port is in the title, not a field');
+  assert.deepEqual(factsOf(model()).map(f => f.key), ['file', 'quantization', 'size', 'context', 'speed', 'requests', 'use', 'memory', 'uptime']);
   // Memory is not reported even when a later report carries a number: this version reads no process.
   assert.equal(Object.fromEntries(factsOf(model({ processMemoryBytes: 5 })).map(f => [f.key, f.value])).memory, NR);
 });
 
 test('a row whose server gave nothing shows "not reported" for every figure and no 0', () => {
   const facts = factsOf(model(NULLS));
-  for (const f of facts.filter(x => x.key !== 'port')) assert.equal(f.value, NR, f.key);
-  assert.ok(facts.every(f => !/\b0\b/.test(f.value) || f.key === 'port'));
-  assert.equal(rowOf(model(NULLS)).name, 'llama-server on port 8091');
+  for (const f of facts) assert.equal(f.value, NR, f.key);
+  assert.ok(facts.every(f => !/\b0\b/.test(f.value)));
+  assert.equal(rowOf(model(NULLS)).name, 'llama-server \u00b7 port 8091');
 });
 
 test('the model file of a row is its base name even when the server sent a folder', () => {
   const row = rowOf(model({ modelFile: '/Users/someone/models/Example-9B.gguf', modelName: '/Users/someone/models/Example-9B.gguf' }));
-  assert.equal(row.name, 'Example-9B.gguf');
+  assert.equal(row.name, 'Example-9B \u00b7 port 8091');
   assert.equal(row.facts.find(f => f.key === 'file')!.value, 'Example-9B.gguf');
   assert.doesNotMatch(JSON.stringify(row), /someone|models\//);
+});
+
+test('the title is the model name without its quantization and extension, then the port; with no name it is the file base name without extension, then the provider', () => {
+  assert.equal(rowOf(model()).name, 'Example-9B \u00b7 port 8091');
+  assert.equal(rowOf(model({ modelName: 'Example-20B-MXFP4.gguf', quantization: 'MXFP4', port: 8092 })).name, 'Example-20B \u00b7 port 8092');
+  assert.equal(rowOf(model({ modelName: 'Example-9B-Q4_K_M.gguf', quantization: null })).name, 'Example-9B \u00b7 port 8091', 'a known quantization suffix goes even when the server gave none');
+  assert.equal(rowOf(model({ modelName: 'Qwen3.5-9B-Q8_0', quantization: 'Q8_0' })).name, 'Qwen3.5-9B \u00b7 port 8091', 'a dot inside a name is not an extension');
+  assert.equal(rowOf(model({ modelName: 'Example-9B', quantization: null })).name, 'Example-9B \u00b7 port 8091');
+  assert.equal(rowOf(model({ modelName: null, modelFile: '/models/Example-9B-Q8_0.gguf' })).name, 'Example-9B-Q8_0 \u00b7 port 8091');
+  assert.equal(rowOf(model({ modelName: null, modelFile: null, port: 8093 })).name, 'llama-server \u00b7 port 8093');
+  assert.equal(rowOf(model({ modelName: '', modelFile: '', port: 8093 })).name, 'llama-server \u00b7 port 8093');
+});
+
+test('a down, starting or unreachable server is a compact card: the title, the state, the reason and nothing else; no "not reported" field', () => {
+  for (const [state, reason] of [['down', 'CONNECTION_REFUSED'], ['unreachable', 'TIMEOUT'], ['starting', 'LOADING']] as const) {
+    const row = rowOf({ ...model({ ...NULLS, state, stateReason: reason }), notes: [{ code: 'PARTIAL_READ' }] } as unknown as LocalModel);
+    assert.deepEqual(row.facts, [], state); assert.deepEqual(row.notes, [], state); assert.equal(row.compact, true, state);
+    assert.equal(row.name, 'llama-server \u00b7 port 8091'); assert.ok(row.why !== null && row.why.length > 5, state);
+    assert.doesNotMatch(JSON.stringify(row), /not reported/, state);
+  }
+  const unknown = rowOf(model({ ...NULLS, state: 'down', stateReason: 'SOMETHING_NEW' }));
+  assert.equal(unknown.why, null); assert.deepEqual(unknown.facts, []);
+  assert.equal(rowOf(model()).compact, false); assert.equal(rowOf(model()).facts.length, 9);
+  assert.equal(rowOf(model({ ...NULLS, state: 'unsupported', stateReason: 'UNSUPPORTED_PROVIDER' })).compact, false, 'only the three states of the answer are compact');
 });
 
 test('a down, starting, unreachable or unsupported server is a state with words and a sentence, not a crash and not a zero', () => {
