@@ -14,8 +14,6 @@ export interface NoteEntry {
   readonly rel: string;
   /** The folder of the page below the place folder, with `/`, or '' at the top. */
   readonly folder: string;
-  /** A short hash of the linked notes folder the page comes from, or absent for a page of the place's own folder. It keeps two pages of the same path apart. */
-  readonly source?: string;
   readonly title: string;
   readonly summary: string;
   readonly tags: readonly string[];

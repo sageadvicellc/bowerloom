@@ -199,7 +199,7 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     if (read.notes.length === 0) continue;
     const label = cleanLine(read.place.label).replace(/\//g, '-').slice(0, 60) || 'Notes', scopeId = scopeOf.get(read.place.id) ?? GLOBAL_SCOPE.id, key = shortHash(read.place.id);
     const pages = read.notes.map((n: NoteEntry): WikiPage => ({
-      id: `real-page-${shortHash(`${read.place.id}\u0000${n.source === undefined ? '' : `${n.source}\u0000`}${n.rel}`)}`, title: n.title === '' ? n.rel : n.title, folder: n.folder === '' ? label : `${label}/${n.folder}`,
+      id: `real-page-${shortHash(`${read.place.id}\u0000${n.rel}`)}`, title: n.title === '' ? n.rel : n.title, folder: n.folder === '' ? label : `${label}/${n.folder}`,
       type: n.type === '' ? 'note' : n.type, tags: [...n.tags], summary: n.summary, bytes: n.bytes, links: [], joinedSinceVisit: false,
     }));
     const seen = new Set<string>();

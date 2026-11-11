@@ -94,12 +94,8 @@ export interface RealHarnessPart { readonly id: string; readonly kind: 'agent' |
  * What the reader saw in a folder's `.bowerloom` as plain bounded JSON (read only). `readable` is false when a file is not valid JSON, is over a limit or cannot be read; the harness then holds no part. `engines` are
  * the program names. `links` join an agent to the skills it names, by part id.
  */
-/** A notes folder a harness links that was not read, and why: the folder is gone, its stored path is not a form the reader takes, it needs the person's approval on this machine, its `knowledge.json` cannot be read, or more is linked than is read. `label` is the stored path, or empty. */
-export interface LinkProblem { readonly reason: 'gone' | 'form' | 'approval' | 'damaged' | 'unreadable' | 'limit'; readonly label: string }
 export interface RealHarness {
   readonly readable: boolean;
-  /** The linked notes folders that were not read. Absent when there are none. */
-  readonly linkProblems?: readonly LinkProblem[];
   readonly engines: readonly string[];
   readonly parts: readonly RealHarnessPart[];
   readonly links: readonly { readonly from: string; readonly to: string }[];

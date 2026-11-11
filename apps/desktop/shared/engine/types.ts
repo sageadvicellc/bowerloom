@@ -503,8 +503,6 @@ export interface SaveView {
   readonly removedSources: readonly StoppedSourceView[];
   readonly copiedExecutables: readonly CopiedExecutableView[];
   readonly acknowledge: string | null;
-  /** The linked notes folders (`~/` form) that this save also approves for reading on this computer. Absent when there are none. */
-  readonly approves?: readonly string[];
 }
 /**
  * A save as the window sends it when the plan copies files that can run from another folder: the edits, and the plan's `acknowledge` hash once the person

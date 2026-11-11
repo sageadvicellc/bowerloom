@@ -7,7 +7,7 @@
  */
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { filesOf, teamFolder } from '../tests/helpers-engine/folders.js';
 import { bundleOnce, launchReal } from './harness-real-page.js';
@@ -34,6 +34,8 @@ async function start(tab: string): Promise<void> {
   await page().waitForSelector('[data-home]');
 }
 const put = (file: string, text: string): void => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text); };
+/** The record of approvals of linked home folders, in the private state folder the app was given. */
+const approvalsFile = (): string => join(home, '.local', 'state', 'bowerloom', 'linked-notes', 'approved.json');
 const linkSheet = (p: Page): Locator => p.getByRole('dialog', { name: 'Link a notes folder', exact: true });
 const shot = async (p: Page, name: string): Promise<void> => { if (shots !== null) await p.screenshot({ path: join(shots, name) }); };
 /** Notes with a first commit, so the step has no history question. */
@@ -152,7 +154,6 @@ test.describe('Link a notes folder', () => {
     await s.locator('[data-folder]', { hasText: 'team' }).click();
     await s.getByRole('button', { name: 'Review the change', exact: true }).click();
     const review = s.locator('[data-save-review="save"]');
-    await expect(review.locator('[data-approves]')).toContainText('~/Documents/field-notes');
     expect(filesOf(team), 'nothing is written while the person reads').toEqual(before);
     await review.locator('[data-approve-plan] input').check();
     await s.getByRole('button', { name: /^Save \d+ files?$/ }).click();
@@ -177,7 +178,7 @@ test.describe('Link a notes folder', () => {
     await start('context');
     const p = page(), team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
     await readAgain(await linkHomeNotes(notes, team));
-    await expect(p.locator('[data-part]', { hasText: 'team notes' })).toHaveCount(1);
+    await expect(p.locator('[data-part]', { hasText: 'team linked notes' })).toHaveCount(1);
     await expect(p.locator('[data-link-problem]')).toHaveCount(0);
   });
 
@@ -189,6 +190,47 @@ test.describe('Link a notes folder', () => {
     rmSync(notes, { recursive: true, force: true });
     await readAgain(s);
     await expect(p.locator('[data-link-problem="gone"]')).toContainText('Linked folder not found: ~/Documents/field-notes');
+  });
+
+  test('picking the folder in the chooser is the approval: the record holds it, and linking it again changes no file and records it again', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const p = page(), team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
+    await linkHomeNotes(notes, team);
+    const keys = (JSON.parse(readFileSync(approvalsFile(), 'utf8')) as { version: number; keys: string[] }).keys;
+    expect(keys.length).toBe(1);
+    expect(keys[0]).toMatch(/^[0-9a-f]{32}$/);
+    // The record is lost, as on a computer where the link was cloned and never picked. The link is in knowledge.json already, so linking it again changes no file.
+    rmSync(approvalsFile());
+    const tree = filesOf(team), knowledgeBefore = readFileSync(join(team, '.bowerloom', 'knowledge.json'), 'utf8');
+    await p.evaluate(() => { location.hash = '#app/library/context'; location.reload(); });
+    await p.waitForSelector('[data-home]');
+    await p.getByRole('button', { name: 'Add', exact: true }).click();
+    const s = p.getByRole('dialog', { name: 'Add notes', exact: true });
+    await h.pick(team);
+    await s.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    await s.locator('[data-folder]', { hasText: 'team' }).click();
+    await s.getByRole('button', { name: 'Next', exact: true }).click();
+    await h.pick(notes);
+    await s.getByRole('button', { name: 'Use my notes', exact: true }).click();
+    await expect(s.locator('[data-notes-chosen]')).toContainText('field-notes');
+    await s.getByRole('button', { name: 'Review the change', exact: true }).click();
+    await expect(s.locator('[data-save-review="save"]')).toContainText('The folder already matches. Nothing is written.');
+    expect(readFileSync(join(team, '.bowerloom', 'knowledge.json'), 'utf8'), 'knowledge.json is unchanged').toBe(knowledgeBefore);
+    expect(filesOf(team), 'no file of the harness changed').toEqual(tree);
+    expect(existsSync(approvalsFile()), 'the pick recorded the approval again').toBe(true);
+    expect((JSON.parse(readFileSync(approvalsFile(), 'utf8')) as { keys: string[] }).keys).toEqual(keys);
+  });
+
+  test('a damaged record of approvals is not written over, and the Library says so instead of "needs approval"', async () => {
+    test.setTimeout(240_000);
+    await start('context');
+    const team = teamFolder(home), notes = wiki(join(home, 'Documents', 'field-notes'));
+    mkdirSync(dirname(approvalsFile()), { recursive: true });
+    writeFileSync(approvalsFile(), '{ damaged');
+    await readAgain(await linkHomeNotes(notes, team));
+    expect(readFileSync(approvalsFile(), 'utf8')).toBe('{ damaged');
+    await expect(page().locator('[data-link-problem="damaged"]')).toContainText('Saved approvals could not be read: ~/Documents/field-notes');
   });
 
   test('a notes folder outside the home folder and the harness folder is refused at the review, with a clear message, and nothing is written', async () => {

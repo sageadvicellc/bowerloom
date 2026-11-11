@@ -1,23 +1,24 @@
 // Context items (beta.2 Context page): the pages of a notes folder the person linked to a harness. They run on small homes made here and never read the real HOME.
-// The harness package stores a linked folder as `.` (the harness folder), a path below it, or `~/` and a path below the home folder; those are the forms the reader takes.
-// Cause 1: the automatic notes walk never runs for the home folder and stops at any subfolder with a tool folder, and a linked folder (knowledge.json) was never walked at all.
+// The harness package stores a linked folder as `.` (the harness folder), a path below it, or `~/` and a path below the home folder; those are the forms the module takes.
+// The reader of main/real-scan.ts is the frozen library of the base, so the linked folders are read by main/linked-notes.ts, which adds to the result the reader made.
+// A `~/` link is read only for a folder the person picked: the approval is recorded by packages/notes-source (`approveFolder`) at the pick, by the real path of the folder.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { TestContext } from 'node:test';
-import { createScanner, findPlacesUnder, readPlace, watchTextOf } from '../main/real-scan.js';
-import { approvalKey } from '../shared/real/linked-approvals.js';
-import { hashText } from '../shared/world/sample.js';
-import { approvalsFileOf, isApproved, recordApprovals } from '../main/linked-approvals.js';
+import { createScanner } from '../main/real-scan.js';
+import { addLinkedNotes, collectLinked, linkedWatchText, withLinkedNotes, approvalsOf } from '../main/linked-notes.js';
+import type { LinkedLimits } from '../main/linked-notes.js';
 import { makeBudget, newTally } from '../main/real-fs.js';
-import { readdirSync } from 'node:fs';
+import { approvalsFileOf, approveFolder } from '../../../packages/notes-source/src/index.js';
 import { storedKnowledgePath } from '../../../packages/harness-definition/src/index.js';
+import { buildRealResult } from '../shared/real/map-world.js';
+import type { RealPlace, RealResult } from '../shared/real/types.js';
 import { realToHarnessState } from '../shared/harness/real-map.js';
 import { contextEmpty, linkProblems } from '../shared/harness/library-add.js';
 import { linkProblemWords } from '../renderer/harness/words.js';
-import { buildRealResult } from '../shared/real/map-world.js';
-import type { RealPlace, RealResult } from '../shared/real/types.js';
+import { hashText } from '../shared/world/sample.js';
 import { tempDir } from './support.js';
 
 const NOW_MS = Date.UTC(2026, 10, 11);
@@ -29,35 +30,39 @@ const link = (path: string, name = 'journal'): string => json({ sources: [{ name
 
 /** The private state folder of a made-up home: the approvals of linked home folders are kept below it. */
 const stateOf = (home: string): string => join(home, '.made-up-state');
-/** `approved` lists `[harness folder below home, stored path]`: what the person approved in the link flow. */
-type Approved = readonly (readonly [string, string])[];
-/** The folder a stored `~/` path leads to now, as the link flow records it; empty when there is none. */
-const targetOf = (home: string, stored: string): string => { try { return realpathSync(join(home, stored.startsWith('~/') ? stored.slice(2) : stored)); } catch { return ''; } };
-const approve = (home: string, approved: Approved): void => { for (const [folder, stored] of approved) assert.equal(recordApprovals(stateOf(home), join(home, folder), [{ stored, target: targetOf(home, stored) }]), 'kept'); };
-async function read(home: string, approved: Approved = []): Promise<{ result: RealResult; places: readonly RealPlace[]; reads: Awaited<ReturnType<ReturnType<typeof createScanner>['read']>>['reads'] }> {
+/** `approved` lists folders below home the person picked in the notes chooser, by their path below home. */
+const approve = (home: string, approved: readonly string[]): void => { for (const dir of approved) assert.equal(approveFolder(stateOf(home), join(home, dir)), 'kept', dir); };
+interface Read { result: RealResult; places: readonly RealPlace[] }
+async function read(home: string, approved: readonly string[] = [], limits?: LinkedLimits): Promise<Read> {
   approve(home, approved);
-  const scanner = createScanner({ home, approvalsFile: approvalsFileOf(stateOf(home)) });
+  const scanner = createScanner({ home });
   const found = await scanner.discover();
   const places: RealPlace[] = [...found.places, ...(await scanner.addFolder(join(home, 'work'))).places];
   const batch = await scanner.read(places.map(p => p.id));
-  return { result: buildRealResult(batch.reads, batch.tally, { nowMs: NOW_MS, foldExtraApps: true }), places, reads: batch.reads };
+  const built = buildRealResult(batch.reads, batch.tally, { nowMs: NOW_MS, foldExtraApps: true });
+  return { result: addLinkedNotes(built, places, { home, stateRoot: stateOf(home), ...(limits === undefined ? {} : { limits }) }), places };
 }
-const problemsOf = (r: Awaited<ReturnType<typeof read>>): string[] => r.reads.flatMap(x => x.harness?.linkProblems ?? []).map(p => `${p.reason}:${p.label}`);
-const titles = (r: RealResult): string[] => r.world.wikiPages.map(p => p.title).sort();
+const titles = (r: Read | RealResult): string[] => ('result' in r ? r.result : r).world.wikiPages.map(p => p.title).sort();
 const sliceNames = (r: RealResult): string[] => r.world.items.filter(i => i.kind === 'context-slice').map(i => i.name);
+const problemsOf = (r: Read): string[] => (r.result.harnessPlaces ?? []).flatMap(h => (h.harness as { linkProblems?: { reason: string; label: string }[] }).linkProblems ?? []).map(p => `${p.reason}:${p.label}`);
 const setup = (t: TestContext, make: (home: string) => void): string => { const home = tempDir(t, 'bowerloom-ctx-'); make(home); return home; };
+const proj = (h: string, sources: unknown): void => {
+  put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
+  put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), json({ sources }));
+};
+const wiki = (path: string, name = 'journal'): { name: string; kind: string; path: string } => ({ name, kind: 'wiki-folder', path });
 
-test('a wiki under the home folder that a harness links shows its pages as context items', async t => {
+test('a wiki under the home folder that a harness links shows its pages as context items, once the person picked it', async t => {
   const home = setup(t, h => {
-    put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
-    put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), link('~/journal'));
+    proj(h, [wiki('~/journal')]);
     put(join(h, 'journal', 'one.md'), page('One'));
     put(join(h, 'journal', 'deep', 'two.md'), page('Two'));
   });
-  const { result } = await read(home, [['work/proj', '~/journal']]);
-  assert.deepEqual(titles(result), ['One', 'Two']);
-  assert.ok(sliceNames(result).length > 0, `a context item: ${sliceNames(result).join(', ')}`);
-  assert.equal(result.counts.notes, 2);
+  const got = await read(home, ['journal']);
+  assert.deepEqual(titles(got), ['One', 'Two']);
+  assert.ok(sliceNames(got.result).some(n => /linked notes$/.test(n)), `a context item: ${sliceNames(got.result).join(', ')}`);
+  assert.equal(got.result.counts.notes, 2);
+  assert.deepEqual(problemsOf(got), []);
 });
 
 test('a notes folder in the home folder that nothing links is never read on its own', async t => {
@@ -66,64 +71,49 @@ test('a notes folder in the home folder that nothing links is never read on its 
     put(join(h, 'journal', 'one.md'), page('One'));
     put(join(h, 'Documents', 'two.md'), page('Two'));
   });
-  const { result } = await read(home);
-  assert.deepEqual(titles(result), []);
-  assert.deepEqual(sliceNames(result), []);
+  const got = await read(home, ['journal', 'Documents']);
+  assert.deepEqual(titles(got), []);
+  assert.deepEqual(sliceNames(got.result), []);
+});
+
+test('a link in ~/ form is read only for the folder the person picked; until then it is a problem that says so, and a pick of another folder does not help', async t => {
+  const home = setup(t, h => { proj(h, [wiki('~/journal')]); put(join(h, 'journal', 'one.md'), page('One')); put(join(h, 'other', 'x.md'), page('X')); });
+  const before = await read(home);
+  assert.deepEqual(titles(before), []);
+  assert.deepEqual(problemsOf(before), ['approval:~/journal']);
+  assert.deepEqual(problemsOf(await read(home, ['other'])), ['approval:~/journal']);
+  const after = await read(home, ['journal']);
+  assert.deepEqual(titles(after), ['One']);
+  assert.deepEqual(problemsOf(after), []);
+});
+
+test('a swapped shortcut needs a new pick: the stored path is the same, the folder it leads to is not', async t => {
+  const home = setup(t, h => { proj(h, [wiki('~/notes', 'n')]); put(join(h, 'real-one', 'one.md'), page('One')); put(join(h, 'real-two', 'two.md'), page('Two')); symlinkSync(join(h, 'real-one'), join(h, 'notes')); });
+  assert.deepEqual(titles(await read(home, ['notes'])), ['One']);
+  rmSync(join(home, 'notes')); symlinkSync(join(home, 'real-two'), join(home, 'notes'));
+  const got = await read(home);
+  assert.deepEqual(titles(got), []);
+  assert.deepEqual(problemsOf(got), ['approval:~/notes']);
+});
+
+test('a link below the harness folder is part of the project and needs no pick; a subfolder with a tool folder is read whole', async t => {
+  const home = setup(t, h => { proj(h, [wiki('docs')]); put(join(h, 'work', 'proj', 'docs', 'sub', '.claude', 'settings.json'), '{}\n'); put(join(h, 'work', 'proj', 'docs', 'sub', 'deep.md'), page('Deep')); });
+  const got = await read(home);
+  assert.ok(titles(got).includes('Deep'), titles(got).join(', '));
+  assert.deepEqual(problemsOf(got), []);
 });
 
 test('a linked folder is read even when a subfolder holds a tool folder', async t => {
   const home = setup(t, h => {
-    put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
-    put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), link('~/journal'));
+    proj(h, [wiki('~/journal')]);
     put(join(h, 'journal', 'top.md'), page('Top'));
     put(join(h, 'journal', 'sub', '.claude', 'settings.json'), '{}\n');
     put(join(h, 'journal', 'sub', 'inside.md'), page('Inside'));
   });
-  const { result } = await read(home, [['work/proj', '~/journal']]);
-  assert.deepEqual(titles(result), ['Inside', 'Top']);
+  assert.deepEqual(titles(await read(home, ['journal'])), ['Inside', 'Top']);
 });
 
-test('a link that is not a stored form, is gone, has no path, is hidden, or is not a wiki folder is left out and harms nothing', async t => {
-  const home = setup(t, h => {
-    put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
-    put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), json({ sources: [
-      { name: 'a', kind: 'wiki-folder', path: join(h, 'journal') }, { name: 'b', kind: 'wiki-folder', path: '~/missing' }, { name: 'c', kind: 'wiki-folder', path: 42 }, { name: 'd', kind: 'wiki', path: '~/journal' },
-      { name: 'e', kind: 'wiki-folder', path: '~/.hidden' }, { name: 'f', kind: 'wiki-folder', path: '~/../outside' }, { name: 'g', kind: 'wiki-folder', path: '../../journal' }, { name: 'h', kind: 'wiki-folder' },
-    ] }));
-    put(join(h, 'journal', 'one.md'), page('One'));
-    put(join(h, '.hidden', 'secret.md'), page('Secret'));
-    put(join(h, 'work', 'proj', 'own.md'), page('Own'));
-  });
-  const { result } = await read(home);
-  assert.deepEqual(titles(result), ['Own'], 'only the place\'s own notes; no link of these shapes is read');
-});
-
-test('a linked folder with the same pages as the place is counted once, and the cap on pages holds', async t => {
-  const home = setup(t, h => {
-    put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
-    put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), json({ sources: [
-      { name: 'self', kind: 'wiki-folder', path: '.' }, { name: 'j', kind: 'wiki-folder', path: '~/journal' }, { name: 'again', kind: 'wiki-folder', path: '~/journal' },
-    ] }));
-    put(join(h, 'work', 'proj', 'own.md'), page('Own'));
-    put(join(h, 'journal', 'one.md'), page('One'));
-  });
-  const { result } = await read(home, [['work/proj', '~/journal']]);
-  assert.deepEqual(titles(result), ['One', 'Own']);
-});
-
-test('a shortcut inside a linked folder that leads out of it is not followed', async t => {
-  const home = setup(t, h => {
-    put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
-    put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), link('~/journal'));
-    put(join(h, 'journal', 'one.md'), page('One'));
-    put(join(h, 'secret', 'out.md'), page('Out'));
-    symlinkSync(join(h, 'secret'), join(h, 'journal', 'leak'));
-  });
-  const { result } = await read(home, [['work/proj', '~/journal']]);
-  assert.deepEqual(titles(result), ['One']);
-});
-
-test('a folder that holds its own harness and is linked to itself is read whole, below a subfolder with a tool folder too', async t => {
+test('a folder that holds its own harness and is linked to itself adds the pages below a subfolder with a tool folder', async t => {
   const home = setup(t, h => {
     put(join(h, 'work', 'wiki', '.bowerloom', 'harness.json'), harness('wiki'));
     put(join(h, 'work', 'wiki', '.bowerloom', 'knowledge.json'), link('.', 'wiki'));
@@ -131,46 +121,17 @@ test('a folder that holds its own harness and is linked to itself is read whole,
     put(join(h, 'work', 'wiki', 'deep', '.claude', 'settings.json'), '{}\n');
     put(join(h, 'work', 'wiki', 'deep', 'inside.md'), page('Inside'));
   });
-  const { result } = await read(home);
-  // `deep` is a place of its own too, so the page is told apart by the set it belongs to: the wiki's, not the work folder's.
-  assert.ok(result.world.wikiPages.some(p => p.title === 'Inside' && p.folder === 'wiki/deep'), result.world.wikiPages.map(p => `${p.folder}:${p.title}`).join(', '));
-  assert.ok(titles(result).includes('Index'));
-});
-
-// ---- review round 1: approval, refusal table, round trip, ids, overlap, caps, problems
-
-const proj = (h: string, sources: unknown): void => {
-  put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj'));
-  put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), json({ sources }));
-};
-const wiki = (path: string, name = 'journal'): { name: string; kind: string; path: string } => ({ name, kind: 'wiki-folder', path });
-
-test('a link in ~/ form is read only after the person approved it for that folder and path; until then it is a problem that says so', async t => {
-  const home = setup(t, h => { proj(h, [wiki('~/journal')]); put(join(h, 'journal', 'one.md'), page('One')); });
-  const before = await read(home);
-  assert.deepEqual(titles(before.result), []);
-  assert.deepEqual(problemsOf(before), ['approval:~/journal']);
-  // Approved for another harness folder, or for another path, is not approved here.
-  assert.equal(recordApprovals(stateOf(home), join(home, 'work'), [{ stored: '~/journal', target: targetOf(home, '~/journal') }]), 'kept');
-  assert.equal(recordApprovals(stateOf(home), join(home, 'work', 'proj'), [{ stored: '~/other', target: join(home, 'other') }]), 'kept');
-  assert.deepEqual(problemsOf(await read(home)), ['approval:~/journal']);
-  const after = await read(home, [['work/proj', '~/journal']]);
-  assert.deepEqual(titles(after.result), ['One']);
-  assert.deepEqual(problemsOf(after), []);
-});
-
-test('a link below the harness folder is part of the project and needs no approval', async t => {
-  const home = setup(t, h => { proj(h, [wiki('docs')]); put(join(h, 'work', 'proj', 'docs', 'sub', '.claude', 'settings.json'), '{}\n'); put(join(h, 'work', 'proj', 'docs', 'sub', 'deep.md'), page('Deep')); });
   const got = await read(home);
-  assert.ok(titles(got.result).includes('Deep'), titles(got.result).join(', '));
-  assert.deepEqual(problemsOf(got), []);
+  // `deep` is a place of its own too, so the page is told apart by the set it belongs to: the wiki's own linked set holds it.
+  assert.ok(got.result.world.wikiPages.some(p => p.title === 'Inside' && p.folder === 'wiki/deep'), got.result.world.wikiPages.map(p => `${p.folder}:${p.title}`).join(', '));
+  assert.equal(titles(got).filter(x => x === 'Index').length, 1, 'a page of the automatic walk is not added twice');
 });
 
-// One case for each shape the reader must refuse. The decoy pages sit where the path would lead if it were followed.
+// One case for each shape that is refused. The decoy pages sit where the path would lead if it were followed.
 const REFUSED: readonly (readonly [string, string])[] = [
   ['home alone: ~/', '~/'], ['home alone: ~/.', '~/.'], ['home alone: ~//', '~//'], ['dot segment: ./x', './x'], ['dotdot inside: a/../b', 'a/../b'], ['dotdot after: ~/a/..', '~/a/..'],
   ['other user: ~foo', '~foo'], ['drive letter', 'C:\\x'], ['backslash', 'a\\b'], ['absolute', '/etc'], ['hidden segment: ~/.hidden', '~/.hidden'], ['hidden below: ~/a/.b', '~/a/.b'], ['hidden relative: .hid/x', '.hid/x'],
-  ['empty', ''],
+  ['a hidden name in another case: ~/.HIDDEN', '~/.HIDDEN'], ['empty', ''],
 ];
 for (const [name, stored] of REFUSED) {
   test(`refused shape, ${name}: nothing is read and the problem says the path is not read`, async t => {
@@ -178,36 +139,41 @@ for (const [name, stored] of REFUSED) {
       proj(h, [wiki(stored)]);
       put(join(h, 'top.md'), page('Top')); put(join(h, 'a', 'b.md'), page('AB')); put(join(h, '.hidden', 'secret.md'), page('Secret')); put(join(h, 'work', 'proj', '.hid', 'x', 'h.md'), page('Hid'));
     });
-    const got = await read(home, stored === '' ? [] : [['work/proj', stored] as const]);
-    assert.deepEqual(titles(got.result).filter(x => ['Top', 'AB', 'Secret', 'Hid'].includes(x)), [], `no decoy page for ${JSON.stringify(stored)}`);
+    const got = await read(home, ['a']);
+    assert.deepEqual(titles(got).filter(x => ['Top', 'AB', 'Secret', 'Hid'].includes(x)), [], `no decoy page for ${JSON.stringify(stored)}`);
     assert.equal(problemsOf(got).length, 1, problemsOf(got).join(' | '));
     assert.match(problemsOf(got)[0]!, /^form:/);
   });
 }
 
-test('refused shape, a shortcut that leaves its base: ~/notes to a hidden folder, to a folder outside home, and a relative one to the home folder', async t => {
+test('refused shape, a shortcut that leaves its base: to a hidden folder, to a folder outside home, to the home folder itself, to an ancestor of home, and a relative one to home', async t => {
+  const outside = (h: string): string => join(dirname(h), `${h.split('/').pop()}-outside`);
   const home = setup(t, h => {
-    proj(h, [wiki('~/tossh', 'a'), wiki('~/tooutside', 'b'), wiki('tohome', 'c')]);
-    put(join(h, '.ssh', 'key.md'), page('Key'));
-    put(join(dirname(h), `${h.split('/').pop()}-outside`, 'out.md'), page('Out'));
-    symlinkSync(join(h, '.ssh'), join(h, 'tossh'));
-    symlinkSync(join(dirname(h), `${h.split('/').pop()}-outside`), join(h, 'tooutside'));
-    symlinkSync(h, join(h, 'work', 'proj', 'tohome'));
-    put(join(h, 'top.md'), page('Top'));
+    proj(h, [wiki('~/tossh', 'a'), wiki('~/tooutside', 'b'), wiki('~/self', 'c'), wiki('~/up', 'd'), wiki('tohome', 'e')]);
+    put(join(h, '.ssh', 'key.md'), page('Key')); put(join(outside(h), 'out.md'), page('Out')); put(join(h, 'top.md'), page('Top'));
+    symlinkSync(join(h, '.ssh'), join(h, 'tossh')); symlinkSync(outside(h), join(h, 'tooutside')); symlinkSync(h, join(h, 'self')); symlinkSync(dirname(h), join(h, 'up')); symlinkSync(h, join(h, 'work', 'proj', 'tohome'));
   });
   t.after(() => rmSync(join(dirname(home), `${home.split('/').pop()}-outside`), { recursive: true, force: true }));
-  const got = await read(home, [['work/proj', '~/tossh'], ['work/proj', '~/tooutside']]);
-  assert.deepEqual(titles(got.result).filter(x => ['Key', 'Out', 'Top'].includes(x)), []);
-  assert.deepEqual(problemsOf(got), ['form:~/tossh', 'form:~/tooutside', 'form:tohome']);
+  const got = await read(home, ['tossh', 'tooutside', 'self', 'up']);
+  assert.deepEqual(titles(got).filter(x => ['Key', 'Out', 'Top'].includes(x)), []);
+  assert.deepEqual(problemsOf(got), ['form:~/tossh', 'form:~/tooutside', 'form:~/self', 'form:~/up', 'form:tohome']);
 });
 
-test('each form is read: `.`, a path below the harness folder, and ~/ with approval', async t => {
+test('a shortcut inside a linked folder that leads out of it is not followed', async t => {
+  const home = setup(t, h => {
+    proj(h, [wiki('~/journal')]);
+    put(join(h, 'journal', 'one.md'), page('One')); put(join(h, 'secret', 'out.md'), page('Out')); symlinkSync(join(h, 'secret'), join(h, 'journal', 'leak'));
+  });
+  assert.deepEqual(titles(await read(home, ['journal'])), ['One']);
+});
+
+test('each form is read: `.`, a path below the harness folder, and ~/ once picked', async t => {
   const home = setup(t, h => {
     proj(h, [wiki('.', 'self'), wiki('docs', 'docs'), wiki('~/journal', 'journal')]);
     put(join(h, 'work', 'proj', 'own.md'), page('Own')); put(join(h, 'work', 'proj', 'docs', 'd.md'), page('D')); put(join(h, 'journal', 'j.md'), page('J'));
   });
-  const got = await read(home, [['work/proj', '~/journal']]);
-  assert.deepEqual(titles(got.result), ['D', 'J', 'Own']);
+  const got = await read(home, ['journal']);
+  assert.deepEqual(titles(got), ['D', 'J', 'Own']);
   assert.deepEqual(problemsOf(got), []);
 });
 
@@ -225,9 +191,9 @@ test('round trip: every path the writer can produce is read back, and a folder i
   assert.equal(outside.ok ? '' : outside.code, 'KNOWLEDGE_PATH_OUTSIDE');
   const stored = made.filter(m => m.ok).map(m => (m.ok ? m.path : ''));
   put(join(root, '.bowerloom', 'knowledge.json'), json({ sources: stored.map((path, i) => wiki(path, `s${i}`)) }));
-  const got = await read(home, stored.filter(x => x.startsWith('~/')).map(x => ['work/proj', x] as const));
+  const got = await read(home, ['journal', 'journal/deep']);
   assert.deepEqual(problemsOf(got), [], 'each stored path was read');
-  for (const want of ['Docs', 'Own', 'Journal']) assert.ok(titles(got.result).includes(want), `${want} in ${titles(got.result).join(', ')}`);
+  for (const want of ['Docs', 'Own', 'Journal']) assert.ok(titles(got).includes(want), `${want} in ${titles(got).join(', ')}`);
 });
 
 test('a page of the same file name in the place and in two linked folders keeps its own id, and none is lost', async t => {
@@ -235,61 +201,87 @@ test('a page of the same file name in the place and in two linked folders keeps 
     proj(h, [wiki('~/a/notes', 'one'), wiki('~/b/notes', 'two')]);
     for (const dir of [join(h, 'work', 'proj'), join(h, 'a', 'notes'), join(h, 'b', 'notes')]) put(join(dir, 'index.md'), page(`Index of ${dir.split('/').slice(-2).join('-')}`));
   });
-  const got = await read(home, [['work/proj', '~/a/notes'], ['work/proj', '~/b/notes']]);
+  const got = await read(home, ['a/notes', 'b/notes']);
   const pages = got.result.world.wikiPages.filter(p => p.title.startsWith('Index of'));
   assert.equal(pages.length, 3);
   assert.equal(new Set(pages.map(p => p.id)).size, 3, 'three ids');
   assert.ok(pages.every(p => !/-\d+$/.test(p.id)), 'no id needed a number to stay apart');
-  // The ids of the same read do not change from one run to the next.
   const again = await read(home);
-  assert.deepEqual(again.result.world.wikiPages.filter(p => p.title.startsWith('Index of')).map(p => p.id).sort(), pages.map(p => p.id).sort());
+  assert.deepEqual(again.result.world.wikiPages.filter(p => p.title.startsWith('Index of')).map(p => p.id).sort(), pages.map(p => p.id).sort(), 'the same ids on the next read');
 });
 
 test('overlapping roots, ~/a and ~/a/b, are read once', async t => {
-  const home = setup(t, h => {
-    proj(h, [wiki('~/a', 'outer'), wiki('~/a/b', 'inner')]);
-    put(join(h, 'a', 'x.md'), page('X')); put(join(h, 'a', 'b', 'y.md'), page('Y'));
-  });
-  const got = await read(home, [['work/proj', '~/a'], ['work/proj', '~/a/b']]);
-  assert.deepEqual(titles(got.result), ['X', 'Y']);
+  const home = setup(t, h => { proj(h, [wiki('~/a', 'outer'), wiki('~/a/b', 'inner')]); put(join(h, 'a', 'x.md'), page('X')); put(join(h, 'a', 'b', 'y.md'), page('Y')); });
+  assert.deepEqual(titles(await read(home, ['a', 'a/b'])), ['X', 'Y']);
 });
 
+const CAP_SETUP = (h: string): void => {
+  proj(h, [wiki('~/a', 'a'), wiki('~/b', 'b'), wiki('~/c', 'c')]);
+  for (const n of ['o1', 'o2']) put(join(h, 'work', 'proj', `${n}.md`), page(n));
+  for (const n of ['a1', 'a2']) put(join(h, 'a', `${n}.md`), page(n));
+  for (const n of ['b1', 'b2', 'b3', 'b4']) put(join(h, 'b', `${n}.md`), page(n));
+  put(join(h, 'c', 'c1.md'), page('c1'));
+};
+const LOW: LinkedLimits = { filesPerPlace: 5, pagesPerPlace: 4 };
+
 test('the caps hold for a place and its linked folders together; a folder that does not fit is a problem, and one with no room left is not walked', async t => {
-  const home = setup(t, h => {
-    proj(h, [wiki('~/a', 'a'), wiki('~/b', 'b'), wiki('~/c', 'c')]);
-    for (const n of ['o1', 'o2']) put(join(h, 'work', 'proj', `${n}.md`), page(n));
-    for (const n of ['a1', 'a2']) put(join(h, 'a', `${n}.md`), page(n));
-    for (const n of ['b1', 'b2', 'b3', 'b4']) put(join(h, 'b', `${n}.md`), page(n));
-    put(join(h, 'c', 'c1.md'), page('c1'));
-  });
-  const budget = makeBudget(() => Date.now()), tally = newTally();
-  const place = findPlacesUnder(join(home, 'work'), home, budget, tally).find(p => p.label === 'proj')!;
-  assert.ok(place, 'the harness folder is a place');
-  const approved = new Set(['~/a', '~/b', '~/c'].map(x => approvalKey(place.realRoot, x, targetOf(home, x))));
-  const got = readPlace(place, home, true, budget, { approved, limits: { filesPerPlace: 5, pagesPerPlace: 4 } });
-  // Own pages: 2 files, so room 3 for files and room 2 for pages. a: 2 pages, room 1. b: asked for room + 1 = 2 files, cut: 1 file fits but no page room is left. c: no room, not walked.
-  assert.equal(got.notes.length, 4);
-  assert.deepEqual(got.notes.map(n => n.title).sort(), ['a1', 'a2', 'o1', 'o2']);
-  assert.deepEqual(got.harness?.linkProblems?.map(p => `${p.reason}:${p.label}`), ['limit:~/b', 'limit:~/c']);
-  assert.equal(got.notesLeftOut, 2, 'one file cut by the file cap, one that fits the files but not the pages');
+  const home = setup(t, CAP_SETUP);
+  const got = await read(home, ['a', 'b', 'c'], LOW);
+  // Own pages: 2 files, so room 3 for the files and room 2 for pages. a: 2 pages, room 1. b: asked for room + 1 = 2 files, cut: 1 file fits but no page room is left. c: no room, not walked.
+  assert.deepEqual(titles(got), ['a1', 'a2', 'o1', 'o2']);
+  assert.deepEqual(problemsOf(got), ['limit:~/b', 'limit:~/c']);
+  assert.ok(got.result.notes.includes('2 linked notes pages are not shown.'), got.result.notes.join(' | '));
+  // The same cap, asked of the walk itself: nothing of c is listed.
+  const budget = makeBudget(() => Date.now()), tally = newTally(), root = join(home, 'work', 'proj');
+  const c = collectLinked(root, home, approvalsOf(stateOf(home)), LOW, budget, tally);
+  assert.deepEqual(c.groups.map(g => [g.name, g.files.length, g.cut]), [['a', 2, false], ['b', 0, true]]);
+  assert.equal(c.leftOut, 2);
+});
+
+test('the check and the read agree under low caps: a cut and a link with no room both show, and a change past the cap leaves the fingerprint as it was', async t => {
+  const home = setup(t, CAP_SETUP);
+  approve(home, ['a', 'b', 'c']);
+  const scanner = createScanner({ home });
+  const found = await scanner.addFolder(join(home, 'work'));
+  const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
+  const text = (): string => linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: LOW }).text;
+  const first = text();
+  const tag = (name: string): string => hashText(join(home, name)).slice(0, 8);
+  assert.match(first, new RegExp(`l\\|${tag('b')}\\|cut`), 'b is cut');
+  assert.match(first, new RegExp(`p\\|limit\\|${hashText('~/b').slice(0, 8)}`), 'the read names b');
+  assert.match(first, new RegExp(`p\\|limit\\|${hashText('~/c').slice(0, 8)}`), 'c has no room, as in the read');
+  assert.equal(first.includes(`l|${tag('c')}|`), false, 'a starved folder is not walked');
+  assert.doesNotMatch(first, new RegExp(`l\\|${tag('a')}\\|cut`), 'a fits');
+  assert.equal(linkedWatchText(home, watched, { stateRoot: stateOf(home), limits: LOW }).complete, true);
+  // b has room for one file in the files and none in the pages, so no b file is listed: any change in b past the cap changes nothing, and a change of a shows.
+  writeFileSync(join(home, 'b', 'b4.md'), `${page('b4')}\nMore text that changes the size.\n`);
+  assert.equal(text(), first, 'a change past the cap changes nothing');
+  writeFileSync(join(home, 'a', 'a1.md'), `${page('a1')}\nMore text that changes the size.\n`);
+  assert.notEqual(text(), first, 'a change inside the cap shows');
 });
 
 test('more than the most linked folders, an unreadable list, a missing folder and a list that is not a list are problems, not silence', async t => {
-  const many = setup(t, h => {
-    proj(h, Array.from({ length: 10 }, (_, i) => wiki(`n${i}`, `n${i}`)));
-    for (let i = 0; i < 10; i += 1) put(join(h, 'work', 'proj', `n${i}`, 'p.md'), page(`P${i}`));
-  });
-  const got = await read(many);
-  assert.deepEqual(problemsOf(got), ['limit:n8', 'limit:n9']);
+  const many = setup(t, h => { proj(h, Array.from({ length: 10 }, (_, i) => wiki(`n${i}`, `n${i}`))); for (let i = 0; i < 10; i += 1) put(join(h, 'work', 'proj', `n${i}`, 'p.md'), page(`P${i}`)); });
+  assert.deepEqual(problemsOf(await read(many)), ['limit:n8', 'limit:n9']);
   const bad = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), '{ not json'); });
   assert.deepEqual(problemsOf(await read(bad)), ['unreadable:']);
   const shape = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); put(join(h, 'work', 'proj', '.bowerloom', 'knowledge.json'), json({ sources: 'nope' })); });
   assert.deepEqual(problemsOf(await read(shape)), ['unreadable:']);
-  const gone = setup(t, h => proj(h, [wiki('missing', 'm')]));
-  assert.deepEqual(problemsOf(await read(gone)), ['gone:missing']);
+  const gone = setup(t, h => proj(h, [wiki('missing', 'm'), wiki('~/missing', 'n')]));
+  assert.deepEqual(problemsOf(await read(gone)), ['gone:missing', 'gone:~/missing']);
   // Only the wiki folders are counted against the list limit: other kinds in front of them do not use it up.
   const kinds = setup(t, h => { proj(h, [...Array.from({ length: 250 }, (_, i) => ({ name: `k${i}`, kind: 'other', path: `k${i}` })), wiki('~/real', 'real')]); put(join(h, 'real', 'r.md'), page('R')); });
-  assert.deepEqual(titles((await read(kinds, [['work/proj', '~/real']])).result), ['R']);
+  assert.deepEqual(titles(await read(kinds, ['real'])), ['R']);
+});
+
+test('a link of another kind, a number as a path and no path are left out and harm nothing', async t => {
+  const home = setup(t, h => {
+    proj(h, [{ name: 'c', kind: 'wiki-folder', path: 42 }, { name: 'd', kind: 'wiki', path: '~/journal' }, { name: 'h', kind: 'wiki-folder' }]);
+    put(join(h, 'journal', 'one.md'), page('One'));
+  });
+  const got = await read(home, ['journal']);
+  assert.deepEqual(titles(got), []);
+  assert.deepEqual(problemsOf(got), ['form:', 'form:']);
 });
 
 test('a problem reaches the Library: the rows name the folder and the reason, an empty tab with a problem shows it before any action, and the words are plain', async t => {
@@ -299,8 +291,10 @@ test('a problem reaches the Library: the rows name the folder and the reason, an
   const rows = linkProblems(state);
   assert.equal(rows.length, 1);
   assert.deepEqual([rows[0]!.reason, rows[0]!.label], ['approval', '~/Notes']);
+  assert.match(rows[0]!.place, /^harness-/, 'the row carries the harness place, so its key is unique');
   assert.equal(linkProblemWords('~/Projects/team', 'gone', '~/Notes'), '~/Projects/team: Linked folder not found: ~/Notes');
   assert.match(linkProblemWords('x', 'approval', '~/Notes'), /Needs approval: ~\/Notes\. Link it again to approve\./);
+  assert.match(linkProblemWords('x', 'damaged', '~/Notes'), /Saved approvals could not be read: ~\/Notes/);
   const empty = { kind: 'context', real: true, shown: 0, query: '' } as const;
   assert.equal(contextEmpty({ ...empty, problems: 0 }), 'link');
   assert.equal(contextEmpty({ ...empty, problems: 1 }), 'problem');
@@ -308,121 +302,48 @@ test('a problem reaches the Library: the rows name the folder and the reason, an
   assert.equal(contextEmpty({ ...empty, kind: 'skill', problems: 1 }), 'none');
 });
 
-test('the approval record: kept per harness folder, path and target, read back, and a damaged or missing record approves nothing', async t => {
-  const home = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); for (const n of ['a', 'b', 'c', 'd']) put(join(h, n, 'x.md'), page(n)); });
-  const state = stateOf(home), proj1 = join(home, 'work', 'proj'), entry = (n: string): { stored: string; target: string } => ({ stored: `~/${n}`, target: join(home, n) });
-  assert.equal(isApproved(state, proj1, entry('a')), false);
-  assert.equal(recordApprovals(state, proj1, [entry('a'), entry('b')]), 'kept');
-  assert.equal(recordApprovals(state, proj1, [entry('c')]), 'kept');
-  assert.deepEqual(['a', 'b', 'c', 'd'].map(n => isApproved(state, proj1, entry(n))), [true, true, true, false]);
-  assert.equal(isApproved(state, join(home, 'work'), entry('a')), false, 'another harness folder');
-  assert.equal(isApproved(state, proj1, { stored: '~/a', target: join(home, 'b') }), false, 'the same stored path leading somewhere else needs a new approval');
-  assert.match(readFileSync(approvalsFileOf(state), 'utf8'), /^\{"version":1,"keys":\["[0-9a-f]{32}"/, 'keys are 32 hex characters of a SHA-256');
-});
-
-test('a swapped shortcut needs a new approval: the stored path is the same, the folder it leads to is not', async t => {
-  const home = setup(t, h => { proj(h, [wiki('~/notes', 'n')]); put(join(h, 'real-one', 'one.md'), page('One')); put(join(h, 'real-two', 'two.md'), page('Two')); symlinkSync(join(h, 'real-one'), join(h, 'notes')); });
-  assert.deepEqual(titles((await read(home, [['work/proj', '~/notes']])).result), ['One']);
-  rmSync(join(home, 'notes')); symlinkSync(join(home, 'real-two'), join(home, 'notes'));
+test('two places that each have the same problem get two rows with two keys', async t => {
+  const home = setup(t, h => {
+    for (const name of ['one', 'two']) { put(join(h, 'work', name, '.bowerloom', 'harness.json'), harness(name)); put(join(h, 'work', name, '.bowerloom', 'knowledge.json'), link('~/Notes')); }
+    put(join(h, 'Notes', 'n.md'), page('N'));
+  });
   const got = await read(home);
-  assert.deepEqual(titles(got.result), []);
-  assert.deepEqual(problemsOf(got), ['approval:~/notes']);
+  const rows = linkProblems(realToHarnessState(got.result, got.places));
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map(r => `${r.place}|${r.reason}|${r.label}`)).size, 2);
 });
 
-test('a record that is damaged, a link, or too big is never written over; the write says so, and the Library names the damage instead of "needs approval"', async t => {
+test('a damaged record of approvals is never written over, and the Library names the damage instead of "needs approval"', async t => {
   const home = setup(t, h => { proj(h, [wiki('~/journal', 'j')]); put(join(h, 'journal', 'one.md'), page('One')); });
-  const state = stateOf(home), proj1 = join(home, 'work', 'proj'), entry = { stored: '~/journal', target: join(home, 'journal') };
-  mkdirSync(join(state, 'linked-notes'), { recursive: true });
-  const file = approvalsFileOf(state);
-  for (const [name, make] of [['not json', () => writeFileSync(file, '{ damaged')], ['wrong version', () => writeFileSync(file, '{"version":9,"keys":[]}')], ['bad keys', () => writeFileSync(file, '{"version":1,"keys":["x"]}')],
-    ['too big', () => writeFileSync(file, ' '.repeat(300 * 1024))], ['a link', () => { writeFileSync(join(home, 'real.json'), '{"version":1,"keys":[]}'); rmSync(file, { force: true }); symlinkSync(join(home, 'real.json'), file); }]] as const) {
-    rmSync(file, { force: true }); make();
-    const before = readFileSync(file);
-    assert.equal(recordApprovals(state, proj1, [entry]), 'damaged', name);
-    assert.deepEqual(readFileSync(file), before, `${name}: the record is untouched`);
-    const got = await read(home);
-    assert.deepEqual(problemsOf(got), ['damaged:~/journal'], name);
-    assert.deepEqual(titles(got.result), [], name);
-  }
+  mkdirSync(join(stateOf(home), 'linked-notes'), { recursive: true });
+  writeFileSync(approvalsFileOf(stateOf(home)), '{ damaged');
+  assert.equal(approveFolder(stateOf(home), join(home, 'journal')), 'damaged');
+  assert.equal(readFileSync(approvalsFileOf(stateOf(home)), 'utf8'), '{ damaged');
+  const got = await read(home);
+  assert.deepEqual(problemsOf(got), ['damaged:~/journal']);
+  assert.deepEqual(titles(got), []);
 });
 
-test('recordApprovals refuses a folder that is a link, a path that cannot be made, and more approvals than the record holds', async t => {
-  const home = setup(t, h => { put(join(h, 'work', 'proj', '.bowerloom', 'harness.json'), harness('proj')); mkdirSync(join(h, 'elsewhere'), { recursive: true }); });
-  const proj1 = join(home, 'work', 'proj'), entry = { stored: '~/a', target: join(home, 'a') };
-  // The folder of the record is a link.
-  const linked = join(home, 'state-linked');
-  mkdirSync(linked, { recursive: true }); symlinkSync(join(home, 'elsewhere'), join(linked, 'linked-notes'));
-  assert.equal(recordApprovals(linked, proj1, [entry]), 'failed');
-  assert.deepEqual(readdirOf(join(home, 'elsewhere')), [], 'nothing was written through the link');
-  // The folder of the record cannot be made: a plain file stands where it should be.
-  const blocked = join(home, 'state-blocked');
-  mkdirSync(blocked, { recursive: true }); writeFileSync(join(blocked, 'linked-notes'), 'x');
-  assert.equal(recordApprovals(blocked, proj1, [entry]), 'failed');
-  // More approvals than the record holds.
-  const many = Array.from({ length: 2001 }, (_, i) => ({ stored: `~/n${i}`, target: join(home, `n${i}`) }));
-  assert.equal(recordApprovals(join(home, 'state-many'), proj1, many), 'failed');
-  assert.equal(isApproved(join(home, 'state-many'), proj1, many[0]!), false, 'a refused write approves nothing');
-});
-
-test('a change in a linked folder shows as a change of the place, a link that is gone is unresolved, and a missing record changes nothing', async t => {
+test('a change in a linked folder shows as a change of the place, a link that is gone is unresolved, and the approvals are part of the check', async t => {
   const home = setup(t, h => { proj(h, [wiki('~/journal', 'j'), wiki('gone', 'g')]); put(join(h, 'journal', 'one.md'), page('One')); });
-  approve(home, [['work/proj', '~/journal']]);
-  const scanner = createScanner({ home, approvalsFile: approvalsFileOf(stateOf(home)) });
+  const scanner = createScanner({ home });
   const found = await scanner.addFolder(join(home, 'work'));
   const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
-  const first = await watchTextOf(home, watched, undefined, undefined, approvalsFileOf(stateOf(home)));
-  assert.match(first.text, /gone\|link\|/);
-  assert.equal(first.complete, false, 'a stored link that fails leaves the check unresolved');
+  const check = (): ReturnType<typeof linkedWatchText> => linkedWatchText(home, watched, { stateRoot: stateOf(home) });
+  const none = check();
+  assert.match(none.text, /gone\|link\|/);
+  assert.equal(none.complete, false, 'a stored link that fails leaves the check unresolved');
+  assert.match(none.text, /p\|approval\|/, 'the home link waits for a pick');
+  // The fingerprinter that main uses: the base answer when nothing is watched, and never complete when a link cannot be resolved.
+  const base = async (): Promise<{ fingerprint: string; complete: boolean }> => ({ fingerprint: 'base', complete: true });
+  assert.deepEqual(await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, [], undefined, undefined), { fingerprint: 'base', complete: true }, 'nothing watched, nothing added');
+  const mixed = await withLinkedNotes(base, { stateRoot: stateOf(home) })(home, watched, undefined, undefined);
+  assert.notEqual(mixed.fingerprint, 'base');
+  assert.equal(mixed.complete, false);
+  approve(home, ['journal']);
+  const picked = check();
+  assert.notEqual(picked.text, none.text, 'a pick changes the check');
+  assert.match(picked.text, /l\|[0-9a-f]+\|one\.md\|/);
   put(join(home, 'journal', 'two.md'), page('Two'));
-  const second = await watchTextOf(home, watched, undefined, undefined, approvalsFileOf(stateOf(home)));
-  assert.notEqual(first.text.replace(/unfinished\|[^\n]*/g, ''), second.text.replace(/unfinished\|[^\n]*/g, ''));
-  assert.match(second.text, /l\|[0-9a-f]+\|two\.md\|/);
-});
-
-const readdirOf = (dir: string): string[] => readdirSync(dir);
-
-test('refused shape, ~/x as a shortcut to the home folder itself, to an ancestor of the home folder, and a hidden name written in another case', async t => {
-  const home = setup(t, h => {
-    proj(h, [wiki('~/self', 'a'), wiki('~/up', 'b'), wiki('~/.HIDDEN', 'c')]);
-    symlinkSync(h, join(h, 'self')); symlinkSync(dirname(h), join(h, 'up'));
-    put(join(h, 'top.md'), page('Top')); put(join(h, '.hidden', 'secret.md'), page('Secret'));
-  });
-  const got = await read(home, [['work/proj', '~/self'], ['work/proj', '~/up'], ['work/proj', '~/.HIDDEN']]);
-  assert.deepEqual(titles(got.result).filter(x => ['Top', 'Secret'].includes(x)), []);
-  assert.deepEqual(problemsOf(got), ['form:~/self', 'form:~/up', 'form:~/.HIDDEN']);
-});
-
-test('the check and the read agree under low caps: a cut and a link with no room both show as cut, and a change past the cap leaves the fingerprint as it was', async t => {
-  const home = setup(t, h => {
-    proj(h, [wiki('~/a', 'a'), wiki('~/b', 'b'), wiki('~/c', 'c')]);
-    for (const n of ['o1', 'o2']) put(join(h, 'work', 'proj', `${n}.md`), page(n));
-    for (const n of ['a1', 'a2']) put(join(h, 'a', `${n}.md`), page(n));
-    for (const n of ['b1', 'b2', 'b3', 'b4']) put(join(h, 'b', `${n}.md`), page(n));
-    put(join(h, 'c', 'c1.md'), page('c1'));
-  });
-  approve(home, [['work/proj', '~/a'], ['work/proj', '~/b'], ['work/proj', '~/c']]);
-  const file = approvalsFileOf(stateOf(home)), limits = { filesPerPlace: 5, pagesPerPlace: 4 };
-  const scanner = createScanner({ home, approvalsFile: file });
-  const found = await scanner.addFolder(join(home, 'work'));
-  const watched = found.places.map(p => ({ id: p.id, kind: p.kind, path: p.details.path }));
-  const text = async (): Promise<string> => (await watchTextOf(home, watched, undefined, undefined, file, limits)).text;
-  const tag = (name: string): string => hashText(realpathSync(join(home, name))).slice(0, 8);
-  const first = await text();
-  // Room is 3 after the place's own two files: a takes 2, b is cut at the one file left, c has no room and is not walked. The read says the same.
-  assert.match(first, new RegExp(`l\\|${tag('b')}\\|cut`), 'b is cut');
-  assert.match(first, new RegExp(`l\\|${tag('c')}\\|cut`), 'c is starved');
-  assert.doesNotMatch(first, new RegExp(`l\\|${tag('a')}\\|cut`), 'a fits');
-  assert.equal(first.includes(`l|${tag('c')}|c1.md`), false, 'a starved folder is not walked');
-  const budget = makeBudget(() => Date.now()), tally = newTally();
-  const place = findPlacesUnder(join(home, 'work'), home, budget, tally).find(p => p.label === 'proj')!;
-  const read1 = readPlace(place, home, true, budget, { approved: new Set(['~/a', '~/b', '~/c'].map(x => approvalKey(place.realRoot, x, targetOf(home, x)))), limits });
-  assert.deepEqual(read1.harness?.linkProblems?.map(p => p.label), ['~/b', '~/c'], 'the read names the same two folders');
-  // A change to a file of b that is past the cap does not change the fingerprint; a change to the one that fits does.
-  const kept = [...first.matchAll(/l\|[0-9a-f]+\|(b\d)\.md\|/g)].map(m => m[1]!);
-  assert.equal(kept.length, 1, `one file of b fits: ${kept.join(',')}`);
-  const past = ['b1', 'b2', 'b3', 'b4'].find(n => n !== kept[0])!;
-  writeFileSync(join(home, 'b', `${past}.md`), `${page(past)}\nMore text that changes the size.\n`);
-  assert.equal(await text(), first, 'a change past the cap changes nothing');
-  writeFileSync(join(home, 'b', `${kept[0]!}.md`), `${page('x')}\nMore text that changes the size.\n`);
-  assert.notEqual(await text(), first, 'a change inside the cap shows');
+  assert.notEqual(check().text, picked.text);
 });
