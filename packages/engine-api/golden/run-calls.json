@@ -1,6 +1,6 @@
 {
   "format": "bowerloom/engine-api-runs-golden/v1",
-  "note": "The calls of the bowerloomRuns bridge, added in 0.8.0-beta.2 after the base: the manual record of runs and the figures read from an engine's own session log. Written by hand, because the base source never had them: the base golden file stays as it is. Change it only with RUN_CALLS, in the same commit.",
+  "note": "The calls of the bowerloomRuns bridge, added in 0.9.0-beta.1 after the base: the manual record of runs and the figures read from an engine's own session log. Written by hand, because the base source never had them: the base golden file stays as it is. Change it only with RUN_CALLS, in the same commit.",
   "bridge": "bowerloomRuns",
   "channelPrefix": "bowerloom-runs:",
   "runCalls": [
