@@ -72,6 +72,9 @@ const FOLDERS: Readonly<Record<string, string>> = {
 function makeFolders(t: Parameters<typeof tempDir>[0]): { root: string; dir: string } {
   const root = tempDir(t), dir = join(root, 'apps', 'desktop', 'extensions');
   for (const [name, text] of Object.entries(FOLDERS)) { mkdirSync(join(dir, name), { recursive: true }); writeFileSync(join(dir, name, 'manifest.json'), text); }
+  // The kit needs a mount table to check screens. This one holds a screen for each extension that is valid in the folders above.
+  mkdirSync(join(root, 'apps', 'desktop', 'renderer', 'harness'), { recursive: true });
+  writeFileSync(join(root, 'apps', 'desktop', 'renderer', 'harness', 'extension-mounts.tsx'), "const BUNDLED_MOUNTS = Object.freeze({\n  'a-ok': 1,\n  'd-bom': 2,\n});\n");
   mkdirSync(join(dir, 'l-no-manifest'), { recursive: true });
   mkdirSync(join(dir, 'm-dir-manifest', 'manifest.json'), { recursive: true });
   return { root, dir };

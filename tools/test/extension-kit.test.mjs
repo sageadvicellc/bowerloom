@@ -106,7 +106,7 @@ test('every command refuses a folder that is not the repository with NOT_A_TREE'
 
 test('checkTree passes the shipped extension, and reports NO_SCREEN for a valid manifest with no screen in the mount table', () => {
   const root = tree();
-  assert.deepEqual(checkTree(root), { extensions: [{ name: 'local-models', id: 'local-models', title: 'local-models', routes: ['local-models'] }], problems: [] });
+  assert.deepEqual(checkTree(root), { extensions: [{ name: 'local-models', id: 'local-models', title: 'local-models', routes: ['local-models'] }], problems: [], warnings: [] });
   scaffold(root, { id: 'weekly-notes' });
   assert.deepEqual(codes(checkTree(root)), ['weekly-notes:NO_SCREEN']);
   fs.writeFileSync(path.join(root, 'apps/desktop/renderer/harness/extension-mounts.tsx'), MOUNTS.replace("  'extension-template'", "  'weekly-notes': () => 3,\n  'extension-template'"));
@@ -160,7 +160,8 @@ test('the template installs and removes, and a removed extension is not in the t
   assert.deepEqual(installed, { id: TEMPLATE_ID, created: ['apps/desktop/extensions/extension-template/manifest.json'] });
   assert.deepEqual(checkTree(root).extensions.map(e => e.id), ['extension-template', 'local-models']);
   assert.equal(refusal(() => installTemplate(root)), 'EXTENSION_EXISTS');
-  assert.deepEqual(removeExtension(root, TEMPLATE_ID), { name: TEMPLATE_ID, removed: ['apps/desktop/extensions/extension-template'] });
+  const gone = removeExtension(root, TEMPLATE_ID);
+  assert.deepEqual([gone.name, gone.removed], [TEMPLATE_ID, ['apps/desktop/extensions/extension-template']]);
   assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/extension-template')), false);
   assert.deepEqual(checkTree(root).extensions.map(e => e.id), ['local-models']);
   assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extension-template/manifest.json')), true, 'the template itself stays');

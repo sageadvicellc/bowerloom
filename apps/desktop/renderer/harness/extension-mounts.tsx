@@ -51,7 +51,7 @@ export function RouteNotFound({ route }: { route: string }): ReactElement {
 }
 
 /** A route that reached a mount which does not own it. The registry never does this; the state keeps the switch total. */
-const stray = (route: Route): ReactElement => <RouteNotFound route={route.name} />;
+const stray = (route: Route): ReactElement => <RouteNotFound route={route.name === 'extension' ? route.route : route.name} />;
 
 function firstRun({ route, bridge, realMode }: MountProps): ReactElement {
   switch (route.name) {

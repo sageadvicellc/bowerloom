@@ -196,6 +196,8 @@
           "removed": "array (remove)",
           "extensions": "array (check, list)",
           "problems": "array (check, list)",
+        "warnings": "array (check, list)",
+        "note": "string (remove)",
           "code": "string (refused)",
           "message": "string (refused)",
           "exit": "number (refused, usage error)",
@@ -209,12 +211,14 @@
           "removed",
           "extensions",
           "problems",
+          "warnings",
+          "note",
           "code",
           "message",
           "exit",
           "error"
         ],
-        "note": "A refusal has code and message, and exit 1. A problem of check has name, code and message, and the code is the one the app gives when it loads the folder, or NO_SCREEN when the manifest is valid and the mount table has no screen for it."
+        "note": "A refusal has code and message, and exit 1. A problem of check has name, code and message, and the code is the one the app gives when it loads the folder, or a kit code such as NO_SCREEN, ROUTE_MISMATCH or NO_MOUNT_TABLE. A warning has name, code FIELD_DROPPED, fields and message, and does not fail a check. list and check give ok false and exit 1 when a problem exists."
       },
       "example": "node tools/extension-kit.mjs check --json"
     },

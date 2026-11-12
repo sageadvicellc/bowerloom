@@ -21,6 +21,23 @@ export interface Bundled {
   readonly problem: string | null;
   /** The extension folders that main could not load: each name and short code, as main gave them. Empty before the first answer. */
   readonly skipped: readonly SkippedExtension[];
+  /** The manifests main listed that this build has no screen for: they loaded, and nothing draws them. */
+  readonly unmounted?: readonly ExtensionManifest[];
+}
+
+/**
+ * Why a route of an extension has no owner, when the list can say. 'skipped': main skipped a folder with the name of the route, with its code. 'no-screen': main loaded a manifest that lists the route, and this build
+ * has no screen for its id. Null: nothing the list knows explains it (or the list has not answered), and the page shows the plain not-found state.
+ */
+export type ExtensionAbsence =
+  | { readonly kind: 'skipped'; readonly name: string; readonly code: string }
+  | { readonly kind: 'no-screen'; readonly id: string };
+export function extensionAbsence(bundled: Bundled, route: string): ExtensionAbsence | null {
+  if (!bundled.ready) return null;
+  const skipped = bundled.skipped.find(x => x.name === route);
+  if (skipped !== undefined) return { kind: 'skipped', name: skipped.name, code: skipped.code };
+  const unmounted = (bundled.unmounted ?? []).find(m => m.routes.includes(route));
+  return unmounted === undefined ? null : { kind: 'no-screen', id: unmounted.id };
 }
 
 export interface Scheduler { readonly after: (run: () => void, ms: number) => unknown; readonly cancel: (handle: unknown) => void }
@@ -38,7 +55,13 @@ export function followExtensions(registry: Registry<ScreenMount>, bridge: LocalB
   let live = true, handle: unknown, failures = 0, told: string | null = null;
   const attempt = (): void => {
     new Promise<ExtensionsListing>(resolve => resolve(bridge.listExtensions())).then(
-      listing => { if (live) onAnswer({ extensions: registerBundled(registry, listing.extensions), ready: true, problem: null, skipped: Object.freeze([...listing.skipped]) }); },
+      listing => {
+        if (!live) return;
+        const registered = registerBundled(registry, listing.extensions);
+        const known = new Set(registered.map(m => m.id));
+        // A listed manifest with no screen in this build, or one the registry refused, is not registered. The page keeps it, so a deep link can say why.
+        onAnswer({ extensions: registered, ready: true, problem: null, skipped: Object.freeze([...listing.skipped]), unmounted: Object.freeze(listing.extensions.filter(m => !known.has(m.id))) });
+      },
       (error: unknown) => {
         if (!live) return;
         failures += 1;

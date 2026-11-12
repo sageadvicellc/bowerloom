@@ -85,17 +85,20 @@ The template reads one call: `listExtensions`. A call that fails gives an error.
 
 A screen has no other way to the engine. It names no bridge, no channel, no transport and no Electron module. It calls no file function, no process function and no network function. It does not set the page title and does not listen for `beforeunload`. The client purity check holds every file under `apps/desktop/renderer/` to this (`docs/v0.9/client-purity.md`).
 
-## How a read is approved
+## How reads and writes are approved
 
-Five layers approve a read. All five apply to every extension.
+Five layers approve what a screen does. All five apply to every extension.
+
+
+The engine side holds write calls. The adopt, install and save sheets use them to change files on this computer. The reader, local and runs sides mostly read. The runs side writes the run record. A stock screen can reach any call of the four sides. This section is about reads and writes alike.
 
 1. Only stock extensions exist. A screen is code in a pull request. Review and the gates approve the code before it ships. The app loads no code from a folder, a download or a link.
-2. A read must be a call of the four sides. The lists of calls are frozen. The engine golden file `packages/engine-api/golden/base-d4c8a478.json` holds the 42 calls of the reader and engine sides. The files `packages/engine-api/golden/local-calls.json` and `packages/engine-api/golden/run-calls.json` hold the local and runs calls. A new call changes a golden file. That change is a decision for the maintainer, and this API adds none.
+2. A call must be one of the four sides. The lists of calls are frozen. The engine golden file `packages/engine-api/golden/base-d4c8a478.json` holds the 42 calls of the reader and engine sides. The files `packages/engine-api/golden/local-calls.json` and `packages/engine-api/golden/run-calls.json` hold the local and runs calls. A new call changes a golden file. That change is a decision for the maintainer, and this API adds none.
 3. The client purity test fails the build for any other path to the engine. A new extension is inside its reach as soon as its file is under `apps/desktop/renderer/`.
-4. Main checks every call. It refuses a sender that is not the app page (`NOT_ALLOWED`). It refuses a wrong count or shape of arguments (`BAD_ARGUMENT`). The reader reads only places the person chose (`UNKNOWN_PLACE` for any other). An engine call names a folder id that main gave out (`UNKNOWN_FOLDER` for any other).
+4. Main checks every call. It refuses a sender that is not the app page (`NOT_ALLOWED`). It refuses a wrong count or shape of arguments (`BAD_ARGUMENT`). The reader reads only places the person chose (`UNKNOWN_PLACE` for any other). An engine call names a folder id that main gave out (`UNKNOWN_FOLDER` for any other). The sender check does not tell one extension from another. Every extension screen runs in the app page, so every extension passes it.
 5. The person sees what an extension shows. A screen reads data on this computer. It sends nothing out.
 
-Not built yet: this version has no read scope for each extension. An extension can ask any call of the four sides. Lane 2 of the next phase adds the read scope: a module reads only what the person picks, plus home-folder places the person approves once for that module. Until that lane ships, a reviewer reads each screen for the calls it makes.
+No extension is limited in this lane. This version has no read scope and no write scope for each extension. An extension can ask any call of the four sides, including the write calls. Lane 2 of the next phase adds a read scope: a module reads only what the person picks, plus home-folder places the person approves once for that module. It adds no write scope. Until a scope exists, a reviewer reads each screen for the calls it makes, and for the write calls most of all.
 
 ## Install and remove
 
@@ -120,7 +123,8 @@ How a removal goes:
 
 - Run `node tools/extension-kit.mjs remove extension-template`. It deletes that one folder and nothing else.
 - At the next start the loader finds no manifest. The registry holds no route for the extension. The address shows `ROUTE_NOT_FOUND`. The navigation entry is gone.
-- The screen file stays. It is source code, and git holds it.
+- The screen file and the line in the mount table stay. They are source code, and git holds them. The command prints this.
+- The command renames the folder to a temporary name inside `apps/desktop/extensions`, checks it again, and deletes only from that folder, with `manifest.json` last. A part-way failure gives `REMOVE_INCOMPLETE` and lists what remains.
 - The registry frees every route of the removed extension, so the next extension can take them.
 - A default extension cannot be removed. The host refuses it with `PROTECTED`. The check fails closed: a registry that throws or gives a strange answer also gives `PROTECTED`.
 - No button and no call lets a person remove an extension inside the running app. If one is added later, it must go through `uninstallExtension` in `apps/desktop/main/extension-host.ts`.
@@ -192,13 +196,24 @@ The loader skips a folder and gives one of these. The list is `SKIP_CODES` in `a
 
 ### The kit
 
-These codes come from `tools/extension-kit.mjs`. The kit also repeats the codes above with the same meaning, and adds `NO_SCREEN` to `check`.
+These codes come from `tools/extension-kit.mjs`. The kit also repeats codes of the app. Where it does, the code means what the app code means. The kit is stricter than the app in four places, listed here.
 
-- `BAD_ID` The id for a new extension is not a valid name.
+- It refuses every link. The loader keeps a link that stays inside the bundle.
+- It needs `routes` to include the `id`.
+- It refuses a new `id` that does not start with a letter.
+- It refuses a new title with a character that is not plain text.
+
+- `BAD_ID` A new id is not a valid name or does not start with a letter. A folder name is not one plain name.
+- `BAD_TITLE` The title for a new extension holds a quote, a brace, an angle bracket, a backtick, a backslash or a control character.
+- `NO_MOUNT_TABLE` The kit cannot read the mount table `BUNDLED_MOUNTS`, so it cannot say that any screen exists.
+- `ROUTE_MISMATCH` The routes of the manifest do not include the id, and the mount draws the screen only for the route that equals the id.
+- `REMOVE_INCOMPLETE` A removal stopped part way. The message lists the files that remain and the temporary folder that holds them.
 - `NO_SCREEN` The manifest is valid and the mount table has no screen for its id, so the app does not register it.
 - `NOT_A_TREE` The root is not the Bowerloom repository, or it is not an absolute path.
 - `UNSAFE_PATH` A link or a folder in the way means the kit does not write or delete.
 - `NOT_INSTALLED` No folder with that name is in `apps/desktop/extensions`.
+
+A manifest field that the app drops is a warning, not a refusal. `check` and `list` give the warning `FIELD_DROPPED` with the field names, in text and in JSON. A warning does not fail a check.
 
 ### The reader side
 

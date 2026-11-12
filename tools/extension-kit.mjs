@@ -17,10 +17,10 @@ import { KitError, MOUNTS_FILE, checkTree, installTemplate, listTree, removeExte
 const USAGE = `Usage: node tools/extension-kit.mjs <new|check|install-template|remove|list> [options]
   new <id> [--title TEXT]   Makes apps/desktop/extensions/<id>/manifest.json and a screen file from the template.
       The id is lowercase letters, digits and hyphens. It is also the route. It prints the two lines to add to ${MOUNTS_FILE}. It edits no source file.
-  check [<folder>]          Reads each folder of apps/desktop/extensions as the app loads it. Exit 1 when the app would refuse one, with the code the app gives.
+  check [<folder>]          Reads each folder of apps/desktop/extensions as the app loads it. Exit 1 when the app would refuse one, with the code the app gives. It also lists each manifest field the app drops, as a warning, and refuses with NO_MOUNT_TABLE when it cannot read the mount table.
   install-template          Copies the template manifest into apps/desktop/extensions. The screen of the template is already in the app.
   remove <folder>           Deletes one folder of apps/desktop/extensions. The routes of that extension are gone at the next start. A link is refused.
-  list                      Lists the extensions the app would register, and each problem.
+  list                      Lists the extensions the app would register, and each problem and warning. Exit 1 when there is a problem.
   --json   print one JSON object on stdout (also for a usage error: {ok:false, exit:2, error})
   --root ABS_DIR   use another repository root (a test seam: needs BOWERLOOM_TOOLS_TEST_MODE=1)
 A flag that takes no value (--json) rejects one: --json=x is a usage error.
@@ -80,15 +80,15 @@ export function runCommand(args, root = REPO_ROOT) {
       }
       case 'remove': {
         const gone = removeExtension(root, args.positional[0]);
-        return { ok: true, command: 'remove', name: gone.name, removed: gone.removed };
+        return { ok: true, command: 'remove', name: gone.name, removed: gone.removed, note: gone.note };
       }
       case 'check': {
         const found = checkTree(root, args.positional[0] ?? null);
-        return { ok: found.problems.length === 0, command: 'check', extensions: found.extensions, problems: found.problems };
+        return { ok: found.problems.length === 0, command: 'check', extensions: found.extensions, problems: found.problems, warnings: found.warnings };
       }
       default: {
         const found = listTree(root);
-        return { ok: true, command: 'list', extensions: found.extensions, problems: found.problems };
+        return { ok: found.problems.length === 0, command: 'list', extensions: found.extensions, problems: found.problems, warnings: found.warnings };
       }
     }
   } catch (error) {
@@ -106,12 +106,13 @@ export function format(result) {
     lines.push(`Add these two lines to apps/desktop/renderer/harness/extension-mounts.tsx. The import goes with the other imports, and the table line goes inside BUNDLED_MOUNTS.`, bullet([result.next.importLine, result.next.tableLine]));
     lines.push(`Then run: node tools/extension-kit.mjs check ${result.id}`);
   } else if (result.command === 'install-template') lines.push(`extension-kit: installed the template extension "${result.id}".`, bullet(result.created.map(file => `wrote ${file}`)));
-  else if (result.command === 'remove') lines.push(`extension-kit: removed "${result.name}".`, bullet(result.removed.map(file => `deleted ${file}`)));
+  else if (result.command === 'remove') lines.push(`extension-kit: removed "${result.name}".`, bullet(result.removed.map(file => `deleted ${file}`)), result.note);
   else {
     lines.push(`extension-kit: ${result.extensions.length} extension${result.extensions.length === 1 ? '' : 's'} the app would register.`);
     for (const e of result.extensions) lines.push(`  ${e.id} (routes: ${e.routes.join(', ')})`);
     for (const p of result.problems) lines.push(`  PROBLEM ${p.name}: ${p.code}. ${p.message}`);
-    if (result.command === 'check') lines.push(result.ok ? 'extension-kit: nothing the app would refuse.' : `extension-kit: ${result.problems.length} problem${result.problems.length === 1 ? '' : 's'}.`);
+    for (const w of result.warnings) lines.push(`  WARNING ${w.name}: ${w.code}. ${w.message}`);
+    if (result.command === 'check' || !result.ok) lines.push(result.ok ? 'extension-kit: nothing the app would refuse.' : `extension-kit: ${result.problems.length} problem${result.problems.length === 1 ? '' : 's'}.`);
   }
   return lines.join('\n') + '\n';
 }

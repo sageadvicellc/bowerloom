@@ -58,5 +58,5 @@ export function ExtensionTemplate(): ReactElement {
     void readInstalled(bridge).then(next => { if (live) setState(next); });
     return () => { live = false; };
   }, [bridge]);
-  return <Screen slot="extension-template" title="Extension template"><ExtensionTemplateView state={state} /></Screen>;
+  return <Screen slot="extension-template" title={"Extension template"}><ExtensionTemplateView state={state} /></Screen>;
 }
