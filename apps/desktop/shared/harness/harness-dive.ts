@@ -61,7 +61,7 @@ export interface PartOrigin {
   readonly scope: 'home' | 'project' | null;
   readonly interfaceName: string | null;
   readonly version: string | null;
-  /** The name of the file, with its extension. Null for context, for a path with no extension, and for an empty name, so no folder name of the person leaks. */
+  /** The name of the file, with its extension. Null unless the last segment of the path ends in a known file extension, so no folder name of the person leaks. */
   readonly fileName: string | null;
   /** The folder name of the harness that names the part, for `harness-folder`. */
   readonly folder: string | null;
@@ -69,15 +69,18 @@ export interface PartOrigin {
   readonly sameTextElsewhere: number;
 }
 
-/** The last part of a path, split on either slash. Null unless it is a plain file name with an extension (so a folder path never shows). */
-export function plainFileName(path: string, kind: PartKind): string | null {
-  if (kind === 'context') return null;
+/** The file extensions the dive shows. Any other last segment may be a folder with a dot in its name, so it is never shown. */
+const FILE_EXTENSIONS: ReadonlySet<string> = new Set(['md', 'mdc', 'markdown', 'json', 'jsonc', 'toml', 'yaml', 'yml', 'txt']);
+
+/** The last part of a path, split on either slash. Null unless it is a name with a known file extension, so a folder path never shows. */
+export function plainFileName(path: string): string | null {
   const name = path.split(/[\\/]/).pop() ?? '';
-  return /^.*[^.\s]\.[A-Za-z0-9]{1,12}$/.test(name) ? name : null;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 && FILE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase()) ? name : null;
 }
 
 export function originOf(state: HarnessState, part: Part): PartOrigin {
-  const base = { label: part.source, version: part.version ?? null, fileName: plainFileName(part.path, part.kind) };
+  const base = { label: part.source, version: part.version ?? null, fileName: plainFileName(part.path) };
   const sameTextElsewhere = part.kind !== 'skill' || part.contentHash === undefined || part.contentHash === '' ? 0
     : state.parts.filter(p => p.id !== part.id && p.kind === 'skill' && p.contentHash === part.contentHash).length;
   if (part.fromHarness !== undefined) return { ...base, how: 'harness-folder', place: null, sourceName: null, scope: null, interfaceName: null, fileName: null, folder: part.fromHarness, sameTextElsewhere };

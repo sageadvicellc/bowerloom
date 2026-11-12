@@ -175,3 +175,10 @@ test('a part row calls go() with the library route of its kind and id', () => {
     assert.equal(g.location.hash, `#app/library/agent/${agent.id}`);
   } finally { delete g.location; }
 });
+
+test('the file name shows once for a context part, and never for a part a folder harness names', () => {
+  const ctx = render(`#sample/library/context/${idOf('Alpha plan')}`);
+  assert.equal((ctx.match(/File: alpha-plan\.md\./g) ?? []).length, 1);
+  const folder = render('#sample/library/agent/agent-folder-held');
+  assert.equal((folder.match(/File:/g) ?? []).length, 0);
+});

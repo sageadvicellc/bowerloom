@@ -33,7 +33,7 @@ The block reads facts the state already holds. Each line is one short sentence.
 - The program the folder was read for, such as Claude Code.
 - A folder harness, when only that harness names the part. The block names the folder and says Bowerloom did not read the file.
 - The version, when the file gives one.
-- The file name, in this block only. The path is split on both slashes. A context part, a path with no extension and an empty name give no file name, so no folder name of the person shows. The full path stays behind "Show details", as before.
+- The file name, in this block only. The path is split on both slashes. Only a name that ends in md, mdc, markdown, json, jsonc, toml, yaml, yml or txt shows, for every kind including context. A dotted folder name, a path with no extension and an empty name give no file name, so no folder name of the person shows. The full path stays behind "Show details", as before.
 - The count of other skills with the same text. Skills only, and only with a hash.
 - When the part names a source that the scan does not hold, the block says "The source of this part is not in the scan."
 - When the part names no place at all, the block says Bowerloom has no record. It does not guess.

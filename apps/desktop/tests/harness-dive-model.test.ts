@@ -143,7 +143,7 @@ test('the file name is never a path: both slashes, a context part, no extension,
   const lines = (path: string, kind: Part['kind'] = 'skill'): string[] => originLines(originOf(state, { ...part, kind, path }));
   assert.equal(originOf(state, { ...part, path: 'C:\\Users\\x\\p' }).fileName, null);
   assert.equal(originOf(state, { ...part, kind: 'context', path: '/Users/x/p' }).fileName, null);
-  assert.equal(originOf(state, { ...part, kind: 'context', path: '/Users/x/notes.md' }).fileName, null);
+  assert.equal(originOf(state, { ...part, kind: 'context', path: '/Users/x/notes.md' }).fileName, 'notes.md');
   assert.equal(originOf(state, { ...part, path: 'C:\\Users\\x\\SKILL.md' }).fileName, 'SKILL.md');
   assert.equal(originOf(state, { ...part, path: '/Users/x/dir/' }).fileName, null);
   assert.equal(originOf(state, { ...part, path: 'a/b/.' }).fileName, null);
@@ -190,4 +190,26 @@ test('the lines of a found part say where it was found, and those of a folder pa
   assert.match(folder, /harness of the folder weekly-report/);
   assert.match(folder, /did not read its file/);
   assert.match(originLines(originOf(state, byName('Check facts', 'src-alpha'))).join(' '), /Same text in 2 other places/);
+});
+
+test('a dotted folder name is never a file name: only known file extensions pass', () => {
+  const part = byName('Alpha checklist');
+  const name = (path: string, kind: Part['kind'] = 'skill'): string | null => originOf(state, { ...part, kind, path }).fileName;
+  for (const path of ['/Users/john.smith', '/Users/x/my.proj', 'C:\\Users\\a.b', '/Users/hanna.sage', '/x/archive.tar', '/x/app.js']) {
+    assert.equal(name(path), null, path);
+    assert.equal(name(path, 'context'), null, path);
+    for (const l of originLines(originOf(state, { ...part, path }))) assert.doesNotMatch(l, /File:|john|hanna|my\.proj/);
+  }
+  assert.equal(name('skills/x/SKILL.md'), 'SKILL.md');
+  assert.equal(name('/home/u/settings.json'), 'settings.json');
+  assert.equal(name('C:\\u\\config.toml'), 'config.toml');
+  for (const f of ['a.mdc', 'a.markdown', 'a.jsonc', 'a.yaml', 'a.yml', 'a.txt', 'A.MD']) assert.equal(name(`d/${f}`), f);
+});
+
+test('a context part shows its file name when it passes the same list, such as CLAUDE.md or AGENTS.md', () => {
+  const part = byName('Alpha plan');
+  assert.equal(part.kind, 'context');
+  for (const f of ['CLAUDE.md', 'AGENTS.md']) assert.equal(originOf(state, { ...part, path: `/Users/x/${f}` }).fileName, f);
+  assert.equal(originOf(state, { ...part, path: '/Users/x/notes' }).fileName, null);
+  assert.ok(originLines(originOf(state, { ...part, path: '/Users/x/CLAUDE.md' })).includes('File: CLAUDE.md.'));
 });
