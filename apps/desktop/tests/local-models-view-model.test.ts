@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LOCAL_WORDS, REFRESH_MS, STALE_AFTER_MS, baseName, noteSentence, stateTone, contextPercent, contextWords, factsOf, formatBytes, formatCount, formatRate, isStale, reasonWords, rowNotes, rowOf, sortModels, stateWords, summaryOf, viewOf } from '../shared/local-models/view-model.js';
 import type { LocalModel, LocalModelsReport } from '../shared/local-models/types.js';
-import { createSampleLocal, sampleLocalReport, LOCAL_MODELS_MANIFEST } from '../shared/local-models/sample.js';
+import { createSampleLocal, sampleLocalReport, LOCAL_MODELS_MANIFEST, MODULES_MANIFEST } from '../shared/local-models/sample.js';
 
 const NR = 'not reported';
 const model = (over: Partial<LocalModel> = {}): LocalModel => ({
@@ -166,7 +166,7 @@ test('the sample: two up, one down, made-up names, no memory, and a sample bridg
   assert.doesNotMatch(JSON.stringify(sample), /\/Users|\/home|C:\\/);
   const bridge = createSampleLocal(() => '2026-11-11T10:00:00Z');
   assert.deepEqual(await bridge.localModels(), sample);
-  assert.deepEqual((await bridge.listExtensions()).extensions, [LOCAL_MODELS_MANIFEST]);
+  assert.deepEqual((await bridge.listExtensions()).extensions, [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST]);
 });
 
 

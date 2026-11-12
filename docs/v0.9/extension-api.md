@@ -90,15 +90,15 @@ A screen has no other way to the engine. It names no bridge, no channel, no tran
 Five layers approve what a screen does. All five apply to every extension.
 
 
-The engine side holds write calls. The adopt, install and save sheets use them to change files on this computer. The reader, local and runs sides mostly read. The runs side writes the run record. A stock screen can reach any call of the four sides. This section is about reads and writes alike.
+The engine side holds write calls. The adopt, install and save sheets use them to change files on this computer. The reader, local and runs sides mostly read. The runs side writes the run record. A stock screen can reach any call of the sides. This section is about reads and writes alike.
 
 1. Only stock extensions exist. A screen is code in a pull request. Review and the gates approve the code before it ships. The app loads no code from a folder, a download or a link.
-2. A call must be one of the four sides. The lists of calls are frozen. The engine golden file `packages/engine-api/golden/base-d4c8a478.json` holds the 42 calls of the reader and engine sides. The files `packages/engine-api/golden/local-calls.json` and `packages/engine-api/golden/run-calls.json` hold the local and runs calls. A new call changes a golden file. That change is a decision for the maintainer, and this API adds none.
+2. A call must be one of the five sides. The lists of calls are frozen. The engine golden file `packages/engine-api/golden/base-d4c8a478.json` holds the 42 calls of the reader and engine sides. The files `packages/engine-api/golden/local-calls.json`, `run-calls.json` and `module-calls.json` hold the local, runs and modules calls. The local golden file lists one call, `localModels`. The code (`apps/desktop/shared/api/local.ts`) has two, `localModels` and `listExtensions`. `listExtensions` was added after that golden file was written, and the golden file was not updated. This page does not change it. A new call changes a golden file. That change is a decision for the maintainer, and this API adds none.
 3. The client purity test fails the build for any other path to the engine. A new extension is inside its reach as soon as its file is under `apps/desktop/renderer/`.
 4. Main checks every call. It refuses a sender that is not the app page (`NOT_ALLOWED`). It refuses a wrong count or shape of arguments (`BAD_ARGUMENT`). The reader reads only places the person chose (`UNKNOWN_PLACE` for any other). An engine call names a folder id that main gave out (`UNKNOWN_FOLDER` for any other). The sender check does not tell one extension from another. Every extension screen runs in the app page, so every extension passes it.
 5. The person sees what an extension shows. A screen reads data on this computer. It sends nothing out.
 
-No extension is limited in this lane. This version has no read scope and no write scope for each extension. An extension can ask any call of the four sides, including the write calls. Lane 2 of the next phase adds a read scope: a module reads only what the person picks, plus home-folder places the person approves once for that module. It adds no write scope. Until a scope exists, a reviewer reads each screen for the calls it makes, and for the write calls most of all.
+No extension is limited by this API. A read scope exists only inside the Modules view (`docs/v0.9/modules-view.md`): a module there reads only what the person picks, plus home-folder places the person approved once for that module. Generic `#app/extension/<route>` pages are not scoped. An extension on a generic route can ask any call of the sides, including the write calls. There is no write scope. A reviewer reads each screen for the calls it makes, and for the write calls most of all.
 
 ## Install and remove
 
@@ -271,5 +271,5 @@ The list is `RUN_REFUSAL_CODES` in `apps/desktop/shared/api/runs.ts`.
 - It loads no third-party or community code.
 - It changes nothing in the protection of the shell: the fuses and the policy stay as `docs/v0.9/packaged-app-spec.md` records them.
 - It adds no call to the engine API. The golden files stay as they were.
-- It has no read scope for each extension, and no modules view. Lane 2 adds both.
+- It has no read scope for generic extension routes. The read scope is part of the Modules view (`docs/v0.9/modules-view.md`).
 - It has no uninstall inside the running app.

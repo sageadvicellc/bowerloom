@@ -145,7 +145,7 @@ test('the screen reads through the client: it asks the local calls it is given, 
   const bridge: LocalBridge = { localModels: () => { asked.push('localModels'); return sample.localModels(); }, listExtensions: () => { asked.push('listExtensions'); return sample.listExtensions(); } };
   const state = await readInstalled(bridge);
   assert.deepEqual(asked, ['listExtensions']);
-  assert.deepEqual(state, { kind: 'listed', titles: ['Local models'], skipped: 0 });
+  assert.deepEqual(state, { kind: 'listed', titles: ['Local models', 'Modules'], skipped: 0 });
   const html = renderToStaticMarkup(createElement(ExtensionTemplateView, { state }));
   assert.match(html, /Local models/);
   assert.match(html, /data-extension="extension-template"/);

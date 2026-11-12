@@ -33,14 +33,17 @@ import { EngineProvider } from './engine.js';
 import { NotesProvider } from './notes/notes-session.js';
 import { FolderDraftProvider } from './folder-draft.js';
 import { useCloseGuard } from './close-guard.js';
-import { fallbackEngine, fallbackLocal, fallbackRuns } from '../api/client.js';
+import { fallbackEngine, fallbackLocal, fallbackModules, fallbackRuns } from '../api/client.js';
 import type { RunsBridge } from '../../shared/api/runs.js';
+import type { ModulesBridge } from '../../shared/api/modules.js';
 import { RunsProvider } from './runs-real/runs-session.js';
 import type { LocalBridge } from '../../shared/local-models/types.js';
 import { LocalProvider, SkippedProvider, useLocal } from './local-models/local.js';
 import { LocalModelsPending } from './local-models/LocalModels.js';
 import { extensionRouteState, localRouteState, useBundledExtensions } from './bundled-extensions.js';
 import { ExtensionAbsent, ExtensionPending } from './extensions/ExtensionPending.js';
+import { ModulesProvider } from './modules/modules-context.js';
+import { ModulesPending } from './modules/ModulesScreen.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 
 function Overlays(): ReactElement {
@@ -58,7 +61,7 @@ function Overlays(): ReactElement {
   );
 }
 
-function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; realMode: boolean; registry: Registry<ScreenMount> }): ReactElement {
+function Routes({ bridge, realMode, registry, modules }: { bridge: RealBridge | null; realMode: boolean; registry: Registry<ScreenMount>; modules: ModulesBridge | null }): ReactElement {
   const route = useRoute();
   // The title is the app's name, and carries the count of unsaved changes for main (which keeps the title bar to the name). The close guard holds the unload while there are any.
   useCloseGuard();
@@ -67,16 +70,20 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
   const bundled = useBundledExtensions(registry, localBridge);
   if (isFirstRun(route)) return <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />;
   // The line also stands for a route whose extension main skipped, so that the skipped names and codes are shown and not a bare not-found state.
-  const at = route.name === 'local-models' ? localRouteState(bundled, localBridge !== null) : 'screen';
+  const at = route.name === 'local-models' || route.name === 'modules' ? localRouteState(bundled, localBridge !== null, route.name) : 'screen';
   // When the extension is absent, only the skipped entries of that extension are listed: another extension's skip is not this screen's.
-  const own = bundled.skipped.filter(x => x.name === 'local-models');
+  const own = bundled.skipped.filter(x => x.name === route.name);
   // The address of any other stock extension waits the same way: until the list has answered, its route is not "not found".
   // When the list answered and the route still has no owner, it can say why: a skipped folder with its code, a refusal with its code, or a manifest with no screen in this build.
   const ext = route.name === 'extension' ? extensionRouteState(bundled, registry, route.route) : null;
   return (
     <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>
       <SkippedProvider skipped={bundled.skipped}>
-        {ext?.kind === 'wait' ? <ExtensionPending problem={bundled.problem} /> : ext?.kind === 'absent' ? <ExtensionAbsent absence={ext.absence} /> : at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /> : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
+        <ModulesProvider bridge={modules} sample={!realMode && localBridge !== null} real={realMode} listed={bundled.extensions}>
+          {ext?.kind === 'wait' ? <ExtensionPending problem={bundled.problem} /> : ext?.kind === 'absent' ? <ExtensionAbsent absence={ext.absence} /> : at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />
+            : route.name === 'modules' ? <ModulesPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />
+            : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
+        </ModulesProvider>
       </SkippedProvider>
     </Shell>
   );
@@ -86,7 +93,7 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
  * `realMode` is true for the launch on the person's own folders (the default launch, the address `#app`); `real` is its read-only bridge, null when the window has none or a partial one.
  * In real mode Choose reads the person's folders and the world starts empty; with no bridge Choose shows the no-bridge error, and never the sample. Without `realMode`, a bridge makes it real (a caller that gives only the bridge).
  */
-export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine, local: givenLocal, runs: givenRuns, registry: givenRegistry }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined; local?: LocalBridge | null | undefined; runs?: RunsBridge | null | undefined; registry?: Registry<ScreenMount> }): ReactElement {
+export function HarnessApp({ store: given, real = null, realMode = real !== null, engine: givenEngine, local: givenLocal, runs: givenRuns, modules: givenModules, registry: givenRegistry }: { store?: HarnessStore; real?: RealBridge | null; realMode?: boolean; engine?: EngineBridge | null | undefined; local?: LocalBridge | null | undefined; runs?: RunsBridge | null | undefined; modules?: ModulesBridge | null | undefined; registry?: Registry<ScreenMount> }): ReactElement {
   // The world is made once, from the sample, dated from the clock now (the runs started 12 minutes ago). Runs that are running at the start finish by themselves after about 15 seconds.
   // On the person's own folders it starts empty, and the first read replaces it.
   const [store] = useState(() => given ?? createHarnessStore({ initial: realMode ? blankRealState(realNow()) : createSampleWorld(realNow()), now: realNow, finishRunning: true }));
@@ -97,7 +104,9 @@ export function HarnessApp({ store: given, real = null, realMode = real !== null
   const [local] = useState<LocalBridge | null>(() => (givenLocal !== undefined ? givenLocal : fallbackLocal(realMode)));
   // The runs calls (the manual record of runs and the figures of a session log): the preload's bridge, or none. The sample launch has none, and its screens keep their made-up runs in the store.
   const [runs] = useState<RunsBridge | null>(() => (givenRuns !== undefined ? givenRuns : fallbackRuns(realMode)));
+  // The modules calls (the approved folders of a module): the preload's bridge, or none. The sample launch has none: it keeps no approvals.
+  const [modules] = useState<ModulesBridge | null>(() => (givenModules !== undefined ? givenModules : fallbackModules(realMode)));
   // The registry is the only route table. It holds the six default extensions unless a caller (a test) gives its own.
   const [registry] = useState(() => givenRegistry ?? createScreenRegistry());
-  return <HarnessProvider store={store}><EngineProvider engine={engine}><LocalProvider bridge={local} sample={!realMode && local !== null}><RunsProvider runs={runs}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></RunsProvider></LocalProvider></EngineProvider></HarnessProvider>;
+  return <HarnessProvider store={store}><EngineProvider engine={engine}><LocalProvider bridge={local} sample={!realMode && local !== null}><RunsProvider runs={runs}><UiProvider><SavedScanProvider engine={realMode ? engine : null}><NotesProvider><FolderDraftProvider><Routes bridge={real} realMode={realMode} registry={registry} modules={modules} /></FolderDraftProvider></NotesProvider></SavedScanProvider></UiProvider></RunsProvider></LocalProvider></EngineProvider></HarnessProvider>;
 }

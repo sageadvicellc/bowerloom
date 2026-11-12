@@ -103,8 +103,11 @@ export function Shell({ route, children, overlays, extensions }: { route: Route;
           onInterfaces={() => go({ name: 'interfaces' })} onHistory={() => go({ name: 'history' })} onHelp={() => go({ name: 'help' })}
           extensions={(extensions ?? []).map(x => (x.id === 'local-models'
             ? { id: x.id, title: x.title, icon: 'chip' as const, onOpen: () => go({ name: 'local-models' }) }
-            // Any other stock extension opens its first route at #app/extension/<route>. Its key is ext:<route>, which navKeyOf gives for that address.
-            : { id: extensionNavKey(x.routes[0]!), title: x.title, icon: 'plug' as const, onOpen: () => go(extensionRouteOf(x)) }))} />
+            : x.id === 'modules'
+              // The Modules view has its own route. It must come before the generic fallback below, which would open #app/extension/modules.
+              ? { id: x.id, title: x.title, icon: 'columns' as const, onOpen: () => go({ name: 'modules' }) }
+              // Any other stock extension opens its first route at #app/extension/<route>. Its key is ext:<route>, which navKeyOf gives for that address.
+              : { id: extensionNavKey(x.routes[0]!), title: x.title, icon: 'plug' as const, onOpen: () => go(extensionRouteOf(x)) }))} />
         {mode === 'hidden' && overlay ? <div className="hm-nav-scrim" data-nav-scrim="" aria-hidden="true" onClick={() => { setOverlay(false); requestAnimationFrame(() => topToggle.current?.focus()); }} /> : null}
         {children}
         <div id="hx-layer" />

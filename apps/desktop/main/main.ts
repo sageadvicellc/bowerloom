@@ -11,6 +11,7 @@ import { registerRealIpc, usableHome } from './real-ipc.js';
 import { registerEngineIpc } from './engine-ipc.js';
 import { registerLocalModelsIpc } from './local-models-ipc.js';
 import { registerRunsIpc } from './runs-ipc.js';
+import { registerModulesIpc } from './modules-ipc.js';
 import { folderRefOf } from './run-folder.js';
 import { diagnosticsEnv, enginePreviewSwitch, engineStateRoot } from './engine-state.js';
 import { createScanSession, fingerprintOf } from './scan-session.js';
@@ -300,6 +301,17 @@ app.whenReady().then(async () => {
     // The run record: the person's manual list of runs, saved in the state folder, and the figures read from an engine's own session log. The page knows a folder by the id the engine calls gave out;
     // main works the full path out from the folder's label and keeps it. Nothing here starts a program, reads a process, or reads or keeps a line of a chat.
     registerRunsIpc({ ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), folder: async id => { const found = (await engineForExit?.folders())?.find(f => f.id === id); return found === undefined ? null : folderRefOf(found, home); }, tell: line => { process.stderr.write(`${line}\n`); } });
+    // The read scope of a module: the home-folder places the person approved once for a module, and the one read of a text file inside such a place. The page never names a folder: "Approve a folder" opens
+    // main's own chooser, on the home folder, and the pick is the approval (main/module-pick.ts). The decision to read is the package's (packages/module-scope). Nothing here starts a program or uses the network.
+    registerModulesIpc({
+      ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), extensionHost: () => extensionHost, tell: line => { process.stderr.write(`${line}\n`); },
+      // The title names the module. It comes from main's own registry (main/modules-ipc.ts), never from the page.
+      choosePlace: async moduleTitle => {
+        const options: Electron.OpenDialogOptions = { title: `Approve a folder for ${moduleTitle}`, message: `${moduleTitle} will read the files in this folder. Choose a folder in your home folder.`, buttonLabel: 'Approve this folder', defaultPath: home, properties: ['openDirectory'] };
+        const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
+        return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
+      },
+    });
   }
   // The extension loader reads the app bundle's own extensions folder and nothing else (main/extension-host.ts). A bad extension is skipped and never stops the start. Each skip goes to stderr
   // and, in a launch that keeps the usage log, its code is recorded there too. Limit: a launch with no usage log has stderr only, which a Finder-launched app does not show.

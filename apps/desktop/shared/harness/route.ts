@@ -30,12 +30,14 @@ export type Route =
   | { readonly name: 'help' }
   /** The route of the bundled Local models extension. It is not a base route: the registry owns it only while main loaded that extension (shared/extensions/defaults.ts). */
   | { readonly name: 'local-models' }
+  /** The route of the bundled Modules extension: the stock modules, and the one the person opens (`id`) run inside the view. */
+  | { readonly name: 'modules'; readonly id?: string }
   /** The route of any other stock extension: `#app/extension/<route>`. `route` is a name from the manifest of the extension that owns it. The registry decides the owner. */
   | { readonly name: 'extension'; readonly route: string };
 
 export type RouteName = Route['name'];
 /** The routes of extensions that ship in the bundle. The 15 base routes are every other name. */
-export const EXTENSION_ROUTES = Object.freeze(['local-models', 'extension'] as const);
+export const EXTENSION_ROUTES = Object.freeze(['local-models', 'modules', 'extension'] as const);
 export type ExtensionRouteName = (typeof EXTENSION_ROUTES)[number];
 export type BaseRouteName = Exclude<RouteName, ExtensionRouteName>;
 
@@ -88,6 +90,7 @@ export function parseRoute(hash: string): Route | null {
     case 'history': return { name: 'history' };
     case 'help': return { name: 'help' };
     case 'local-models': return { name: 'local-models' };
+    case 'modules': return id === undefined ? { name: 'modules' } : { name: 'modules', id };
     // The name must be a plain lower-case name, as the manifest check wants. Any other address opens the Harness list.
     case 'extension': return a !== undefined && EXTENSION_ROUTE_NAME.test(a) ? { name: 'extension', route: a } : { name: 'harnesses' };
     default: return { name: 'harnesses' };
@@ -104,7 +107,7 @@ export function formatRoute(route: Route, base: string = BASE): string {
   switch (route.name) {
     case 'welcome': return base;
     case 'choose': case 'read': case 'notes': case 'overview': case 'history': case 'help': case 'local-models': return `${base}/${route.name}`;
-    case 'harnesses': case 'projects': case 'runs': case 'interfaces': return route.id === undefined ? `${base}/${route.name}` : `${base}/${route.name}/${seg(route.id)}`;
+    case 'harnesses': case 'projects': case 'runs': case 'interfaces': case 'modules': return route.id === undefined ? `${base}/${route.name}` : `${base}/${route.name}/${seg(route.id)}`;
     case 'builder': return `${base}/builder/${seg(route.id)}`;
     case 'file': return `${base}/file/${seg(route.partId)}`;
     case 'library': return route.partId === undefined ? `${base}/library/${route.kind}` : `${base}/library/${route.kind}/${seg(route.partId)}`;
@@ -114,7 +117,7 @@ export function formatRoute(route: Route, base: string = BASE): string {
 }
 
 /** Which item of the navigation a route belongs to. The builder and the file view belong to the place they were opened from. */
-export type NavKey = 'overview' | 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help' | 'local-models' | `ext:${string}`;
+export type NavKey = 'overview' | 'harnesses' | 'library' | 'library-agent' | 'library-skill' | 'library-tool' | 'library-context' | 'projects' | 'runs' | 'interfaces' | 'history' | 'help' | 'local-models' | 'modules' | `ext:${string}`;
 export function navKeyOf(route: Route): NavKey | null {
   switch (route.name) {
     case 'overview': return 'overview';
@@ -126,6 +129,7 @@ export function navKeyOf(route: Route): NavKey | null {
     case 'history': return 'history';
     case 'help': return 'help';
     case 'local-models': return 'local-models';
+    case 'modules': return 'modules';
     case 'extension': return `ext:${route.route}`;
     default: return null;
   }

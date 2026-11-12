@@ -64,7 +64,7 @@ test('the runs golden file is well formed and equals the contract, call for call
 
 test('the runs golden file is not a base golden file, and the base and local golden files are untouched', () => {
   const names = fs.readdirSync(path.join(here, '..', 'golden')).sort();
-  assert.deepEqual(names, ['base-d4c8a478.json', 'local-calls.json', 'run-calls.json']);
+  assert.deepEqual(names, ['base-d4c8a478.json', 'local-calls.json', 'module-calls.json', 'run-calls.json']);
   assert.deepEqual(names.filter(f => /^base-[0-9a-f]{8}\.json$/.test(f)), ['base-d4c8a478.json']);
 });
 

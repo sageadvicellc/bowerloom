@@ -1,0 +1,13 @@
+{
+  "format": "bowerloom/engine-api-modules-golden/v1",
+  "note": "The calls of the bowerloomModules bridge, added in 0.9.0-beta.1 after the base: the read scope of a module (the places a person approved for it, and the one read of a text file inside such a place). Written by hand, because the base source never had them: the base golden file stays as it is. Change it only with MODULE_CALLS, in the same commit.",
+  "bridge": "bowerloomModules",
+  "channelPrefix": "bowerloom-modules:",
+  "moduleCalls": [
+    { "name": "listModulePlaces", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-modules:listModulePlaces", "returns": "plain" },
+    { "name": "approveModulePlace", "arity": 1, "optionalArgs": 0, "channel": "bowerloom-modules:approveModulePlace", "returns": "plain" },
+    { "name": "revokeModulePlace", "arity": 2, "optionalArgs": 0, "channel": "bowerloom-modules:revokeModulePlace", "returns": "plain" },
+    { "name": "readModuleFile", "arity": 3, "optionalArgs": 0, "channel": "bowerloom-modules:readModuleFile", "returns": "plain" }
+  ],
+  "moduleCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_MODULE", "NOT_APPROVED", "PLACE_CHANGED", "BAD_PATH", "OUTSIDE_PLACE", "NOT_A_FILE", "TOO_LARGE", "NOT_TEXT", "UNREADABLE", "HOME_UNREADABLE", "RECORD_DAMAGED", "RECORD_BLOCKED"]
+}

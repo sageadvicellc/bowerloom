@@ -11,7 +11,7 @@ import type { Allowance, Problem } from './helpers-engine/client-purity.js';
 
 /** Every exception, one per line of reason. None is for a bridge, a channel, a file or the network: those have no exception. */
 const ALLOWANCES: readonly Allowance[] = Object.freeze([
-  { file: 'renderer/api/transport.ts', rule: 'bridge-name', detail: /bowerloom(?:Real|Engine|Local|Runs)/, why: 'The transport is the one file that reads the four bridges from the window by name. The client checks what it finds.' },
+  { file: 'renderer/api/transport.ts', rule: 'bridge-name', detail: /bowerloom(?:Real|Engine|Local|Runs|Modules)/, why: 'The transport is the one file that reads the five bridges from the window by name. The client checks what it finds.' },
   { file: 'renderer/harness/real/Nothing.tsx', rule: 'side-channel', detail: /window\.close/, why: 'The screen of a window with no bridge has no engine call to use. It asks the window to close, and the close guard of main still runs on the unload.' },
   { file: 'renderer/harness/close-guard.ts', rule: 'side-channel', detail: /page title/, why: 'Owner decision Q1A: main reads the count of unsaved changes from the page title. No engine call carries it, and a new call changes the frozen contract, which is a decision for the maintainer.' },
   { file: 'renderer/harness/close-guard.ts', rule: 'side-channel', detail: /beforeunload/, why: 'Owner decision Q1A: the page holds its own unload while a folder has unsaved changes, and main asks the question in its own box.' },
@@ -69,7 +69,7 @@ test('the client is the one source of the engine: the transport is imported by t
   assert.deepEqual(importers('renderer/api/transport'), ['renderer/api/client.ts']);
   assert.deepEqual(importers('shared/engine/sample'), ['renderer/api/client.ts']);
   assert.deepEqual(importers('shared/engine/sample-switch'), ['renderer/api/transport.ts']);
-  assert.deepEqual(RESTRICTIONS.map(r => r.module), ['renderer/api/transport', 'shared/engine/sample', 'shared/engine/sample-switch', 'shared/api/local', 'shared/api/runs', 'renderer/api/client']);
+  assert.deepEqual(RESTRICTIONS.map(r => r.module), ['renderer/api/transport', 'shared/engine/sample', 'shared/engine/sample-switch', 'shared/api/local', 'shared/api/runs', 'shared/api/modules', 'renderer/api/client']);
 });
 
 test('the bowerloomLocal bridge is reached through the client alone: the client alone imports its call list, and no renderer file imports its channel table', () => {
@@ -83,6 +83,13 @@ test('the bowerloomRuns bridge is reached through the client alone for its call 
   assert.ok(importers.includes('renderer/api/client.ts'));
   assert.doesNotMatch(checked.js['renderer/api/client.ts']!, /RUN_CHANNELS|RUN_ARITY/, 'the client holds no channel name');
   for (const f of checked.files) if (f !== 'renderer/api/client.ts') assert.doesNotMatch(checked.raw[f]!, /\bRUN_CALLS\b/, `${f} reads the call list; only the client checks the bridge`);
+});
+
+test('the bowerloomModules bridge is reached through the client alone for its call list, and no renderer file imports its channel table or argument counts', () => {
+  const importers = checked.files.filter(f => specifiersOf(checked.raw[f]!).some(s => resolveSpecifier(f, s) === 'shared/api/modules'));
+  assert.ok(importers.includes('renderer/api/client.ts'));
+  assert.doesNotMatch(checked.js['renderer/api/client.ts']!, /MODULE_CHANNELS|MODULE_ARITY/, 'the client holds no channel name');
+  for (const f of checked.files) if (f !== 'renderer/api/client.ts') assert.doesNotMatch(checked.raw[f]!, /\bMODULE_CALLS\b/, `${f} reads the call list; only the client checks the bridge`);
 });
 
 test('the renderer imports from shared/engine and shared/real only the modules on the pure list', () => {

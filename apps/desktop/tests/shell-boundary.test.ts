@@ -1,7 +1,7 @@
 // The shell boundary of the desktop app (docs/v0.9/shell-map.md). Three rules keep the core and the page apart from Electron:
 //  1. Only main/main.ts and preload/real-preload.ts load Electron. This holds for main, preload, shared and renderer, and for every package that those folders reach by
 //     relative imports, however deep. The scan starts at the four folders and follows each relative import into packages/<name>/src until no new package appears.
-//  2. Only renderer/api/transport.ts reads the four bridges (`bowerloomReal`, `bowerloomEngine`, `bowerloomLocal` and `bowerloomRuns`) in the page, and only preload/real-preload.ts puts them there.
+//  2. Only renderer/api/transport.ts reads the five bridges (`bowerloomReal`, `bowerloomEngine`, `bowerloomLocal`, `bowerloomRuns` and `bowerloomModules`) in the page, and only preload/real-preload.ts puts them there.
 //  3. No relative import leaves main, preload, shared, renderer and the src folders of packages. A relative import into tools, e2e, tests, another app, or a folder of a
 //     package other than src is a problem.
 // A shell written in another framework then has one file of each kind to write again, and nothing else to find.
@@ -40,7 +40,7 @@ const MAY_NAME_BRIDGES: readonly string[] = [BRIDGE_DEFINER, BRIDGE_READER];
 const CODE_FILE = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 /** The module `electron`, its subpaths, `electron-*` wrapper packages, and `@electron/*` and `@electron-*` packages. */
 const ELECTRON_MODULE = /^(?:node:)?electron(?:[-/].*)?$|^@electron[-/]/;
-const BRIDGE_NAME = /\bbowerloom(?:Real|Engine|Local|Runs)\b/g;
+const BRIDGE_NAME = /\bbowerloom(?:Real|Engine|Local|Runs|Modules)\b/g;
 /** A declaration file (`.d.ts`, `.d.mts`) has no code, and esbuild cannot turn it into JavaScript, so it is read as written only. */
 const DECLARATION_FILE = /\.d\.[mc]?ts$/;
 
@@ -123,7 +123,7 @@ function staleListProblems(found: Readonly<Record<string, Found>>): string[] {
   for (const name of MAY_NAME_BRIDGES) {
     const names = found[name]?.bridges;
     if (names === undefined) problems.push(`${name}: is on the list of bridge files and was not read`);
-    else if (!names.includes('bowerloomReal') || !names.includes('bowerloomEngine') || !names.includes('bowerloomLocal') || !names.includes('bowerloomRuns')) problems.push(`${name}: is on the list of bridge files and does not name all four bridges`);
+    else if (!names.includes('bowerloomReal') || !names.includes('bowerloomEngine') || !names.includes('bowerloomLocal') || !names.includes('bowerloomRuns') || !names.includes('bowerloomModules')) problems.push(`${name}: is on the list of bridge files and does not name all five bridges`);
   }
   return problems;
 }
@@ -261,6 +261,8 @@ const BAD_BRIDGE: Record<string, string> = {
   'the local name as a string key': `export const l = (window as never)['bowerloomLocal'];`,
   'the runs property': `export const r = (window as never as { bowerloomRuns: object }).bowerloomRuns;`,
   'the runs name as a string key': `export const r = (window as never)['bowerloomRuns'];`,
+  'the modules property': `export const m = (window as never as { bowerloomModules: object }).bowerloomModules;`,
+  'the modules name as a string key': `export const m = (window as never)['bowerloomModules'];`,
 };
 
 const GOOD_BRIDGE: Record<string, string> = {
@@ -315,7 +317,7 @@ test('the Electron rule passes plain imports, relative imports, and text that on
 
 test('the bridge rule fails every way to name a bridge, and each failure names the bridge (negative self-tests)', () => {
   const problems = sampleProblems(BAD_BRIDGE, 'renderer');
-  for (const [name, found] of Object.entries(problems)) assertCaught(found, /names bowerloom(?:Real|Engine|Local|Runs); only renderer\/api\/transport\.ts reads the bridges in the page/, name);
+  for (const [name, found] of Object.entries(problems)) assertCaught(found, /names bowerloom(?:Real|Engine|Local|Runs|Modules); only renderer\/api\/transport\.ts reads the bridges in the page/, name);
 });
 
 test('the bridge rule passes a comment and a longer word that only look like a bridge name (positive self-tests)', () => {
@@ -360,10 +362,10 @@ test('a read error other than a missing top-level folder stops the check, and a 
 });
 
 test('a stale list fails: a listed file that loads nothing from Electron, or names one bridge only, is a problem', () => {
-  const quiet = inspect({ 'main/main.ts': `export const x = 1;`, 'preload/real-preload.ts': `import { contextBridge } from 'electron'; contextBridge.exposeInMainWorld('bowerloomReal', {});`, [BRIDGE_READER]: `export const y = 'bowerloomReal bowerloomEngine bowerloomLocal bowerloomRuns';` });
+  const quiet = inspect({ 'main/main.ts': `export const x = 1;`, 'preload/real-preload.ts': `import { contextBridge } from 'electron'; contextBridge.exposeInMainWorld('bowerloomReal', {});`, [BRIDGE_READER]: `export const y = 'bowerloomReal bowerloomEngine bowerloomLocal bowerloomRuns bowerloomModules';` });
   const problems = staleListProblems(quiet).join('\n');
   assert.match(problems, /main\/main\.ts: is on the list of Electron files and loads nothing from Electron/);
-  assert.match(problems, /preload\/real-preload\.ts: is on the list of bridge files and does not name all four bridges/);
+  assert.match(problems, /preload\/real-preload\.ts: is on the list of bridge files and does not name all five bridges/);
   assert.doesNotMatch(problems, /transport/);
 });
 
@@ -416,9 +418,9 @@ test('a planted violation in a tree is found by the same reader that reads the r
   const put = (rel: string, text: string): void => { mkdirSync(dirname(join(base, rel)), { recursive: true }); writeFileSync(join(base, rel), text); };
   put('main/main.ts', `import { app } from 'electron'; export const a = app;`);
   put('main/helper.ts', `import { dialog } from 'electron'; export const d = dialog;`);
-  put('preload/real-preload.ts', `import { contextBridge } from 'electron'; contextBridge.exposeInMainWorld('bowerloomReal', {}); contextBridge.exposeInMainWorld('bowerloomEngine', {}); contextBridge.exposeInMainWorld('bowerloomLocal', {}); contextBridge.exposeInMainWorld('bowerloomRuns', {});`);
+  put('preload/real-preload.ts', `import { contextBridge } from 'electron'; contextBridge.exposeInMainWorld('bowerloomReal', {}); contextBridge.exposeInMainWorld('bowerloomEngine', {}); contextBridge.exposeInMainWorld('bowerloomLocal', {}); contextBridge.exposeInMainWorld('bowerloomRuns', {}); contextBridge.exposeInMainWorld('bowerloomModules', {});`);
   put('shared/calls.ts', `export const N = 3;`);
-  put('renderer/api/transport.ts', `export const t = (window as never as { bowerloomReal?: unknown; bowerloomEngine?: unknown; bowerloomLocal?: unknown; bowerloomRuns?: unknown }).bowerloomReal;`);
+  put('renderer/api/transport.ts', `export const t = (window as never as { bowerloomReal?: unknown; bowerloomEngine?: unknown; bowerloomLocal?: unknown; bowerloomRuns?: unknown; bowerloomModules?: unknown }).bowerloomReal;`);
   put('renderer/screen.tsx', `export const Screen = () => <p>{String((window as never as { bowerloomEngine?: unknown }).bowerloomEngine)}</p>;`);
   const tree = readTree(base, FOLDERS);
   assert.deepEqual(Object.keys(tree.files).sort(), ['main/helper.ts', 'main/main.ts', 'preload/real-preload.ts', 'renderer/api/transport.ts', 'renderer/screen.tsx', 'shared/calls.ts']);

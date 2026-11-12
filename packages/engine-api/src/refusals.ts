@@ -65,6 +65,13 @@ export const LOCAL_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_A
 /** The codes a runs call is refused with before it runs: the wrong page, a wrong argument, a folder or a run main does not know. FAILED (an unexpected failure) is not named, as for the local calls. */
 export const RUN_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_FOLDER', 'UNKNOWN_RUN', 'RUN_LIMIT', 'STORE_DAMAGED', 'TOO_LONG', 'FOLDER_CHARACTER', 'FOLDER_LINK']);
 
+/**
+ * The codes a modules call is refused with: the wrong page, a wrong argument, a module main does not hold (UNKNOWN_MODULE), a place the module was never approved for (NOT_APPROVED), a place that is now another folder
+ * (PLACE_CHANGED), a path that is not plain (BAD_PATH), a link that leads out of the place (OUTSIDE_PLACE), and the file refusals (NOT_A_FILE, TOO_LARGE, NOT_TEXT, UNREADABLE). RECORD_DAMAGED and RECORD_BLOCKED are the
+ * states of the saved record of approvals. A pick that main's chooser refuses is an answer with a status, not a refusal. FAILED (an unexpected failure) is not named, as for the other bridges.
+ */
+export const MODULE_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'HOME_UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED']);
+
 /** Every code the engine side returns that the contract names. */
 export function engineRefusalCodes(): ReadonlySet<string> {
   return new Set([...ENGINE_CALL_REFUSAL_CODES, ...NAMED_OUTCOMES, ...ENGINE_MAIN_REFUSAL_CODES, ...ENGINE_MAIN_ANSWER_REFUSAL_CODES]);

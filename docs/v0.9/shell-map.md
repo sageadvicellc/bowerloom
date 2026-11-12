@@ -209,6 +209,7 @@ The engine and reader code, the kits, the extension registry and loader, the API
 - After PR 171: `main/extension-host.ts` is new core code. `main.ts` starts the extensions once the app is ready. The bundle root is `process.resourcesPath` in a packaged build and `apps/desktop` in development. Nothing reads the host yet, and no channel lets a person uninstall.
 - After PR 173: `renderer/api/client.ts` imports the sample engine and `fallbackEngine` replaces direct imports in `HarnessApp.tsx`. `transport.ts` reads the sample attribute. The rule list for the page grows.
 - After PR 172: `carry-over-scope.md` holds the core and optional split.
+- After the Modules view (lane 2): a fifth bridge, `bowerloomModules`, is new shell code in `preload/real-preload.ts`. `main/modules-ipc.ts` answers it, and `main/module-pick.ts` holds the one folder chooser that approves a place. The decision to read is core code in `packages/module-scope`. The page reads the bridge only through `renderer/api/client.ts`, and `shell-boundary.test.ts` names the fifth bridge.
 
 ## Checks that keep this map true
 

@@ -129,17 +129,51 @@ export function LocalModelsBody({ available, sample, report, failed, stale, busy
 }
 
 export function LocalModels(): ReactElement {
+  const s = useLocalScreen();
+  const { view } = s;
+  return (
+    <Screen slot="local-models" title={LOCAL_WORDS.title} count={view === null || view.summary === null ? undefined : view.summary} tools={s.refresh}>
+      <LocalStage s={s} />
+    </Screen>
+  );
+}
+
+/** The state of the screen: the bridge, the report and what the Refresh button does. The same hooks serve the page of its own and the copy inside the Modules view. */
+function useLocalScreen() {
   const { bridge, sample } = useLocal();
   const skipped = useSkipped();
   const state = useLocalReport(bridge);
   const view = useMemo(() => (state.report === null ? null : viewOf(state.report)), [state.report]);
   // Refresh stays enabled while a read runs, so keyboard focus is never dropped. The hook ignores a click while a read runs.
   const refresh = <HButton icon="play" disabled={bridge === null} onClick={state.refresh}>{LOCAL_WORDS.refresh}</HButton>;
+  return { bridge, sample, skipped, state, view, refresh };
+}
+type LocalScreen = ReturnType<typeof useLocalScreen>;
+
+/** What the stage shows, with its announcer and the skipped notice. The page of its own and the copy inside the Modules view draw the same stage. */
+function LocalStage({ s }: { s: LocalScreen }): ReactElement {
   return (
-    <Screen slot="local-models" title={LOCAL_WORDS.title} count={view === null || view.summary === null ? undefined : view.summary} tools={refresh}>
-      <ReadAnnouncer announce={state.announce} />
-      <SkippedNotice skipped={skipped} />
-      <LocalModelsBody available={bridge !== null} sample={sample} report={state.report} view={view} failed={state.failed} stale={state.report !== null && state.stale} busy={state.busy} code={state.code} />
-    </Screen>
+    <>
+      <ReadAnnouncer announce={s.state.announce} />
+      <SkippedNotice skipped={s.skipped} />
+      <LocalModelsBody available={s.bridge !== null} sample={s.sample} report={s.state.report} view={s.view} failed={s.state.failed} stale={s.state.report !== null && s.state.stale} busy={s.state.busy} code={s.state.code} />
+    </>
+  );
+}
+
+/**
+ * Local models as a module inside the Modules view. It reads the same report through the same hook and draws the same stage (the cards, the notes, the sample line, the skipped notice). The frame is the view's, not
+ * this screen's: the count and the Refresh button sit in a row above the stage, and the page has no second heading of the same level.
+ */
+export function LocalModelsEmbedded(): ReactElement {
+  const s = useLocalScreen();
+  return (
+    <div className="hxl-embedded" data-module-screen="local-models">
+      <div className="hxl-embedded-bar">
+        <span className="hx-count">{s.view === null || s.view.summary === null ? '' : s.view.summary}</span>
+        {s.refresh}
+      </div>
+      <LocalStage s={s} />
+    </div>
   );
 }
