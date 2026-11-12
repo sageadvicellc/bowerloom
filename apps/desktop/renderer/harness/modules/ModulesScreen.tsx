@@ -3,6 +3,7 @@
  * plus folders in the home folder that the person approved once for that module. The view shows what each module can read, lets the person approve a folder (main opens its own chooser: this page never names a folder)
  * and remove one. Everything stays on this computer. All display logic is in shared/modules/view-model.ts. Structure copied from Local models: Screen, a hint line, then rows with a tile, a name and an action.
  */
+import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import { Screen } from '../Screen.js';
 import { HButton } from '../parts/controls.js';
@@ -37,13 +38,15 @@ export interface ReadsProps {
   readonly title: string;
   readonly sample: boolean;
   readonly hasBridge: boolean;
+  /** True in the app on the person's own folders when the window gave no modules bridge, or a partial one. That is a failure with a code. */
+  readonly missing: boolean;
   readonly places: PlacesView;
   readonly onApprove: () => void;
   readonly onRemove: (placeId: string) => void;
 }
 
 /** What the open module can read, and the folders approved for it. The two rules are said in words, then the folders, then the one button that approves. */
-export function ReadsPanel({ title, sample, hasBridge, places, onApprove, onRemove }: ReadsProps): ReactElement {
+export function ReadsPanel({ title, sample, hasBridge, missing, places, onApprove, onRemove }: ReadsProps): ReactElement {
   const head = `reads-${title}`;
   return (
     <section className="hxm-reads" aria-labelledby={head} data-module-reads="">
@@ -54,7 +57,8 @@ export function ReadsPanel({ title, sample, hasBridge, places, onApprove, onRemo
         <li>{MODULE_WORDS.readsLocal}</li>
       </ul>
       {sample ? <p className="kit-hint hx-hint" data-module-state="sample">{MODULE_WORDS.sample}</p> : null}
-      {!hasBridge && !sample ? <p className="kit-hint hx-hint" role="status" data-module-state="no-bridge">{MODULE_WORDS.noBridge}</p> : null}
+      {missing ? <p className="hx-text" role="alert" data-module-state="bridge-missing" data-module-code="BRIDGE_MISSING">{MODULE_WORDS.bridgeMissing} Code: BRIDGE_MISSING.</p> : null}
+      {!hasBridge && !sample && !missing ? <p className="kit-hint hx-hint" role="status" data-module-state="no-bridge">{MODULE_WORDS.noBridge}</p> : null}
       {hasBridge ? (
         <>
           <h3 className="hxm-folders-title">{MODULE_WORDS.folders}</h3>
@@ -118,12 +122,15 @@ export function ModulesBody({ rows, selected, missing, reads, embedded, onOpen, 
 const openOwn = (route: string): void => { if (route === 'local-models') go({ name: 'local-models' }); };
 
 export function Modules({ id }: { id: string | null }): ReactElement {
-  const { bridge, sample, listed } = useModules();
+  const { bridge, sample, real, listed } = useModules();
   const rows = moduleRows(listed, id);
   const selected = rows.find(r => r.id === id) ?? null;
   const places = useModulePlaces(bridge, selected === null ? null : selected.id);
+  const missing = real && bridge === null;
+  // The failure is told on the screen and in the console of the window, once for as long as it stands.
+  useEffect(() => { if (missing) console.error('Bowerloom: the window gave no whole modules bridge (BRIDGE_MISSING).'); }, [missing]);
   const Page = selected === null ? undefined : embeddedPageOf(selected.id);
-  const reads: ReadsProps | null = selected === null ? null : { title: selected.id, sample, hasBridge: bridge !== null, places: places, onApprove: places.approve, onRemove: places.remove };
+  const reads: ReadsProps | null = selected === null ? null : { title: selected.id, sample, hasBridge: bridge !== null, missing, places: places, onApprove: places.approve, onRemove: places.remove };
   return (
     <Screen slot="modules" title={MODULE_WORDS.title} count={moduleCount(rows)}>
       <ModulesBody rows={rows} selected={selected} missing={id !== null && selected === null} reads={reads} embedded={Page === undefined ? null : <Page />}

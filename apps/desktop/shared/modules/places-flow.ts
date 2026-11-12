@@ -5,7 +5,7 @@
  */
 import { refusalCode } from '../api/calls.js';
 import type { ModuleApproval, ModulePlace, ModulesBridge } from '../api/modules.js';
-import { MODULE_WORDS, approvalNotice } from './view-model.js';
+import { MODULE_WORDS, approvalNotice, removeWords } from './view-model.js';
 
 export interface PlacesView {
   /** `none`: there is no bridge. `loading`: the first read has not answered. `ready`: the list is in `places`. `failed`: a call was refused, with its code in `code`. */
@@ -42,11 +42,15 @@ export async function approveFlow(bridge: ModulesBridge, moduleId: string): Prom
   if (!done.ok) return { ...failed(done.code), busy: false, notice: null };
   const notice = approvalNotice(done.value);
   if (done.value.status !== 'kept') return { busy: false, notice };
-  return { ...(await loadPlaces(bridge, moduleId)), busy: false, notice };
+  const list = await loadPlaces(bridge, moduleId);
+  // A list that cannot be read again keeps the places the page holds, and the notice no longer says only "Approved.": the person is told the folder was approved and the list was not read.
+  if (list.status === 'failed') return { status: 'failed', code: list.code ?? 'FAILED', busy: false, notice: MODULE_WORDS.approvedNoRefresh };
+  return { ...list, busy: false, notice };
 }
 
 /** The person asked to remove a folder. The answer is the places that are left. The folder and its files are untouched. */
 export async function removeFlow(bridge: ModulesBridge, moduleId: string, placeId: string): Promise<PlacesPatch> {
   const done = await attempt(() => bridge.revokeModulePlace(moduleId, placeId));
-  return done.ok ? { status: 'ready', places: done.value.places, code: null, busy: false, notice: MODULE_WORDS.removed } : { status: 'failed', code: done.code, busy: false, notice: null };
+  // A failed removal leaves the folder approved, so the list stays as it is and the notice says so. It is not a failure of the read.
+  return done.ok ? { status: 'ready', places: done.value.places, code: null, busy: false, notice: MODULE_WORDS.removed } : { code: done.code, busy: false, notice: removeWords(done.code) };
 }

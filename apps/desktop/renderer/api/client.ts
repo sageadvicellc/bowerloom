@@ -89,5 +89,9 @@ export const modulesCodeOf = (error: unknown): ModuleRefusalCode => refusalCode(
 
 /** The modules calls of a page that was handed none: the preload's bridge (or none) on the person's own folders, and none in the sample launch, where there is no record to keep. */
 export function fallbackModules(realMode: boolean): ModulesBridge | null {
-  return realMode ? getApiClient().modules : null;
+  if (!realMode) return null;
+  const modules = getApiClient().modules;
+  // In the app on the person's own folders the preload always gives the whole bridge. A missing or partial one is a fault, told in the console here and on the Modules screen (BRIDGE_MISSING).
+  if (modules === null) console.error('Bowerloom: the window gave no whole modules bridge (BRIDGE_MISSING).');
+  return modules;
 }

@@ -5,7 +5,7 @@
  * packages/engine-api/golden/module-calls.json by tests/modules-bridge.test.ts.
  *
  * What crosses the bridge is plain data. A place is an id, a label written with `~` and the time it was approved, never a full path. The page cannot name a folder to approve: `approveModulePlace` takes the module id
- * only, and main opens its own folder chooser; the pick is the approval (main/module-pick.ts). Only types, constants and one plain function are here, and only type imports, no Electron and no Node module, so the
+ * only, and main opens its own folder chooser; the pick is the approval (main/module-pick.ts). Only types and constants are here, and no import at all (tests/real-static.test.ts holds that the file has no import or require line other than `import type`), so the
  * preload, main and the page read one table. The checks of an argument are in shared/api/modules-shape.ts, which the preload does not load.
  */
 export const MODULE_CALLS = Object.freeze(['listModulePlaces', 'approveModulePlace', 'revokeModulePlace', 'readModuleFile'] as const);
@@ -35,14 +35,17 @@ export interface ModulePlaces { readonly places: readonly ModulePlace[] }
 
 /**
  * Why main's chooser did not approve a pick. NOT_A_FOLDER: not a folder. NOT_IN_HOME: not below the home folder (the home folder itself is too wide). HIDDEN_PART: a part of the path starts with a dot.
- * STATE_FOLDER: the folder is, holds or sits in Bowerloom's own state folder. FULL: the module holds the most places. RECORD_BLOCKED, RECORD_NOT_MOVED, FAILED: the record could not be used or written.
+ * STATE_FOLDER: the folder is, holds or sits in Bowerloom's own state folder. FULL: the module holds the most places. HOME_UNREADABLE: the home folder itself could not be read (the pick is not at fault).
+ * BAD_NAME: a part of the path holds a control or bidirectional character. PATH_TOO_LONG: the path is over the limit. LIBRARY_FOLDER: the folder is in Library. RECORD_BLOCKED, RECORD_NOT_MOVED, FAILED: the record could not be used
+ * or written. RECORD_RESET_FAILED: a damaged list was set aside and the new list could not be written.
  */
-export const MODULE_PICK_REFUSALS = ['NOT_A_FOLDER', 'NOT_IN_HOME', 'HIDDEN_PART', 'STATE_FOLDER', 'FULL', 'RECORD_BLOCKED', 'RECORD_NOT_MOVED', 'FAILED'] as const;
+export const MODULE_PICK_REFUSALS = ['NOT_A_FOLDER', 'HOME_UNREADABLE', 'NOT_IN_HOME', 'HIDDEN_PART', 'BAD_NAME', 'PATH_TOO_LONG', 'STATE_FOLDER', 'LIBRARY_FOLDER', 'FULL', 'RECORD_BLOCKED', 'RECORD_NOT_MOVED', 'RECORD_RESET_FAILED', 'FAILED'] as const;
 export type ModulePickRefusal = (typeof MODULE_PICK_REFUSALS)[number];
 
 /** The answer of `approveModulePlace`: the place was kept, the person cancelled the chooser, or the pick was refused. A cancel records nothing. */
 export type ModuleApproval =
-  | { readonly status: 'kept'; readonly place: ModulePlace }
+  /** `listReset`: a damaged saved list was set aside during this approval, and a new list was started. */
+  | { readonly status: 'kept'; readonly place: ModulePlace; readonly listReset?: true }
   | { readonly status: 'cancelled' }
   | { readonly status: 'refused'; readonly code: ModulePickRefusal };
 

@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ModuleApproval, ModulePlace, ModulesBridge } from '../shared/api/modules.js';
 import { approveFlow, firstPlaces, loadPlaces, removeFlow } from '../shared/modules/places-flow.js';
-import { MODULE_WORDS } from '../shared/modules/view-model.js';
+import { MODULE_WORDS, removeWords } from '../shared/modules/view-model.js';
 
 const A: ModulePlace = { id: 'place-aaaaaaaaaaaa', label: '~/Documents/notes', approvedAt: '2026-11-12T10:00:00.000Z' };
 const B: ModulePlace = { id: 'place-bbbbbbbbbbbb', label: '~/Documents/other', approvedAt: '2026-11-12T11:00:00.000Z' };
@@ -61,9 +61,11 @@ test('an approval that the bridge refuses is the state "failed" with its code, a
   assert.deepEqual(await approveFlow(fake({ approveModulePlace: refuse('UNKNOWN_MODULE') }), 'memory'), { status: 'failed', places: [], code: 'UNKNOWN_MODULE', busy: false, notice: null });
 });
 
-test('an approval that kept the folder but whose list then fails shows the failure with the notice kept', async () => {
+test('an approval that kept the folder but whose list then fails keeps the old places and drops "Approved."', async () => {
   const patch = await approveFlow(fake({ listModulePlaces: refuse('RECORD_BLOCKED') }), 'memory');
-  assert.deepEqual(patch, { status: 'failed', places: [], code: 'RECORD_BLOCKED', busy: false, notice: 'Approved.' });
+  assert.deepEqual(patch, { status: 'failed', code: 'RECORD_BLOCKED', busy: false, notice: MODULE_WORDS.approvedNoRefresh });
+  assert.equal('places' in patch, false, 'the places the page holds are kept when the list cannot be read again');
+  assert.notEqual(patch.notice, 'Approved.');
 });
 
 test('a removal gives the folders that are left and says the files are untouched', async () => {
@@ -71,5 +73,8 @@ test('a removal gives the folders that are left and says the files are untouched
   assert.deepEqual(await removeFlow(bridge, 'memory', A.id), { status: 'ready', places: [B], code: null, busy: false, notice: MODULE_WORDS.removed });
   assert.deepEqual(bridge.asked, [`revoke memory ${A.id}`]);
   assert.match(MODULE_WORDS.removed, /untouched/);
-  assert.deepEqual(await removeFlow(fake({ revokeModulePlace: refuse('NOT_APPROVED') }), 'memory', A.id), { status: 'failed', code: 'NOT_APPROVED', busy: false, notice: null });
+  const failed = await removeFlow(fake({ revokeModulePlace: refuse('FAILED') }), 'memory', A.id);
+  assert.deepEqual(failed, { code: 'FAILED', busy: false, notice: removeWords('FAILED') }, 'a failed removal keeps the list and says the folder is still approved');
+  assert.equal('status' in failed, false);
+  assert.equal('places' in failed, false);
 });

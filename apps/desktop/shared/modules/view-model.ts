@@ -36,17 +36,25 @@ export const MODULE_WORDS = Object.freeze({
   wait: 'Loading the modules.',
   unavailable: 'The Modules view did not load.',
   noEmbed: 'This module has no page inside this view.',
+  bridgeMissing: 'The window did not give this module its folder calls. Folders cannot be approved or read.',
+  approvedNoRefresh: 'The folder was approved, but the list could not be read again.',
+  approvedReset: 'Approved. The saved list was damaged. It was set aside, and a new list was started.',
 });
 
 /** What a person reads for a pick that main's chooser refused. */
 const PICK_WORDS: Readonly<Record<string, string>> = Object.freeze({
   NOT_A_FOLDER: 'That is not a folder.',
+  HOME_UNREADABLE: 'Bowerloom could not read your home folder.',
   NOT_IN_HOME: 'Choose a folder inside your home folder.',
   HIDDEN_PART: 'Bowerloom does not approve a hidden folder.',
+  BAD_NAME: 'A name in that path holds a character Bowerloom does not accept.',
+  PATH_TOO_LONG: 'That path is too long.',
   STATE_FOLDER: 'That folder holds the data of Bowerloom itself.',
+  LIBRARY_FOLDER: 'Bowerloom does not approve the Library folder or anything in it.',
   FULL: 'This module holds the most folders it can. Remove one first.',
   RECORD_BLOCKED: 'Bowerloom could not use its list of approved folders.',
   RECORD_NOT_MOVED: 'Bowerloom could not set aside its damaged list of approved folders.',
+  RECORD_RESET_FAILED: 'Bowerloom set aside the damaged list of approved folders, and could not save the new one.',
   FAILED: 'Bowerloom could not save the approval.',
 });
 
@@ -64,10 +72,20 @@ const known = (table: Readonly<Record<string, string>>, key: unknown): key is st
 export const pickWords = (code: unknown): string => (known(PICK_WORDS, code) ? PICK_WORDS[code]! : PICK_WORDS.FAILED!);
 export const callWords = (code: unknown): string => (known(CALL_WORDS, code) ? CALL_WORDS[code]! : CALL_WORDS.FAILED!);
 
+/** What a person reads when a removal fails. A removal that fails leaves the folder approved, and the words say so. A code with no words of its own reads as the general line. */
+const REMOVE_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  RECORD_DAMAGED: 'The saved list of approved folders could not be read, so Bowerloom could not remove that folder. It is still approved.',
+  RECORD_BLOCKED: 'Bowerloom could not use its list of approved folders, so it could not remove that folder. It is still approved.',
+  NOT_APPROVED: 'Bowerloom could not remove that folder, because this module does not hold it. Nothing changed.',
+  FAILED: 'Bowerloom could not remove that folder. It is still approved.',
+});
+export const removeWords = (code: unknown): string => (known(REMOVE_WORDS, code) ? REMOVE_WORDS[code]! : REMOVE_WORDS.FAILED!);
+
 /** The sentence a person reads after an approval: nothing for a cancelled chooser, one line for a kept place or a refused pick. */
 export function approvalNotice(result: ModuleApproval): string | null {
   if (result.status === 'cancelled') return null;
-  return result.status === 'kept' ? MODULE_WORDS.approved : pickWords(result.code);
+  if (result.status === 'kept') return result.listReset === true ? MODULE_WORDS.approvedReset : MODULE_WORDS.approved;
+  return pickWords(result.code);
 }
 
 /** One row of the list of modules. */

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODULE_PICK_REFUSALS } from '../shared/api/modules.js';
-import { CALL_CODES, MODULES_ID, MODULE_WORDS, approvalNotice, approvedDay, callWords, moduleCount, moduleRows, pickWords } from '../shared/modules/view-model.js';
+import { CALL_CODES, MODULES_ID, MODULE_WORDS, approvalNotice, approvedDay, callWords, moduleCount, moduleRows, pickWords, removeWords } from '../shared/modules/view-model.js';
 import { LOCAL_MODELS_MANIFEST, MODULES_MANIFEST } from '../shared/local-models/sample.js';
 import { DEFAULT_EXTENSIONS } from '../shared/extensions/defaults.js';
 import { bannedHere, countWords } from '../shared/harness/words.js';
@@ -82,4 +82,25 @@ test('the rule of the view is said in its words: only what the person picks, onc
   assert.match(MODULE_WORDS.hint, /reads only what you pick/);
   assert.match(MODULE_WORDS.readsFolders, /once for this module/);
   assert.match(MODULE_WORDS.readsLocal, /Nothing leaves this computer/);
+});
+
+test('a failed removal has removal words that say the folder is still approved, and a read failure keeps its own line', () => {
+  for (const code of ['RECORD_DAMAGED', 'RECORD_BLOCKED', 'NOT_APPROVED', 'FAILED', 'SOMETHING_ELSE']) {
+    const words = removeWords(code);
+    assert.match(words, /could not remove/i, code);
+    if (code !== 'NOT_APPROVED') assert.match(words, /still approved/, code);
+    assert.notEqual(words, callWords(code), code);
+    assert.equal(bannedHere(words), null, code);
+  }
+  assert.match(removeWords('RECORD_DAMAGED'), /could not be read/);
+});
+
+test('a kept place after a reset says the old list was set aside, and the new refusals of a pick have their own words', () => {
+  const place = { id: 'place-0123456789ab', label: '~/x', approvedAt: '2026-11-12T10:00:00.000Z' };
+  assert.match(approvalNotice({ status: 'kept', place, listReset: true })!, /damaged.*set aside/);
+  assert.equal(approvalNotice({ status: 'kept', place }), 'Approved.');
+  assert.match(pickWords('RECORD_RESET_FAILED'), /set aside the damaged list/);
+  for (const code of ['HOME_UNREADABLE', 'BAD_NAME', 'PATH_TOO_LONG', 'LIBRARY_FOLDER']) assert.notEqual(pickWords(code), pickWords('FAILED'), code);
+  assert.match(MODULE_WORDS.bridgeMissing, /did not give/);
+  assert.match(MODULE_WORDS.approvedNoRefresh, /could not be read again/);
 });

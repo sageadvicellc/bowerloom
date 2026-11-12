@@ -305,8 +305,9 @@ app.whenReady().then(async () => {
     // main's own chooser, on the home folder, and the pick is the approval (main/module-pick.ts). The decision to read is the package's (packages/module-scope). Nothing here starts a program or uses the network.
     registerModulesIpc({
       ipc: ipcMain, appIndexUrl: indexUrl, home, stateRoot: engineStateRoot(home), extensionHost: () => extensionHost, tell: line => { process.stderr.write(`${line}\n`); },
-      choosePlace: async () => {
-        const options: Electron.OpenDialogOptions = { title: 'Approve a folder for this module', message: 'The module will read the files in this folder. Choose a folder in your home folder.', buttonLabel: 'Approve this folder', defaultPath: home, properties: ['openDirectory'] };
+      // The title names the module. It comes from main's own registry (main/modules-ipc.ts), never from the page.
+      choosePlace: async moduleTitle => {
+        const options: Electron.OpenDialogOptions = { title: `Approve a folder for ${moduleTitle}`, message: `${moduleTitle} will read the files in this folder. Choose a folder in your home folder.`, buttonLabel: 'Approve this folder', defaultPath: home, properties: ['openDirectory'] };
         const result = window === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(window, options);
         return result.canceled || result.filePaths[0] === undefined ? null : result.filePaths[0];
       },

@@ -33,12 +33,12 @@ test('main/module-pick.ts is imported by main/modules-ipc.ts only, and the packa
 test('modules-ipc.ts calls the pick once, with main\'s chooser, and main.ts gives it the dialog and nothing else that approves', () => {
   const ipc = strip(read('main/modules-ipc.ts'));
   assert.equal((ipc.match(/\bpickModulePlace\(/g) ?? []).length, 1);
-  assert.match(ipc, /pickModulePlace\(\{ moduleId: moduleOf\(id\), show: deps\.choosePlace,/, 'the moduleId is checked, and the folder comes from the chooser of main');
+  assert.match(ipc, /pickModulePlace\(\{ moduleId: module\.id, show: \(\) => deps\.choosePlace\(dialogTitle\(module\.title\)\),/, 'the moduleId is checked, the title is main\'s own, and the folder comes from the chooser of main');
   const main = strip(read('main/main.ts'));
   assert.equal((main.match(/\bregisterModulesIpc\(/g) ?? []).length, 1);
   const start = main.indexOf('registerModulesIpc(');
   const block = main.slice(start, main.indexOf('\n    });', start));
-  assert.match(block, /choosePlace: async \(\) => \{[\s\S]*?dialog\.showOpenDialog\(/, 'the pick is the dialog of main');
+  assert.match(block, /choosePlace: async moduleTitle => \{[\s\S]*?dialog\.showOpenDialog\(/, 'the pick is the dialog of main');
   assert.match(block, /properties: \['openDirectory'\]/, 'a folder, never a file');
   assert.match(block, /result\.canceled \|\| result\.filePaths\[0\] === undefined \? null : result\.filePaths\[0\]/);
   assert.doesNotMatch(block, /approve\b|approvePlace/, 'main.ts hands the module no approver');
@@ -61,4 +61,27 @@ test('an answer of the approver is cut to the fields the page may see, and an un
   assert.deepEqual(kept, { status: 'kept', place: { id: 'place-0123456789ab', label: '~/x', approvedAt: 'now' } });
   const odd = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'refused', code: 'SOMETHING_ELSE' } as never), tell: () => undefined });
   assert.deepEqual(odd, { status: 'refused', code: 'FAILED' });
+});
+
+test('a refused pick is logged with its code and its cause class and nothing else, and the page never sees the cause', async t => {
+  const lines: string[] = [];
+  const answer = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'refused', code: 'FAILED', cause: 'ENOSPC' }), tell: line => lines.push(line) });
+  assert.deepEqual(answer, { status: 'refused', code: 'FAILED' });
+  assert.deepEqual(lines, ['Bowerloom could not approve a folder for a module (FAILED, ENOSPC).']);
+  const odd: string[] = [];
+  await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'refused', code: 'FAILED', cause: '/Users/someone/secret' }), tell: line => odd.push(line) });
+  assert.deepEqual(odd, ['Bowerloom could not approve a folder for a module (FAILED).'], 'a cause that is not a short word is not logged');
+});
+
+test('a damaged list that was set aside is logged, and the page is told on a kept place and on a refused one', async t => {
+  const lines: string[] = [];
+  const place = { id: 'place-0123456789ab', label: '~/x', approvedAt: 'now' };
+  const kept = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'kept', place, resetRecord: true }), tell: line => lines.push(line) });
+  assert.deepEqual(kept, { status: 'kept', place, listReset: true });
+  assert.deepEqual(lines, ['Bowerloom set aside a damaged list of approved folders and started a new one.']);
+  const failed = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'refused', code: 'RECORD_RESET_FAILED', cause: 'EIO', resetRecord: true }), tell: line => lines.push(line) });
+  assert.deepEqual(failed, { status: 'refused', code: 'RECORD_RESET_FAILED' });
+  assert.equal(lines.length, 3, 'the reset and the refusal are two lines');
+  const plain = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'kept', place }), tell: line => lines.push(line) });
+  assert.equal('listReset' in plain, false);
 });

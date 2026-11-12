@@ -75,7 +75,7 @@ function Routes({ bridge, realMode, registry, modules }: { bridge: RealBridge | 
   return (
     <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>
       <SkippedProvider skipped={bundled.skipped}>
-        <ModulesProvider bridge={modules} sample={!realMode && localBridge !== null} listed={bundled.extensions}>
+        <ModulesProvider bridge={modules} sample={!realMode && localBridge !== null} real={realMode} listed={bundled.extensions}>
           {at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} />
             : route.name === 'modules' ? <ModulesPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />
             : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}

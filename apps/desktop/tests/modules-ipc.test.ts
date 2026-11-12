@@ -3,9 +3,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { scopeFileOf } from '../../../packages/module-scope/src/index.js';
+import { revokePlace, scopeFileOf } from '../../../packages/module-scope/src/index.js';
 import { MODULE_CALLS, MODULE_CHANNELS } from '../shared/api/modules.js';
 import type { ModuleApproval, ModuleFile, ModulePlaces } from '../shared/api/modules.js';
 import { registerModulesIpc } from '../main/modules-ipc.js';
@@ -24,22 +24,24 @@ const BAD_SENDERS: Record<string, RealEvent> = {
 const manifestText = (id: string, extra: Record<string, unknown> = {}): string => JSON.stringify({ id, title: id, kind: 'ui', routes: [`${id}-route`], protected: false, ...extra });
 const ARGS: Record<(typeof MODULE_CALLS)[number], unknown[]> = { listModulePlaces: ['memory'], approveModulePlace: ['memory'], revokeModulePlace: ['memory', 'place-0123456789ab'], readModuleFile: ['memory', 'place-0123456789ab', 'a.md'] };
 
-interface Rig { readonly home: string; readonly state: string; readonly handlers: Map<string, Handler>; readonly told: string[]; readonly picks: (string | null)[]; readonly asked: { count: number } }
+interface Rig { readonly titles: string[]; readonly home: string; readonly state: string; readonly handlers: Map<string, Handler>; readonly told: string[]; readonly picks: (string | null)[]; readonly asked: { count: number } }
 /** A real extension host over a made-up bundle with two stock extensions, "memory" and "engines", over a made-up home folder. */
-function rig(t: TestContext, host: ExtensionHost | null | undefined = undefined): Rig {
+function rig(t: TestContext, host: ExtensionHost | null | undefined = undefined, revoke?: typeof revokePlace): Rig {
   const base = tempDir(t), home = join(base, 'home'), state = join(home, 'Library', 'state'), bundle = join(base, 'bundle');
   for (const d of ['Documents/notes', 'Documents/other', '.secret', 'Library/state']) mkdirSync(join(home, d), { recursive: true });
   writeFileSync(join(home, 'Documents/notes/a.md'), '# A\n');
   writeFileSync(join(home, 'Documents/other/o.md'), 'other');
   writeFileSync(join(home, '.secret/key.txt'), 'secret');
-  for (const name of ['memory', 'engines']) { mkdirSync(join(bundle, 'extensions', name), { recursive: true }); writeFileSync(join(bundle, 'extensions', name, 'manifest.json'), manifestText(name)); }
-  const handlers = new Map<string, Handler>(), told: string[] = [], picks: (string | null)[] = [], asked = { count: 0 };
+  const TITLES: Record<string, string> = { memory: 'Memory notes', engines: 'engines', odd: 'Odd\u202e\nname' };
+  for (const name of ['memory', 'engines', 'odd']) { mkdirSync(join(bundle, 'extensions', name), { recursive: true }); writeFileSync(join(bundle, 'extensions', name, 'manifest.json'), manifestText(name, { title: TITLES[name] })); }
+  const handlers = new Map<string, Handler>(), told: string[] = [], picks: (string | null)[] = [], asked = { count: 0 }, titles: string[] = [];
   registerModulesIpc({
     ipc: { handle: (channel, listener) => { assert.equal(handlers.has(channel), false, `${channel} registered twice`); handlers.set(channel, listener as Handler); } },
     appIndexUrl: APP_INDEX, home, stateRoot: state, extensionHost: () => (host === undefined ? startExtensions(bundle) : host), tell: line => { told.push(line); },
-    choosePlace: async () => { asked.count += 1; return picks.shift() ?? null; },
+    choosePlace: async title => { asked.count += 1; titles.push(title); return picks.shift() ?? null; },
+    ...(revoke === undefined ? {} : { revoke }),
   });
-  return { home, state, handlers, told, picks, asked };
+  return { titles, home, state, handlers, told, picks, asked };
 }
 const call = (r: Rig, name: (typeof MODULE_CALLS)[number], event: RealEvent, ...args: unknown[]): Promise<unknown> => Promise.resolve((r.handlers.get(MODULE_CHANNELS[name]) as Handler)(event, ...args));
 const code = async (promise: Promise<unknown>): Promise<string> => { try { await promise; return 'RESOLVED'; } catch (error) { return error instanceof Error ? error.message : String(error); } };
@@ -140,7 +142,7 @@ test('a pick that is refused by main\'s chooser rules is an answer with a reason
   assert.deepEqual(await call(r, 'approveModulePlace', GOOD, 'memory'), { status: 'refused', code: 'NOT_IN_HOME' });
   assert.deepEqual(await call(r, 'listModulePlaces', GOOD, 'memory'), { places: [] });
   assert.equal(r.told.length, 4);
-  for (const line of r.told) assert.match(line, /^Bowerloom could not approve a folder for a module \([A-Z_]+\)\.$/, line);
+  for (const line of r.told) assert.match(line, /^Bowerloom could not approve a folder for a module \([A-Z_]+(?:, [A-Za-z0-9_]+)?\)\.$/, line);
 });
 
 test('a cancelled chooser records nothing', async t => {
@@ -160,7 +162,7 @@ test('removing a place answers the places that are left, and the module can no l
   assert.equal(await code(call(r, 'revokeModulePlace', GOOD, 'memory', a.place.id)), 'NOT_APPROVED', 'a second removal finds nothing');
 });
 
-test('a damaged record is RECORD_DAMAGED on a list and a removal, and a read is NOT_APPROVED; the next pick starts a new list', async t => {
+test('a damaged record is RECORD_DAMAGED on a list, a removal and a read; the next pick starts a new list and says so', async t => {
   const r = rig(t);
   const kept = await approve(r, 'memory', 'Documents/notes');
   assert.equal(kept.status, 'kept');
@@ -168,9 +170,11 @@ test('a damaged record is RECORD_DAMAGED on a list and a removal, and a read is 
   writeFileSync(scopeFileOf(r.state), '{ not json');
   assert.equal(await code(call(r, 'listModulePlaces', GOOD, 'memory')), 'RECORD_DAMAGED');
   assert.equal(await code(call(r, 'revokeModulePlace', GOOD, 'memory', kept.place.id)), 'RECORD_DAMAGED');
-  assert.equal(await code(call(r, 'readModuleFile', GOOD, 'memory', kept.place.id, 'a.md')), 'NOT_APPROVED');
+  assert.equal(await code(call(r, 'readModuleFile', GOOD, 'memory', kept.place.id, 'a.md')), 'RECORD_DAMAGED');
   const again = await approve(r, 'memory', 'Documents/other');
   assert.equal(again.status, 'kept');
+  assert.equal(again.status === 'kept' && again.listReset, true, 'the page is told the old list was set aside');
+  assert.ok(r.told.includes('Bowerloom set aside a damaged list of approved folders and started a new one.'), 'and the log says so');
   assert.equal((await call(r, 'listModulePlaces', GOOD, 'memory') as ModulePlaces).places.length, 1);
 });
 
@@ -183,4 +187,34 @@ test('an unexpected failure is FAILED and is logged by call name and error class
   });
   assert.equal(await code(Promise.resolve((handlers.get(MODULE_CHANNELS.listModulePlaces) as Handler)(GOOD, 'memory'))), 'FAILED');
   assert.deepEqual(told, ['Bowerloom: the modules call listModulePlaces failed (WeirdError).']);
+});
+
+test('a blocked record is RECORD_BLOCKED on a read as well as on a list', async t => {
+  const r = rig(t);
+  const kept = await approve(r, 'memory', 'Documents/notes');
+  assert.equal(kept.status, 'kept');
+  if (kept.status !== 'kept') return;
+  chmodSync(join(r.state, 'module-scope'), 0o777);
+  assert.equal(await code(call(r, 'listModulePlaces', GOOD, 'memory')), 'RECORD_BLOCKED');
+  assert.equal(await code(call(r, 'readModuleFile', GOOD, 'memory', kept.place.id, 'a.md')), 'RECORD_BLOCKED');
+});
+
+test('every FAILED answer is logged, also one that is a refusal of the call itself: a removal that could not be written is FAILED with its cause class in the log', async t => {
+  const failing = ((): ReturnType<typeof revokePlace> => ({ status: 'failed', cause: 'EROFS' })) as unknown as typeof revokePlace;
+  const r = rig(t, undefined, failing);
+  const kept = await approve(r, 'memory', 'Documents/notes');
+  assert.equal(kept.status, 'kept');
+  if (kept.status !== 'kept') return;
+  assert.equal(await code(call(r, 'revokeModulePlace', GOOD, 'memory', kept.place.id)), 'FAILED');
+  assert.deepEqual(r.told, ['Bowerloom: the modules call revokeModulePlace failed (EROFS).']);
+});
+
+test('the chooser is told the title of the module from main\'s own registry, cleaned of control and bidirectional characters, and the page gives no title', async t => {
+  const r = rig(t);
+  await call(r, 'approveModulePlace', GOOD, 'memory');
+  await call(r, 'approveModulePlace', GOOD, 'odd');
+  assert.deepEqual(r.titles, ['Memory notes', 'Odd name']);
+  // a page that tries to give a title or a folder as a second argument is refused before the chooser opens
+  assert.equal(await code(call(r, 'approveModulePlace', GOOD, 'memory', 'Fake title')), 'BAD_ARGUMENT');
+  assert.equal(r.titles.length, 2);
 });

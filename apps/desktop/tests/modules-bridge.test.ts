@@ -59,7 +59,7 @@ test('a modules refusal code is read on its own side, and any other text is FAIL
   for (const odd of ['whatever', '', null, undefined, 5, {}, new Error('/home/person/secret exploded'), 'xNOT_APPROVEDx']) assert.equal(modulesCodeOf(odd), 'FAILED', String(odd));
   assert.equal(refusalCode(new Error('NOT_APPROVED'), 'modules'), 'NOT_APPROVED');
   assert.equal(modulesCode(new Error('PLACE_CHANGED')), 'PLACE_CHANGED');
-  assert.deepEqual([...MODULE_PICK_REFUSALS], ['NOT_A_FOLDER', 'NOT_IN_HOME', 'HIDDEN_PART', 'STATE_FOLDER', 'FULL', 'RECORD_BLOCKED', 'RECORD_NOT_MOVED', 'FAILED']);
+  assert.deepEqual([...MODULE_PICK_REFUSALS], ['NOT_A_FOLDER', 'HOME_UNREADABLE', 'NOT_IN_HOME', 'HIDDEN_PART', 'BAD_NAME', 'PATH_TOO_LONG', 'STATE_FOLDER', 'LIBRARY_FOLDER', 'FULL', 'RECORD_BLOCKED', 'RECORD_NOT_MOVED', 'RECORD_RESET_FAILED', 'FAILED']);
 });
 
 // ---- the shape of an argument

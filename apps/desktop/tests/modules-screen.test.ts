@@ -31,7 +31,7 @@ type G = { location?: { hash: string } };
 const noop = (): void => undefined;
 const render = (el: ReactElement): string => renderToStaticMarkup(el);
 const PLACE = { id: 'place-aaaaaaaaaaaa', label: '~/Documents/notes', approvedAt: '2026-11-12T10:00:00.000Z' };
-const reads = (over: Partial<ReadsProps> = {}): ReadsProps => ({ title: 'local-models', sample: false, hasBridge: true, places: { status: 'ready', places: [], code: null, busy: false, notice: null }, onApprove: noop, onRemove: noop, ...over });
+const reads = (over: Partial<ReadsProps> = {}): ReadsProps => ({ title: 'local-models', sample: false, hasBridge: true, missing: false, places: { status: 'ready', places: [], code: null, busy: false, notice: null }, onApprove: noop, onRemove: noop, ...over });
 const body = (over: Partial<ModulesBodyProps> = {}): string => {
   const rows = moduleRows([LOCAL_MODELS_MANIFEST, MODULES_MANIFEST], null);
   return render(createElement(ModulesBody, { rows, selected: null, missing: false, reads: null, embedded: null, onOpen: noop, onBack: noop, onOpenOwn: noop, ...over }));
@@ -115,6 +115,20 @@ test('the sample launch and a window with no bridge say that no approval is kept
   const none = render(createElement(ReadsPanel, reads({ sample: false, hasBridge: false })));
   assert.match(none, /data-module-state="no-bridge">This window keeps no approvals\./);
   assert.doesNotMatch(none, /Approve a folder/);
+});
+
+test('in the app on the person\'s own folders, a missing or partial modules bridge is a failure with a code, not the neutral line, and it offers no approve button', () => {
+  const html = render(createElement(ReadsPanel, reads({ hasBridge: false, missing: true })));
+  assert.match(html, /role="alert" data-module-state="bridge-missing" data-module-code="BRIDGE_MISSING"/);
+  assert.ok(html.includes(MODULE_WORDS.bridgeMissing));
+  assert.doesNotMatch(html, /data-module-state="no-bridge"|This window keeps no approvals/);
+  assert.doesNotMatch(html, /Approve a folder/);
+});
+
+test('a failed removal shows its words and keeps the folders in the list; a failed list shows the words of a read', () => {
+  const html = render(createElement(ReadsPanel, reads({ places: { status: 'ready', places: [PLACE], code: 'FAILED', busy: false, notice: 'Bowerloom could not remove that folder. It is still approved.' } })));
+  assert.match(html, /data-place="place-aaaaaaaaaaaa"/);
+  assert.match(html, /data-module-notice="">Bowerloom could not remove that folder\. It is still approved\.</);
 });
 
 // ---- Local models inside the view

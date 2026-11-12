@@ -332,6 +332,8 @@ test('usableHome accepts an absolute folder only', () => {
 
 test('the bridge file exposes the reader\'s object with exactly three functions and the sheets\' object with one function per engine call, each sending on its own channel, and nothing generic', () => {
   const code = strip(read('preload/real-preload.ts')).replace(/^import .*$/gm, '');
+  const modulesTable = strip(read('shared/api/modules.ts'));
+  assert.deepEqual(modulesTable.split('\n').filter(l => /^\s*(?:import|export\s+.*\bfrom)\b|\brequire\s*\(|\bimport\s*\(/.test(l) && !/^import type /.test(l)), [], 'shared/api/modules.ts has no import or require line other than `import type`');
   assert.equal([...code.matchAll(/exposeInMainWorld\(/g)].length, 5);
   assert.match(code, /exposeInMainWorld\('bowerloomModules', Object\.freeze\(modules as unknown as ModulesBridge\)\)/);
   assert.match(code, /for \(const call of MODULE_CALLS\) modules\[call\] = \(\.\.\.args: unknown\[\]\) => ipcRenderer\.invoke\(MODULE_CHANNELS\[call\], \.\.\.args\.slice\(0, MODULE_ARITY\[call\]\)\)/, 'a modules call sends no more arguments than its count');

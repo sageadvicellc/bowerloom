@@ -20,11 +20,13 @@ export interface ModulePickDeps {
   readonly tell: (line: string) => void;
 }
 
-const REFUSALS: ReadonlySet<string> = new Set<ModulePickRefusal>(['NOT_A_FOLDER', 'NOT_IN_HOME', 'HIDDEN_PART', 'STATE_FOLDER', 'FULL', 'RECORD_BLOCKED', 'RECORD_NOT_MOVED', 'FAILED']);
+const REFUSALS: ReadonlySet<string> = new Set<ModulePickRefusal>(['NOT_A_FOLDER', 'HOME_UNREADABLE', 'NOT_IN_HOME', 'HIDDEN_PART', 'BAD_NAME', 'PATH_TOO_LONG', 'STATE_FOLDER', 'LIBRARY_FOLDER', 'FULL', 'RECORD_BLOCKED', 'RECORD_NOT_MOVED', 'RECORD_RESET_FAILED', 'FAILED']);
+/** A cause class is a code or a name of one short word. Anything else is not logged. */
+const CAUSE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 
 /** The answer for the page, cut to the fields it may see: each is copied by name, so nothing the approver held beyond them reaches the page. */
 function viewOf(result: Approved): ModuleApproval {
-  if (result.status === 'kept') return { status: 'kept', place: { id: result.place.id, label: result.place.label, approvedAt: result.place.approvedAt } };
+  if (result.status === 'kept') return { status: 'kept', place: { id: result.place.id, label: result.place.label, approvedAt: result.place.approvedAt }, ...(result.resetRecord === true ? { listReset: true as const } : {}) };
   return { status: 'refused', code: REFUSALS.has(result.code) ? (result.code as ModulePickRefusal) : 'FAILED' };
 }
 
@@ -32,6 +34,8 @@ export async function pickModulePlace(d: ModulePickDeps): Promise<ModuleApproval
   const picked = await d.show();
   if (picked === null) return { status: 'cancelled' };
   const result = (d.approve ?? approvePlace)({ stateRoot: d.stateRoot, home: d.home, moduleId: d.moduleId, picked });
-  if (result.status === 'refused') d.tell(`Bowerloom could not approve a folder for a module (${result.code}).`);
+  // A damaged list that was set aside is always told, whatever came after. The cause is a class word (an error code or name), never a message and never a path.
+  if (result.resetRecord === true) d.tell('Bowerloom set aside a damaged list of approved folders and started a new one.');
+  if (result.status === 'refused') d.tell(`Bowerloom could not approve a folder for a module (${result.code}${result.cause !== undefined && CAUSE.test(result.cause) ? `, ${result.cause}` : ''}).`);
   return viewOf(result);
 }

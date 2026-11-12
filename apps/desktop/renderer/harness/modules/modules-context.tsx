@@ -8,11 +8,12 @@ import type { ReactElement, ReactNode } from 'react';
 import type { ModulesBridge } from '../../../shared/api/modules.js';
 import type { ExtensionManifest } from '../../../shared/extensions/types.js';
 
-export interface ModulesValue { readonly bridge: ModulesBridge | null; readonly sample: boolean; readonly listed: readonly ExtensionManifest[] }
-const Context = createContext<ModulesValue>({ bridge: null, sample: false, listed: [] });
+/** `real`: this is the app on the person's own folders. There the bridge must be whole, so a missing or partial one is a failure and not a quiet "no approvals". */
+export interface ModulesValue { readonly bridge: ModulesBridge | null; readonly sample: boolean; readonly real: boolean; readonly listed: readonly ExtensionManifest[] }
+const Context = createContext<ModulesValue>({ bridge: null, sample: false, real: false, listed: [] });
 
-export function ModulesProvider({ bridge, sample, listed, children }: { bridge: ModulesBridge | null; sample: boolean; listed: readonly ExtensionManifest[]; children?: ReactNode }): ReactElement {
-  return <Context value={{ bridge, sample, listed }}>{children}</Context>;
+export function ModulesProvider({ bridge, sample, real = false, listed, children }: { bridge: ModulesBridge | null; sample: boolean; real?: boolean; listed: readonly ExtensionManifest[]; children?: ReactNode }): ReactElement {
+  return <Context value={{ bridge, sample, real, listed }}>{children}</Context>;
 }
 
 export const useModules = (): ModulesValue => useContext(Context);
