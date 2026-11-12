@@ -112,7 +112,11 @@ const decode = (text: string): string => { try { return decodeURIComponent(text)
 
 /** The note a wiki link names, as written, without its alias, its heading or its block, or null when it names no note. */
 function wikiTarget(inner: string): string | null {
-  const target = inner.split('|', 1)[0]!.replace(/\\+$/, '').split('#', 1)[0]!.trim();
+  // Trailing backslashes (the table form `[[Note\|alias]]`) are cut with a loop: a pattern on a run of them would cost the square of its length.
+  let head = inner.split('|', 1)[0]!, end = head.length;
+  while (end > 0 && head[end - 1] === '\\') end -= 1;
+  head = head.slice(0, end);
+  const target = head.split('#', 1)[0]!.trim();
   return target === '' || target.length > MEMORY_LIMITS.targetChars || OTHER_FILE.test(target) ? null : target;
 }
 
@@ -135,8 +139,8 @@ export function parseNote(path: string, text: string): ParsedNote {
   const addLink = (link: NoteLink): void => { const key = `${link.style}|${link.target.toLowerCase()}`; if (links.size < MEMORY_LIMITS.linksPerNote && !links.has(key)) links.set(key, link); };
   for (const line of lines) {
     for (const m of line.matchAll(/(?:^|\s)#([\p{L}\p{N}_/-]+)/gu)) { const tag = tagOf(m[1]!); if (tag !== null && tags.size < MEMORY_LIMITS.tagsPerNote) tags.add(tag); }
-    for (const m of line.matchAll(/\[\[([^[\]\n]{1,300})\]\]/g)) { const target = wikiTarget(m[1]!); if (target !== null) addLink({ target, style: 'wiki' }); }
-    for (const m of line.matchAll(/\[[^[\]\n]{0,300}\]\((<[^<>\n]{1,300}>|[^()\s<>]{1,300})(?:\s+"[^"\n]*")?\)/g)) { const target = markdownTarget(m[1]!); if (target !== null) addLink({ target, style: 'markdown' }); }
+    for (const m of line.matchAll(/\[\[([^[\]\n]{1,300})\]\]/g)) { if (links.size >= MEMORY_LIMITS.linksPerNote) break; const target = wikiTarget(m[1]!); if (target !== null) addLink({ target, style: 'wiki' }); }
+    for (const m of line.matchAll(/\[[^[\]\n]{0,300}\]\((<[^<>\n]{1,300}>|[^()\s<>]{1,300})(?:\s+"[^"\n]*")?\)/g)) { if (links.size >= MEMORY_LIMITS.linksPerNote) break; const target = markdownTarget(m[1]!); if (target !== null) addLink({ target, style: 'markdown' }); }
   }
   return Object.freeze({ path, tags: Object.freeze([...tags]), links: Object.freeze([...links.values()]) });
 }

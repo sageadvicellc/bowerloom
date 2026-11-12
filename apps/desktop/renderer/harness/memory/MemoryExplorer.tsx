@@ -13,7 +13,8 @@ import { useModules } from '../modules/modules-context.js';
 import { useModulePlaces } from '../modules/useModulePlaces.js';
 import { approvedDay, callWords } from '../../../shared/modules/view-model.js';
 import type { PlacesView } from '../../../shared/modules/places-flow.js';
-import { MEMORY_WORDS, contextStatusOf, contextPages, contextPagesPartial, contextSummary, failedWords, memoryRows, notShownWords, skippedEntriesWords, skippedFoldersWords, truncatedWords, unreadableWords } from '../../../shared/memory/view-model.js';
+import { MEMORY_LIMITS } from '../../../shared/memory/analytics.js';
+import { MEMORY_WORDS, cappedWords, contextStatusOf, contextPages, contextPagesPartial, contextSummary, failedWords, memoryRows, notShownWords, skippedEntriesWords, skippedFoldersWords, truncatedWords, unreadableWords } from '../../../shared/memory/view-model.js';
 import type { ContextSummary } from '../../../shared/memory/view-model.js';
 import { MEMORY_MODULE_ID, layersArePartial, notesArePartial, totalIsPartial, totalNotes } from '../../../shared/memory/read-flow.js';
 import type { MemoryState, PlaceMemory } from '../../../shared/memory/read-flow.js';
@@ -47,7 +48,7 @@ function PlaceBlock({ memory, onRemove, busy }: { memory: PlaceMemory; onRemove:
           {memory.skipped.folders > 0 ? <p className="hx-text hx-muted" data-note="skipped-folders">{skippedFoldersWords(memory.skipped.folders)}</p> : null}
           {memory.skipped.entries > 0 ? <p className="hx-text hx-muted" data-note="skipped-entries">{skippedEntriesWords(memory.skipped.entries)}</p> : null}
           {memory.notShown > 0 ? <p className="hx-text hx-muted" data-note="not-shown">{notShownWords(memory.notShown)}</p> : null}
-          {a.capped ? <p className="hx-text hx-muted" data-note="capped">{MEMORY_WORDS.capped}</p> : null}
+          {a.capped ? <p className="hx-text hx-muted" data-note="capped">{cappedWords(MEMORY_LIMITS.tagsTotal, MEMORY_LIMITS.missingTotal)}</p> : null}
           {memory.truncated ? <p className="hx-text hx-muted" data-note="truncated">{truncatedWords}</p> : null}
           <h4 className="hxmem-sub">{MEMORY_WORDS.topTags}</h4>
           {a.topTags.length === 0 ? <p className="hx-text hx-muted">{MEMORY_WORDS.noTags}</p> : (

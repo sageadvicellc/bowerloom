@@ -127,18 +127,19 @@ export function createMemoryReader(o: {
   readonly onState: (state: MemoryState) => void;
   readonly read?: (bridge: Pick<ModulesBridge, 'listModuleFiles' | 'readModuleFile'>, moduleId: string, places: readonly ModulePlace[], options: ReadOptions) => Promise<PlaceMemory[]>;
 }): { run(places: readonly ModulePlace[]): Promise<void>; cancel(): void } {
-  let turn = 0;
+  let turn = 0, kept: readonly PlaceMemory[] = [];
   const read = o.read ?? readAllMemory;
   return {
     async run(places) {
       const mine = ++turn;
       const live = (): boolean => turn === mine;
-      o.onState({ status: 'loading', places: [], code: null });
+      // The folders of the last good read stay on screen while the next one runs.
+      o.onState({ status: 'loading', places: kept, code: null });
       try {
         const done = await read(o.bridge, o.moduleId, places, { cancelled: () => !live() });
-        if (live()) o.onState({ status: 'ready', places: done, code: null });
+        if (live()) { kept = done; o.onState({ status: 'ready', places: done, code: null }); }
       } catch {
-        if (live()) o.onState({ status: 'failed', places: [], code: 'FAILED' });
+        if (live()) { kept = []; o.onState({ status: 'failed', places: [], code: 'FAILED' }); }
       }
     },
     cancel() { turn += 1; },

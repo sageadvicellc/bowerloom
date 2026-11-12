@@ -9,7 +9,8 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryView } from '../renderer/harness/memory/MemoryExplorer.js';
 import type { MemoryViewProps } from '../renderer/harness/memory/MemoryExplorer.js';
-import { MEMORY_WORDS, contextStatusOf, contextSummary, memoryRows } from '../shared/memory/view-model.js';
+import { MEMORY_LIMITS } from '../shared/memory/analytics.js';
+import { MEMORY_WORDS, cappedWords, contextStatusOf, contextSummary, memoryRows } from '../shared/memory/view-model.js';
 import { MEMORY_MODULE_ID } from '../shared/memory/read-flow.js';
 import type { PlaceMemory } from '../shared/memory/read-flow.js';
 import { analyse, parseNote } from '../shared/memory/analytics.js';
@@ -224,4 +225,10 @@ test('L-d: a total cap is told in a line', () => {
 
 test('H2: notes the walk skipped make Notes a lower bound', () => {
   assert.match(tagOf(withPlace(placeMemory({ skipped: { folders: 0, entries: 3 } })), 'notes'), /data-partial/);
+});
+
+test('round 3 (I2): the capped line is built from the limits, not typed', () => {
+  assert.equal(cappedWords(MEMORY_LIMITS.tagsTotal, MEMORY_LIMITS.missingTotal), `Tag and missing-note lists stop at ${MEMORY_LIMITS.tagsTotal.toLocaleString('en-US')}.`);
+  assert.equal(cappedWords(10, 20), 'Tag lists stop at 10 and missing-note lists at 20.');
+  assert.match(cappedWords(1234, 1234), /1,234/);
 });

@@ -6,6 +6,10 @@ import type { HarnessState, Part } from '../harness/types.js';
 import { linkProblems } from '../harness/library-add.js';
 import type { MemoryAnalytics } from './analytics.js';
 
+const thousands = (n: number): string => n.toLocaleString('en-US');
+/** The line for a reached total cap, built from the limits. */
+export const cappedWords = (tags: number, missing: number): string => (tags === missing ? `Tag and missing-note lists stop at ${thousands(tags)}.` : `Tag lists stop at ${thousands(tags)} and missing-note lists at ${thousands(missing)}.`);
+
 export const MEMORY_WORDS = Object.freeze({
   title: 'Memory',
   hint: 'Your notes beside the harness context. Bowerloom only reads. Nothing leaves this computer.',
@@ -39,7 +43,6 @@ export const MEMORY_WORDS = Object.freeze({
   contextNotLoaded: 'The harness context is not read yet. Choose your folders first, then come back.',
   contextPartial: 'The harness context was only partly read, so these counts can be higher.',
   notAvailable: 'n/a',
-  capped: 'Tag and missing-note lists stop at 5,000.',
   linkedNote: 'A notes folder linked on the Context tab shows in the harness context. Approve the same folder here to read its links and tags.',
 });
 

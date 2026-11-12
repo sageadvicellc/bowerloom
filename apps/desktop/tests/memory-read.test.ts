@@ -346,3 +346,52 @@ test('L-a: main keeps one list in flight for a module and place, and shares it w
   await call();
   assert.equal(runs, 2, 'once the first has finished, a new call runs again');
 });
+
+test('round 3 (I1): a Refresh keeps the folders on screen while it reads, and a failed read keeps nothing', async () => {
+  const states: MemoryState[] = [];
+  const kept = [{ placeId: PLACE.id, label: PLACE.label } as never];
+  let fail = false;
+  const reader = createMemoryReader({ bridge: fake({}), moduleId: MEMORY_MODULE_ID, onState: s => states.push(s), read: async () => { if (fail) throw new Error('x'); return kept; } });
+  await reader.run([PLACE]);
+  await reader.run([PLACE]);
+  assert.deepEqual(states.map(s => [s.status, s.places.length]), [['loading', 0], ['ready', 1], ['loading', 1], ['ready', 1]]);
+  fail = true;
+  await reader.run([PLACE]);
+  await reader.run([PLACE]);
+  assert.deepEqual(states.slice(4).map(s => [s.status, s.places.length]), [['loading', 1], ['failed', 0], ['loading', 0], ['failed', 0]]);
+});
+
+/** Main with a lister that the test controls, over the real extension folder. */
+function sharedRig(t: TestContext, list: (o: { moduleId: unknown; placeId: unknown }) => ReturnType<typeof import('../../../packages/module-scope/src/index.js').listPlaceFiles>): { call: (module: string) => Promise<unknown> } {
+  const base = tempDir(t, 'bowerloom-memory-'), home = join(base, 'home'), state = join(home, 'Library', 'state');
+  writeVault(state, {});
+  const handlers = new Map<string, Handler>();
+  registerModulesIpc({ ipc: { handle: (channel, listener) => { handlers.set(channel, listener as Handler); } }, appIndexUrl: APP_INDEX, home, stateRoot: state, extensionHost: () => startExtensions(DESKTOP), tell: () => undefined, choosePlace: async () => null, list: o => list(o) });
+  return { call: module => Promise.resolve((handlers.get(MODULE_CHANNELS.listModuleFiles) as Handler)(GOOD, module, 'place-0123456789ab')) };
+}
+const OK = { ok: true as const, files: ['a.md'], truncated: false, skipped: { folders: 0, entries: 0 } };
+
+test('round 3 (L2): the shared list is cleared after a failed list, so the next call runs again', async t => {
+  let runs = 0;
+  const r = sharedRig(t, () => { runs += 1; return runs === 1 ? { ok: false, code: 'PLACE_CHANGED' } : OK; });
+  await assert.rejects(() => r.call(MEMORY_MODULE_ID), /PLACE_CHANGED/);
+  assert.deepEqual(await r.call(MEMORY_MODULE_ID), { files: ['a.md'], truncated: false, skipped: { folders: 0, entries: 0 } });
+  assert.equal(runs, 2);
+  const throws = sharedRig(t, () => { throw new Error('boom'); });
+  await assert.rejects(() => throws.call(MEMORY_MODULE_ID), /FAILED/);
+  await assert.rejects(() => throws.call(MEMORY_MODULE_ID), /FAILED/);
+});
+
+test('round 3 (L2): two modules with one place id get separate lists', async t => {
+  const seen: string[] = [];
+  const r = sharedRig(t, o => { seen.push(String(o.moduleId)); return OK; });
+  await Promise.all([r.call(MEMORY_MODULE_ID), r.call('local-models')]);
+  assert.deepEqual(seen.sort(), ['local-models', 'memory-explorer']);
+});
+
+test('round 3 (L2): a place removed before the deferred start is NOT_APPROVED, and no list is made', async t => {
+  const r = rig(t), place = await approved(r, 'Documents/vault', BASIC);
+  const pending = r.bridge.listModuleFiles(MEMORY_MODULE_ID, place.id);
+  await r.bridge.revokeModulePlace(MEMORY_MODULE_ID, place.id);
+  await assert.rejects(() => pending, /NOT_APPROVED/);
+});

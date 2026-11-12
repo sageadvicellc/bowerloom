@@ -210,3 +210,12 @@ test('L-c: the analysis of 5,000 notes is not slow: a guard of ten seconds catch
   analyse(paths, parsed);
   assert.ok(Date.now() - started < 10000);
 });
+
+test('round 3: 860 wiki links of 298 backslashes and a letter are read fast, and the links stop at the cap', () => {
+  const text = Array.from({ length: 860 }, (_, i) => `[[${'\\'.repeat(298)}a${i % 7}]]`).join(' ');
+  const started = Date.now();
+  const note = parseNote('a.md', text);
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  assert.ok(note.links.length <= MEMORY_LIMITS.linksPerNote);
+  assert.deepEqual(targets(parseNote('a.md', '[[Note\\\\\\|x]] [[End\\\\]]')), ['Note', 'End'], 'trailing backslashes are trimmed, also several');
+});
