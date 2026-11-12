@@ -189,7 +189,7 @@ test('checkPrBody scans the body for leaks and terms, with line numbers', () => 
 
 test('parseArgs reads the options and rejects wrong use', () => {
   assert.deepEqual({ base: parseArgs([]).base, json: parseArgs(['--json']).json }, { base: DEFAULT_BASE, json: true });
-  assert.equal(DEFAULT_BASE, 'origin/release/0.8.0-beta.2');
+  assert.equal(DEFAULT_BASE, 'origin/release/v0.9.0-beta.0');
   assert.equal(parseArgs(['--base', 'main', '--pr-body', 'b.md', '--terms-file', '/abs/t.txt']).termsFile, '/abs/t.txt');
   assert.equal(parseArgs(['--help']).help, true);
   for (const bad of [['--base'], ['--pr-body'], ['--terms-file', 'relative.txt'], ['--bogus'], ['extra']]) assert.ok(parseArgs(bad).usage, JSON.stringify(bad));

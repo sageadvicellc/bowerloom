@@ -1,6 +1,6 @@
 # Shell map of apps/desktop
 
-Status: written for the v0.9 shell question. Read at commit `328dd90b` of `release/0.8.0-beta.2`. Three open pull requests change parts of this map. Each item that depends on one says "after PR 171", "after PR 173" or "after PR 172".
+Status: written for the v0.9 shell question. Read at commit `328dd90b` of `release/v0.9.0-beta.0` (then named `release/0.8.0-beta.2`). Three open pull requests change parts of this map. Each item that depends on one says "after PR 171", "after PR 173" or "after PR 172".
 
 This page sorts each part of `apps/desktop` into shell, core, API or page. It names each file that holds two sides. It changes no code. The only new code is one test, `apps/desktop/tests/shell-boundary.test.ts`, which holds the boundary of the main process, the preload and the page.
 
