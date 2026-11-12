@@ -67,6 +67,20 @@ function readRecord(stateRoot: string): Record_ {
   } catch { return { status: 'damaged' }; }
 }
 
+/** The real path of a folder that may not exist yet: the real path of its nearest existing parent, with the rest of the name added. Null when no part of it can be resolved. */
+function plannedReal(folder: string): string | null {
+  let at = path.resolve(folder);
+  const rest: string[] = [];
+  for (let step = 0; step < 64; step += 1) {
+    try { return path.join(fs.realpathSync.native(at), ...rest); } catch (error) { if (codeOf(error) !== 'ENOENT') return null; }
+    const parent = path.dirname(at);
+    if (parent === at) return null;
+    rest.unshift(path.basename(at));
+    at = parent;
+  }
+  return null;
+}
+
 const stamp = (): string => new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '');
 function setAside(dir: string, file: string): boolean {
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -117,9 +131,8 @@ export function approvePlace(o: { readonly stateRoot: string; readonly home: str
   if (!inside(home, real)) return refused('NOT_IN_HOME');
   const rel = path.relative(home, real).split(path.sep);
   if (!rel.every(part => REL_PART.test(part)) || rel.join('/').length > SCOPE_LIMITS.pathChars) return refused(rel.some(part => part.startsWith('.')) ? 'HIDDEN_PART' : 'FAILED');
-  let state: string | null = null;
-  try { state = fs.realpathSync.native(o.stateRoot); } catch { /* the state folder is not made yet: nothing inside the pick can be it */ }
-  if (state !== null && (state === real || inside(real, state) || inside(state, real))) return refused('STATE_FOLDER');
+  const state = plannedReal(o.stateRoot);
+  if (state === null || state === real || inside(real, state) || inside(state, real)) return refused('STATE_FOLDER');
   try {
     const dir = path.join(o.stateRoot, 'module-scope');
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

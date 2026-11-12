@@ -88,7 +88,7 @@ test('each local call sends one message on its own channel with no argument, wha
 
 test('the reader and engine bridges are unchanged by the third: their names and their key sets are as before', () => {
   const { exposed } = builtPreload();
-  assert.deepEqual([...exposed.keys()].sort(), ['bowerloomEngine', 'bowerloomLocal', 'bowerloomReal', 'bowerloomRuns']);
+  assert.deepEqual([...exposed.keys()].sort(), ['bowerloomEngine', 'bowerloomLocal', 'bowerloomModules', 'bowerloomReal', 'bowerloomRuns']);
   assert.deepEqual(Object.keys(exposed.get('bowerloomReal')!).sort(), [...REAL_CALLS].sort());
   assert.deepEqual(Object.keys(exposed.get('bowerloomEngine')!).filter(name => name !== 'mode').sort(), [...ENGINE_CALLS].sort());
 });

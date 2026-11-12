@@ -96,6 +96,13 @@ test('a place outside the home folder, the home folder itself, a hidden folder, 
   assert.equal(fs.existsSync(scopeFileOf(r.state)), false, 'a refused pick writes nothing');
 });
 
+test('the state folder is refused also before it exists, so a pick of a folder that will hold it is not approved', t => {
+  const r = rig(t);
+  fs.rmSync(r.state, { recursive: true });
+  assert.deepEqual(approve(r, 'memory', path.join(r.home, 'Library')), { status: 'refused', code: 'STATE_FOLDER' });
+  assert.equal(approve(r, 'memory', r.notes).status, 'kept', 'another folder is still approved');
+});
+
 test('a shortcut in home that leads outside home is refused as outside home, by its real path', t => {
   const r = rig(t);
   fs.symlinkSync(path.join(r.base, 'elsewhere'), path.join(r.home, 'Documents', 'sneaky'));

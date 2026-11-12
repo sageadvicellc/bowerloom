@@ -1,5 +1,5 @@
 /**
- * The client of the page: the reader calls, the engine calls, the two local calls and the five runs calls, each side given only when it is whole. The reader side needs its three functions. The engine side needs mode 'real' and
+ * The client of the page: the reader calls, the engine calls, the two local calls, the five runs calls and the four modules calls, each side given only when it is whole. The reader side needs its three functions. The engine side needs mode 'real' and
  * a function for each of the 39 engine calls. A missing or partial side is null, and the page then says so in plain words (renderer/harness/real/Nothing.tsx).
  * Nothing here reads the window: renderer/api/transport.ts does.
  */
@@ -13,6 +13,8 @@ import { LOCAL_CALLS } from '../../shared/api/local.js';
 import type { LocalBridge, LocalRefusalCode } from '../../shared/api/local.js';
 import { RUN_CALLS } from '../../shared/api/runs.js';
 import type { RunRefusalCode, RunsBridge } from '../../shared/api/runs.js';
+import { MODULE_CALLS } from '../../shared/api/modules.js';
+import type { ModuleRefusalCode, ModulesBridge } from '../../shared/api/modules.js';
 import { createSampleLocal } from '../../shared/local-models/sample.js';
 import { realNowIso } from '../harness/clock.js';
 import { pageTransport, samplePreviewEngines } from './transport.js';
@@ -27,6 +29,8 @@ export interface ApiClient {
   readonly local: LocalBridge | null;
   /** The five calls of the run record and the figures of a session log, or null when this window has none or a partial set. */
   readonly runs: RunsBridge | null;
+  /** The four calls of the read scope of a module (the places approved for it), or null when this window has none or a partial set. */
+  readonly modules: ModulesBridge | null;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
@@ -38,7 +42,8 @@ export function createApiClient(raw: RawBridges): ApiClient {
   const engine = isObject(raw.engine) && raw.engine.mode === 'real' && hasAll(raw.engine, ENGINE_CALLS) ? (raw.engine as unknown as EngineBridge) : null;
   const local = isObject(raw.local) && hasAll(raw.local, LOCAL_CALLS) ? (raw.local as unknown as LocalBridge) : null;
   const runs = isObject(raw.runs) && hasAll(raw.runs, RUN_CALLS) ? (raw.runs as unknown as RunsBridge) : null;
-  return { reader, engine, local, runs };
+  const modules = isObject(raw.modules) && hasAll(raw.modules, MODULE_CALLS) ? (raw.modules as unknown as ModulesBridge) : null;
+  return { reader, engine, local, runs, modules };
 }
 
 /** The client of this window. */
@@ -77,4 +82,12 @@ export function fallbackRuns(realMode: boolean): RunsBridge | null {
  */
 export function fallbackLocal(realMode: boolean): LocalBridge | null {
   return realMode ? getApiClient().local : createSampleLocal(realNowIso);
+}
+
+/** The short code in an error from a modules call ('NOT_APPROVED', 'UNKNOWN_MODULE', 'BAD_PATH', ...), or 'FAILED'. */
+export const modulesCodeOf = (error: unknown): ModuleRefusalCode => refusalCode(error, 'modules') as ModuleRefusalCode;
+
+/** The modules calls of a page that was handed none: the preload's bridge (or none) on the person's own folders, and none in the sample launch, where there is no record to keep. */
+export function fallbackModules(realMode: boolean): ModulesBridge | null {
+  return realMode ? getApiClient().modules : null;
 }

@@ -167,7 +167,7 @@ test('a refusal becomes one short code on the page, and a long message with a pa
 
 test('the other three bridges are unchanged by the fourth: their names and their key sets are as before', () => {
   const { exposed } = builtPreload();
-  assert.deepEqual([...exposed.keys()].sort(), ['bowerloomEngine', 'bowerloomLocal', 'bowerloomReal', 'bowerloomRuns']);
+  assert.deepEqual([...exposed.keys()].sort(), ['bowerloomEngine', 'bowerloomLocal', 'bowerloomModules', 'bowerloomReal', 'bowerloomRuns']);
   assert.deepEqual(Object.keys(exposed.get('bowerloomReal')!).sort(), [...REAL_CALLS].sort());
   assert.deepEqual(Object.keys(exposed.get('bowerloomEngine')!).filter(name => name !== 'mode').sort(), [...ENGINE_CALLS].sort());
   assert.deepEqual(Object.keys(exposed.get('bowerloomLocal')!).sort(), [...LOCAL_CALLS].sort());
