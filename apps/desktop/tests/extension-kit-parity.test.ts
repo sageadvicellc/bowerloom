@@ -2,7 +2,7 @@
 // This test holds the copy equal to the real thing, so a rule cannot change on one side alone.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BASE_ROUTES, DEFAULT_IDS } from '../shared/extensions/defaults.js';
@@ -102,4 +102,25 @@ test('the kit judges a whole folder of extensions as the app does: the same exte
   const projected = mine.problems.map(p => p.code).sort();
   const expected = real.map(line => line.slice(line.indexOf(':') + 1)).sort();
   assert.deepEqual(projected, expected);
+});
+
+test('a name with two dots in it is refused by the loader and by the kit alike, in a folder name and in a named load', async t => {
+  const kit = await loadKit();
+  const { root, dir } = makeFolders(t);
+  const { loadBundledManifest } = await import('../main/extension-loader.js');
+  for (const name of ['..', 'a..b', '...', 'x..']) {
+    const real = loadBundledManifest(join(root, 'apps', 'desktop'), name);
+    assert.equal(real.ok, false, name);
+    if (!real.ok) assert.equal(kit.readExtension(dir, name).code, real.refusal.code, name);
+  }
+});
+
+test('the kit is stricter than the loader about a link inside the bundle: the loader keeps a link that stays inside, the kit refuses every link', async t => {
+  const kit = await loadKit();
+  const { root, dir } = makeFolders(t);
+  symlinkSync(join(dir, 'a-ok'), join(dir, 'n-link'));
+  const loaded = loadBundledManifests(join(root, 'apps', 'desktop'));
+  // The loader sees the second name for the same real folder and skips it as DUPLICATE. It does not call it outside the bundle.
+  assert.equal(loaded.skipped.find(x => x.name === 'n-link')?.code, 'DUPLICATE');
+  assert.equal(kit.readExtension(dir, 'n-link').code, 'OUTSIDE_ROOT');
 });

@@ -10,6 +10,10 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HarnessApp } from '../renderer/harness/HarnessApp.js';
 import { RouteScreen, createScreenRegistry, registerBundled, screenMountOf } from '../renderer/harness/extension-mounts.js';
+import { extensionAbsence } from '../renderer/harness/bundled-extensions.js';
+import type { Bundled } from '../renderer/harness/bundled-extensions.js';
+import { ExtensionAbsentBody, ExtensionPendingBody } from '../renderer/harness/extensions/ExtensionPending.js';
+import { LOCAL_MODELS_MANIFEST } from '../shared/local-models/sample.js';
 import type { ScreenMount } from '../renderer/harness/extension-mounts.js';
 import { ExtensionTemplateView, readInstalled } from '../renderer/harness/extensions/ExtensionTemplate.js';
 import { startExtensions } from '../main/extension-host.js';
@@ -300,4 +304,39 @@ test('a new extension made by the kit from the template passes the client purity
   assert.match(screen, /export function WeeklyNotes\(\)/);
   const manifest = checkManifest(JSON.parse(readFileSync(join(root, made.created[0]!), 'utf8')));
   assert.equal(manifest.ok && manifest.value.id, 'weekly-notes');
+});
+
+test('the template screen sets its title as one string expression, so the kit can swap the whole literal', () => {
+  assert.match(sourceOf(SCREEN_FILE), /title=\{"Extension template"\}/);
+});
+
+test('a mount that does not own the generic address names the route of the address, never the word extension', () => {
+  const screens = createScreenRegistry();
+  registerBundled(screens, [LOCAL_MODELS_MANIFEST]);
+  const html = render('#app/extension/local-models', screens);
+  assert.match(html, /data-error="ROUTE_NOT_FOUND"/);
+  assert.match(html, /<code>local-models<\/code>/);
+  assert.doesNotMatch(html, /<code>extension<\/code>/);
+});
+
+const BUNDLE = (over: Partial<Bundled>): Bundled => ({ extensions: [], ready: true, problem: null, skipped: [], unmounted: [], ...over });
+
+test('a deep link to an extension that main skipped names the folder and the code, and one that loaded with no screen says so', () => {
+  assert.deepEqual(extensionAbsence(BUNDLE({ skipped: [{ name: 'weekly-notes', code: 'BAD_MANIFEST' }] }), 'weekly-notes'), { kind: 'skipped', name: 'weekly-notes', code: 'BAD_MANIFEST' });
+  assert.deepEqual(extensionAbsence(BUNDLE({ unmounted: [{ id: 'no-screen', title: 'No screen', kind: 'ui', routes: ['no-screen', 'second'], protected: false }] }), 'second'), { kind: 'no-screen', id: 'no-screen' });
+  assert.equal(extensionAbsence(BUNDLE({ skipped: [{ name: 'other', code: 'NOT_JSON' }] }), 'weekly-notes'), null, 'an unrelated skip is not blamed');
+  assert.equal(extensionAbsence(BUNDLE({}), 'weekly-notes'), null);
+  assert.equal(extensionAbsence(BUNDLE({ ready: false, skipped: [{ name: 'weekly-notes', code: 'BAD_MANIFEST' }] }), 'weekly-notes'), null, 'nothing is said before the list answers');
+  const skipped = renderToStaticMarkup(createElement(ExtensionAbsentBody, { absence: { kind: 'skipped', name: 'weekly-notes', code: 'BAD_MANIFEST' } }));
+  assert.match(skipped, /weekly-notes/); assert.match(skipped, /BAD_MANIFEST/); assert.doesNotMatch(skipped, /ROUTE_NOT_FOUND/);
+  const none = renderToStaticMarkup(createElement(ExtensionAbsentBody, { absence: { kind: 'no-screen', id: 'no-screen' } }));
+  assert.match(none, /no-screen/); assert.match(none, /no screen for it/);
+});
+
+test('the waiting screen of an extension says the host has not started only for that code, and shows any other code as it is', () => {
+  const host = renderToStaticMarkup(createElement(ExtensionPendingBody, { problem: 'HOST_NOT_STARTED' }));
+  assert.match(host, /host has not started/); assert.match(host, /HOST_NOT_STARTED/);
+  const other = renderToStaticMarkup(createElement(ExtensionPendingBody, { problem: 'FAILED' }));
+  assert.match(other, /FAILED/); assert.doesNotMatch(other, /host has not started/);
+  assert.match(renderToStaticMarkup(createElement(ExtensionPendingBody, { problem: null })), /Looking for this extension/);
 });

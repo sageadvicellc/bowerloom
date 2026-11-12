@@ -24,10 +24,10 @@ function section(title: string): string {
 }
 
 test('the error code section lists every code of the extension mechanism, the loader, the route, the four client sides and the kit, each once', async () => {
-  const kit = (await import(pathToFileURL(join(REPO, 'tools', 'lib', 'extension-kit.mjs')).href)) as { KIT_CODES: readonly string[] };
+  const kit = (await import(pathToFileURL(join(REPO, 'tools', 'lib', 'extension-kit.mjs')).href)) as { KIT_CODES: readonly string[]; KIT_WARNINGS: readonly string[] };
   const text = section('Error codes');
   const listed = [...text.matchAll(/^- `([A-Z][A-Z0-9_]+)`/gm)].map(m => m[1]!);
-  const wanted = new Set<string>([...EXTENSION_CODES, ...SKIP_CODES, 'ROUTE_NOT_FOUND', ...READER_REFUSALS, 'NO_BRIDGE', ...ENGINE_REFUSALS, ...LOCAL_REFUSAL_CODES, ...RUN_REFUSAL_CODES, ...kit.KIT_CODES]);
+  const wanted = new Set<string>([...EXTENSION_CODES, ...SKIP_CODES, 'ROUTE_NOT_FOUND', ...READER_REFUSALS, 'NO_BRIDGE', ...ENGINE_REFUSALS, ...LOCAL_REFUSAL_CODES, ...RUN_REFUSAL_CODES, ...kit.KIT_CODES, ...kit.KIT_WARNINGS]);
   for (const code of wanted) assert.ok(text.includes(`\`${code}\``), `${code} is listed`);
   assert.deepEqual([...new Set(listed)].filter(code => !wanted.has(code)), [], 'the page lists no code that no source holds');
   // A code that two groups share (NOT_ALLOWED, BAD_ARGUMENT, FAILED, BAD_MANIFEST) is a line of its own for each group, so a reader finds it where they look.
@@ -57,7 +57,7 @@ test('the page describes the kit commands and the files of the template, and eac
 });
 
 test('the page covers the five topics of the lane: the manifest, what a screen reads, how a read is approved, install and remove, and the error codes', () => {
-  for (const title of ['The manifest', 'What a screen reads', 'How a read is approved', 'Install and remove', 'Error codes', 'Make an extension']) section(title);
+  for (const title of ['The manifest', 'What a screen reads', 'How reads and writes are approved', 'Install and remove', 'Error codes', 'Make an extension']) section(title);
 });
 
 test('the page says that only stock extensions load, and that no manifest field loads code', () => {
@@ -70,4 +70,17 @@ test('the page follows the house style: no semicolon or em-dash in the prose, an
   assert.doesNotMatch(prose, /;/);
   assert.doesNotMatch(prose, /—/);
   assert.doesNotMatch(prose, /\b(?:should|may|might)\b/i);
+});
+
+test('the approval section says that the engine side includes write calls, that the sender check does not tell one extension from another, and that no extension is limited in this lane', () => {
+  const text = section('How reads and writes are approved');
+  assert.match(text, /write calls/i);
+  assert.match(text, /adopt, install and save/);
+  assert.match(text, /does not tell one extension from another/);
+  assert.match(text, /no extension is limited/i);
+});
+
+test('the page says where the kit is stricter than the app, and does not claim that every kit code means what the app code means', () => {
+  assert.match(doc, /stricter than the app/);
+  assert.doesNotMatch(doc, /same meaning/);
 });

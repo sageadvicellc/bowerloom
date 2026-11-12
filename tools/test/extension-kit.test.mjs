@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { KitError, KIT_CODES, checkManifestValue, checkNewId, checkTree, installTemplate, listTree, mountLines, mountedIds, removeExtension, scaffold, TEMPLATE_ID } from '../lib/extension-kit.mjs';
+import { KitError, KIT_CODES, KIT_WARNINGS, readExtension, checkManifestValue, checkNewId, checkTree, installTemplate, listTree, mountLines, mountedIds, removeExtension, scaffold, TEMPLATE_ID } from '../lib/extension-kit.mjs';
 
 const script = fileURLToPath(new URL('../extension-kit.mjs', import.meta.url));
 const made = [];
@@ -16,7 +16,7 @@ const manifestText = (id, extra = {}) => JSON.stringify({ id, title: id, kind: '
 const put = (root, rel, text) => { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), text); };
 const putExt = (root, name, text) => put(root, `apps/desktop/extensions/${name}/manifest.json`, text);
 
-const SCREEN = "export function ExtensionTemplate(): string { return 'extension-template'; }\nexport const TITLE = 'Extension template';\n";
+const SCREEN = "export function ExtensionTemplate(): string { return 'extension-template'; }\nexport const view = (<Screen slot=\"extension-template\" title={\"Extension template\"} />);\n";
 const MOUNTS = "const BUNDLED_MOUNTS = Object.freeze({\n  'local-models': () => 1,\n  'extension-template': () => 2,\n});\n";
 
 /** A tree with the template, its screen and a mount table, and the one extension folder that ships today. */
@@ -47,7 +47,7 @@ test('checkManifestValue drops a field that is not one of the five, so no field 
 });
 
 test('checkNewId refuses a bad name with BAD_ID and a default name with RESERVED', () => {
-  for (const id of ['', 'A', 'a b', '-a', 'a/b', undefined, 7]) assert.equal(refusal(() => checkNewId(id)), 'BAD_ID', String(id));
+  for (const id of ['', 'A', 'a b', '-a', 'a/b', '1abc', '9-lives', undefined, 7]) assert.equal(refusal(() => checkNewId(id)), 'BAD_ID', String(id));
   for (const id of ['overview', 'help', 'first-run', 'interfaces-history-help']) assert.equal(refusal(() => checkNewId(id)), 'RESERVED', id);
   checkNewId('my-extension');
 });
@@ -65,7 +65,7 @@ test('scaffold writes the manifest and the screen from the template, and says wh
   const manifest = JSON.parse(fs.readFileSync(path.join(root, result.created[0]), 'utf8'));
   assert.deepEqual(manifest, { id: 'weekly-notes', title: 'Weekly notes', kind: 'ui', routes: ['weekly-notes'], protected: false });
   const screen = fs.readFileSync(path.join(root, result.created[1]), 'utf8');
-  assert.match(screen, /WeeklyNotes/); assert.match(screen, /'weekly-notes'/); assert.match(screen, /Weekly notes/);
+  assert.match(screen, /WeeklyNotes/); assert.match(screen, /'weekly-notes'/); assert.match(screen, /title=\{"Weekly notes"\}/);
   assert.doesNotMatch(screen, /ExtensionTemplate|extension-template|Extension template/);
   assert.deepEqual(result.next, mountLines('weekly-notes', 'WeeklyNotes'));
   assert.match(result.next.tableLine, /'weekly-notes': \(\{ route \}\) => \(route\.name === 'extension' && route\.route === 'weekly-notes' \? <WeeklyNotes \/> : stray\(route\)\),/);
@@ -189,6 +189,131 @@ test('the kit codes are short upper-case names, and each is used by the tool', (
   assert.equal(new Set(KIT_CODES).size, KIT_CODES.length);
 });
 
+
+test('scaffold refuses a title that could break out of the screen text, and writes nothing', () => {
+  const root = tree();
+  const hostile = ['x" ref={() => 1} y="', 'a{b', 'a}b', 'a<b', 'a>b', 'a`b', 'a\\b', 'a\nb', 'a\u0007b', 'a\u2028b'];
+  for (const title of hostile) assert.equal(refusal(() => scaffold(root, { id: 'safe-one', title })), 'BAD_TITLE', JSON.stringify(title));
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/safe-one')), false);
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/renderer/harness/extensions/SafeOne.tsx')), false);
+});
+
+test('scaffold writes a plain title as one JSON string literal, so an apostrophe or an ampersand stays text', () => {
+  const root = tree();
+  const made = scaffold(root, { id: 'safe-two', title: "Bob's notes & more" });
+  const screen = fs.readFileSync(path.join(root, made.created[1]), 'utf8');
+  assert.match(screen, /title=\{"Bob's notes & more"\}/);
+});
+
+test('scaffold refuses an id whose component name would not start with a letter', () => {
+  const root = tree();
+  assert.equal(refusal(() => scaffold(root, { id: '1st-notes' })), 'BAD_ID');
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/1st-notes')), false);
+});
+
+test('check fails with NO_MOUNT_TABLE when the mount table cannot be read, and never skips NO_SCREEN', () => {
+  const root = tree();
+  scaffold(root, { id: 'weekly-notes' });
+  const file = path.join(root, 'apps/desktop/renderer/harness/extension-mounts.tsx');
+  fs.rmSync(file);
+  assert.equal(refusal(() => checkTree(root)), 'NO_MOUNT_TABLE');
+  assert.equal(refusal(() => listTree(root)), 'NO_MOUNT_TABLE');
+  fs.writeFileSync(file, MOUNTS.replace('BUNDLED_MOUNTS', 'RENAMED_TABLE'));
+  assert.equal(refusal(() => checkTree(root)), 'NO_MOUNT_TABLE');
+});
+
+test('a name with two dots in it is refused as the loader refuses it', () => {
+  const root = tree();
+  putExt(root, 'a..b', manifestText('a-b'));
+  assert.equal(readExtension(path.join(root, 'apps/desktop/extensions'), 'a..b').code, 'BAD_NAME');
+  assert.equal(refusal(() => removeExtension(root, 'a..b')), 'BAD_ID');
+  assert.deepEqual(codes(checkTree(root)), ['a..b:BAD_NAME']);
+});
+
+test('check reports ROUTE_MISMATCH when the routes do not include the id, because the mount draws only route equal to id', () => {
+  const root = tree();
+  putExt(root, 'odd', manifestText('odd', { routes: ['other-route'] }));
+  fs.writeFileSync(path.join(root, 'apps/desktop/renderer/harness/extension-mounts.tsx'), MOUNTS.replace("  'extension-template'", "  'odd': () => 3,\n  'extension-template'"));
+  assert.deepEqual(codes(checkTree(root)), ['odd:ROUTE_MISMATCH']);
+});
+
+test('check lists a manifest field that the app drops as a warning, and the warning is not a problem', () => {
+  const root = tree();
+  putExt(root, 'local-models', manifestText('local-models', { main: 'evil.js', entry: 'x' }));
+  const result = checkTree(root);
+  assert.deepEqual(result.problems, []);
+  assert.deepEqual(result.warnings.map(w => [w.name, w.code, w.fields]), [['local-models', 'FIELD_DROPPED', ['entry', 'main']]]);
+  assert.ok(KIT_WARNINGS.includes('FIELD_DROPPED'));
+  assert.deepEqual(checkTree(tree()).warnings, []);
+});
+
+test('remove needs a manifest.json in the folder, and a folder without one is not touched', () => {
+  const root = tree();
+  fs.mkdirSync(path.join(root, 'apps/desktop/extensions/not-one'));
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/not-one/notes.txt'), 'mine');
+  assert.equal(refusal(() => removeExtension(root, 'not-one')), 'NOT_INSTALLED');
+  assert.equal(fs.readFileSync(path.join(root, 'apps/desktop/extensions/not-one/notes.txt'), 'utf8'), 'mine');
+});
+
+test('remove renames the folder first, deletes the manifest last, leaves no temporary folder, and says the screen and the mount line stay', () => {
+  const root = tree();
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/notes.txt'), 'x');
+  const order = [];
+  const result = removeExtension(root, 'local-models', { unlink: file => { order.push(path.basename(file)); fs.unlinkSync(file); } });
+  assert.deepEqual(order, ['notes.txt', 'manifest.json']);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'apps/desktop/extensions')), []);
+  assert.match(result.note, /screen file/); assert.match(result.note, /mount table/);
+});
+
+test('remove that fails part way gives REMOVE_INCOMPLETE and lists what remains', () => {
+  const root = tree();
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/a-notes.txt'), 'x');
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/b-notes.txt'), 'x');
+  let error;
+  try { removeExtension(root, 'local-models', { unlink: file => { if (path.basename(file) === 'b-notes.txt') throw Object.assign(new Error('no'), { code: 'EACCES' }); fs.unlinkSync(file); } }); } catch (e) { error = e; }
+  assert.ok(error instanceof KitError); assert.equal(error.code, 'REMOVE_INCOMPLETE');
+  assert.match(error.message, /b-notes\.txt/); assert.match(error.message, /manifest\.json/); assert.doesNotMatch(error.message, /a-notes\.txt/);
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/local-models')), false, 'the original name is free');
+  const left = fs.readdirSync(path.join(root, 'apps/desktop/extensions'));
+  assert.equal(left.length, 1); assert.match(left[0], /^\.removing-/);
+});
+
+test('the rollback of new unlinks only the files it wrote, and no recursive delete runs', () => {
+  const root = tree();
+  const folder = path.join(root, 'apps/desktop/extensions/weekly-notes');
+  const writes = [];
+  const ops = { write: (file, text) => { writes.push(file); if (writes.length === 2) { fs.writeFileSync(path.join(folder, 'mine.txt'), 'keep'); throw new Error('disk full'); } fs.writeFileSync(file, text, { flag: 'wx' }); } };
+  assert.throws(() => scaffold(root, { id: 'weekly-notes' }, ops), /disk full/);
+  assert.equal(fs.existsSync(path.join(folder, 'manifest.json')), false, 'the file it wrote is gone');
+  assert.equal(fs.readFileSync(path.join(folder, 'mine.txt'), 'utf8'), 'keep', 'a file it did not write stays');
+  const source = fs.readFileSync(fileURLToPath(new URL('../lib/extension-kit.mjs', import.meta.url)), 'utf8');
+  assert.doesNotMatch(source.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''), /recursive:\s*true,\s*force/);
+});
+
+test('a link as the extensions folder or the screens folder is refused with UNSAFE_PATH', () => {
+  const root = tree();
+  const outside = tmp();
+  fs.rmSync(path.join(root, 'apps/desktop/renderer/harness/extensions'), { recursive: true });
+  fs.symlinkSync(outside, path.join(root, 'apps/desktop/renderer/harness/extensions'));
+  assert.equal(refusal(() => scaffold(root, { id: 'weekly-notes' })), 'UNSAFE_PATH');
+  assert.deepEqual(fs.readdirSync(outside), []);
+  const root2 = tree();
+  const outside2 = tmp();
+  fs.rmSync(path.join(root2, 'apps/desktop/extensions'), { recursive: true });
+  fs.symlinkSync(outside2, path.join(root2, 'apps/desktop/extensions'));
+  for (const fn of [() => checkTree(root2), () => listTree(root2), () => installTemplate(root2), () => removeExtension(root2, 'x')]) assert.equal(refusal(fn), 'UNSAFE_PATH');
+});
+
+test('install-template refuses when the template has no screen in the mount table, or the table cannot be read', () => {
+  const root = tree();
+  const file = path.join(root, 'apps/desktop/renderer/harness/extension-mounts.tsx');
+  fs.writeFileSync(file, MOUNTS.replace("  'extension-template': () => 2,\n", ''));
+  assert.equal(refusal(() => installTemplate(root)), 'NO_SCREEN');
+  fs.rmSync(file);
+  assert.equal(refusal(() => installTemplate(root)), 'NO_MOUNT_TABLE');
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/extension-template')), false);
+});
+
 // ---- the command line
 
 const run = (args, { env = {}, input } = {}) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, input, timeout: 60000 });
@@ -232,9 +357,9 @@ test('new, check, install-template, list and remove work through the command lin
   r = call('install-template');
   assert.equal(r.status, 1); assert.equal(r.json.ok, false); assert.equal(r.json.code, 'EXTENSION_EXISTS');
   r = call('list');
-  assert.equal(r.status, 0); assert.deepEqual(r.json.extensions.map(e => e.id), ['extension-template', 'local-models']); assert.deepEqual(r.json.problems.map(p => p.code), ['NO_SCREEN']);
+  assert.equal(r.status, 1); assert.equal(r.json.ok, false); assert.deepEqual(r.json.extensions.map(e => e.id), ['extension-template', 'local-models']); assert.deepEqual(r.json.problems.map(p => p.code), ['NO_SCREEN']);
   r = call('remove', TEMPLATE_ID);
-  assert.equal(r.status, 0); assert.deepEqual(r.json.removed, ['apps/desktop/extensions/extension-template']);
+  assert.equal(r.status, 0); assert.deepEqual(r.json.removed, ['apps/desktop/extensions/extension-template']); assert.match(r.json.note, /mount table/);
   r = call('remove', TEMPLATE_ID);
   assert.equal(r.status, 1); assert.equal(r.json.code, 'NOT_INSTALLED');
 });
@@ -244,4 +369,19 @@ test('the text output names each refusal by its code', () => {
   const result = run(['new', 'help', '--root', root], { env: SEAM });
   assert.equal(result.status, 1);
   assert.match(result.stdout, /RESERVED/);
+});
+
+test('the command line check exits non-zero with the code when the mount table is gone, and prints warnings in text and in JSON', () => {
+  const root = tree();
+  putExt(root, 'local-models', manifestText('local-models', { main: 'evil.js' }));
+  let r = run(['check', '--root', root, '--json'], { env: SEAM });
+  assert.equal(r.status, 0);
+  assert.deepEqual(JSON.parse(r.stdout).warnings.map(w => w.code), ['FIELD_DROPPED']);
+  r = run(['check', '--root', root], { env: SEAM });
+  assert.match(r.stdout, /WARNING local-models: FIELD_DROPPED/);
+  fs.rmSync(path.join(root, 'apps/desktop/renderer/harness/extension-mounts.tsx'));
+  r = run(['check', '--root', root, '--json'], { env: SEAM });
+  assert.equal(r.status, 1);
+  const json = JSON.parse(r.stdout);
+  assert.equal(json.ok, false); assert.equal(json.code, 'NO_MOUNT_TABLE');
 });
