@@ -72,6 +72,26 @@ export function runCallSpec(name: string): CallSpec | undefined {
   return RUN_CALLS.find(c => c.name === name);
 }
 
+/** The prefix of a modules channel: `bowerloom-modules:<call>`. */
+const MODULES_PREFIX = 'bowerloom-modules:';
+
+const moduleCall = (name: string, arity: number): CallSpec => Object.freeze({ name, arity, optionalArgs: 0, channel: `${MODULES_PREFIX}${name}`, returns: 'plain' as ReturnKind });
+
+/**
+ * The calls of the fifth bridge, `bowerloomModules`, added in 0.9.0-beta.1: the read scope of a module. A module reads only what the person picks, plus home-folder places the person approved once for that module.
+ * `listModulePlaces` lists the approved places of a module, `approveModulePlace` opens main's own folder chooser and records the pick, `revokeModulePlace` removes one place, and `readModuleFile` reads one text file
+ * inside an approved place. The page never passes a path to approve: the pick is main's. They are not engine calls, reader calls, local calls or runs calls: those lists stay frozen, and `callSpec`, `localCallSpec` and
+ * `runCallSpec` do not find these. Every call answers plain data. The only refusals are the call's own: see `MODULE_CALL_REFUSAL_CODES`.
+ */
+export const MODULE_CALLS: readonly CallSpec[] = Object.freeze([
+  moduleCall('listModulePlaces', 1), moduleCall('approveModulePlace', 1), moduleCall('revokeModulePlace', 2), moduleCall('readModuleFile', 3),
+]);
+
+/** The spec of a modules call, or undefined for a name the list does not hold. Own names only. */
+export function moduleCallSpec(name: string): CallSpec | undefined {
+  return MODULE_CALLS.find(c => c.name === name);
+}
+
 /** The spec of a call on either side, or undefined for a name the contract does not hold. Own names only: `constructor` and `__proto__` are not calls. */
 export function callSpec(name: string): CallSpec | undefined {
   return ENGINE_API_CALLS.find(c => c.name === name) ?? READER_API_CALLS.find(c => c.name === name);
