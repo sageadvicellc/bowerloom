@@ -19,7 +19,6 @@ import { HButton, StateDot } from '../parts/controls.js';
 import { HIcon, KIND_ICON, Tile } from '../icons.js';
 import { KIND_PLURAL, WORDS, addTo, fromWords, linkProblemWords, notYetWords } from '../words.js';
 import { PathDisclosure } from '../parts/PathDisclosure.js';
-import { fileNameOf } from '../../../shared/harness/frontmatter.js';
 import { nothingChanged } from '../words-flow.js';
 import { undoNow } from '../undo-note.js';
 import { addState, contextEmpty, linkProblems, unreadableHarnesses } from '../../../shared/harness/library-add.js';
@@ -64,7 +63,6 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
       {part.fromHarness === undefined ? (
         <section className="hx-block" aria-labelledby="hx-lib-file">
           <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>
-          <p className="hx-text hx-muted">{fileNameOf(part.path)}</p>
           <PathDisclosure path={part.path} subject={part.name} key={part.id} />
         </section>
       ) : <p className="hx-text hx-muted" data-no-file="">{WORDS.hint.noFileRead}</p>}

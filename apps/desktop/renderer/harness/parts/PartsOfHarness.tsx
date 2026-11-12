@@ -4,18 +4,27 @@
  */
 import type { ReactElement } from 'react';
 import type { Harness, HarnessState } from '../../../shared/harness/types.js';
-import { diveGroups } from '../../../shared/harness/harness-dive.js';
+import { diveView } from '../../../shared/harness/harness-dive.js';
 import { go } from '../router.js';
 import { Tile, KIND_ICON } from '../icons.js';
 import { KIND_PLURAL } from '../words.js';
 import { DIVE } from '../words-dive.js';
 
 export function PartsOfHarness({ state, harness }: { state: HarnessState; harness: Harness }): ReactElement {
-  const groups = diveGroups(state, harness);
+  const view = diveView(state, harness), groups = view.groups;
+  const incomplete = state.real !== undefined && (state.real.stoppedEarly || state.real.onlyPartRead === true);
   return (
     <section className="hx-block" aria-labelledby="hx-dive" data-dive="">
       <h3 className="hx-h3" id="hx-dive">{DIVE.label.parts}</h3>
-      {groups.length === 0 ? <p className="hx-text hx-muted" data-dive-empty="">{DIVE.hint.empty}</p> : groups.map(g => (
+      {incomplete ? <p className="hx-text hx-muted" role="status" data-dive-incomplete="">{DIVE.hint.incomplete}</p> : null}
+      {view.empty ? <p className="hx-text hx-muted" data-dive-empty="">{DIVE.hint.empty}</p> : null}
+      {view.duplicates.length === 0 ? null : <p className="hx-text hx-muted" role="status" data-dive-duplicates="">{DIVE.duplicates(view.duplicates.length)}</p>}
+      {view.unresolved.length === 0 ? null : (
+        <ul className="hx-box-list" data-dive-unresolved="">
+          {view.unresolved.map(id => <li key={id} className="hx-box" data-dive-unresolved-id={id}><span className="hx-box-main">{DIVE.unresolved(id)}</span></li>)}
+        </ul>
+      )}
+      {groups.map(g => (
         <section key={g.kind} data-dive-kind={g.kind} aria-label={KIND_PLURAL[g.kind]}>
           <h4 className="hx-text hx-muted">{KIND_PLURAL[g.kind]} {g.parts.length + g.missing.length}</h4>
           <ul className="hx-box-list">

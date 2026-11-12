@@ -17,7 +17,10 @@ A person opens a harness. Then a skill or an agent. Then the person sees where i
 2. The details now hold a block named Parts. It lists the parts of the harness in this order: skills, agents, tools, context. The count of each kind is in its heading.
 3. A part the Library lists is a button. It opens that part in the Library, on the tab of its kind. The address is `#app/library/<kind>/<part id>`.
 4. A part the Library does not list has no button. The row says so.
-5. A part that the harness names and cannot find shows as missing, in the group of its kind.
+5. A part that the harness names and cannot find shows as missing, in the group of its kind. An id in the list of parts that the state does not hold, and that the harness does not name as missing, shows as a row: "A part named in the manifest (<id>) was not found." An empty id and `__proto__` show the same way. The empty hint shows only when the harness lists no part and names none as missing.
+   - A repeated id in the list shows once.
+   - An id that two parts of the scan share is told in a line, and the first part shows.
+   - The state has no flag for "still loading" or "failed". It has two for a scan that is not whole: `real.stoppedEarly` and `real.onlyPartRead`. When either is set, the block says the list can be incomplete. No other flag is invented.
 6. The Library details of a part now hold a block named Where it comes from. It is the new part of this lane.
 7. The Library details still list the harnesses that use the part. Each is a button back to that harness.
 
@@ -26,13 +29,14 @@ A person opens a harness. Then a skill or an agent. Then the person sees where i
 The block reads facts the state already holds. Each line is one short sentence.
 
 - The label of the part, such as "Made by you" or "Caveman plug-in".
-- The folder the reader found it in, written with `~` for the home folder. It says whether that is the home folder or a project folder.
+- The folder the reader found it in, written with `~` for the home folder. It says whether that is the home folder or a project folder. A source with no label reads "Found in the source <name>."
 - The program the folder was read for, such as Claude Code.
 - A folder harness, when only that harness names the part. The block names the folder and says Bowerloom did not read the file.
 - The version, when the file gives one.
-- The file name. Never the full path. The full path stays behind "Show details", as before.
-- The count of other places that hold a skill with the same text.
-- When the state holds no place for the part, the block says Bowerloom has no record. It does not guess.
+- The file name, in this block only. The path is split on both slashes. A context part, a path with no extension and an empty name give no file name, so no folder name of the person shows. The full path stays behind "Show details", as before.
+- The count of other skills with the same text. Skills only, and only with a hash.
+- When the part names a source that the scan does not hold, the block says "The source of this part is not in the scan."
+- When the part names no place at all, the block says Bowerloom has no record. It does not guess.
 
 The logic is in `apps/desktop/shared/harness/harness-dive.ts`. It is pure code with no clock and no file. The words are in `apps/desktop/renderer/harness/words-dive.ts`. The two blocks are in `apps/desktop/renderer/harness/parts/PartsOfHarness.tsx` and `PartOrigin.tsx`.
 
