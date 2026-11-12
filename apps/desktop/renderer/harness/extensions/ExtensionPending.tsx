@@ -22,6 +22,7 @@ export function ExtensionPending({ problem = null }: { problem?: string | null }
 
 /** The lines of the absent screen, without the screen around them. */
 export function ExtensionAbsentBody({ absence }: { absence: ExtensionAbsence }): ReactElement {
+  if (absence.kind === 'refused') return <p className="kit-hint hx-hint" role="alert" data-extension-absent="refused" data-extension-code={absence.code}>The extension {absence.id} was refused. Code: {absence.code}.</p>;
   return absence.kind === 'skipped'
     ? <p className="kit-hint hx-hint" role="alert" data-extension-absent="skipped" data-extension-code={absence.code}>The extension folder {absence.name} was not loaded. Code: {absence.code}.</p>
     : <p className="kit-hint hx-hint" role="alert" data-extension-absent="no-screen" data-extension-id={absence.id}>The extension {absence.id} loaded, but this build has no screen for it.</p>;

@@ -32,7 +32,7 @@ Other rules.
 - A field that is not one of the five is dropped. The app never reads it. No field can name code to load.
 - The file is UTF-8 text, with or without a byte order mark. It is at most 64 KiB (65,536 bytes).
 - The `id` and the routes cannot be a default name. The next block lists the default names.
-- The folder name is one plain name. It does not have to equal the `id`.
+- The folder name is one plain name. It has no two dots in it and does not start with a dot. It does not have to equal the `id`. The loader skips a folder whose name starts with a dot.
 - A folder or a manifest file that is a link to a place outside the bundle is refused.
 
 The default ids are these six.
@@ -124,7 +124,10 @@ How a removal goes:
 - Run `node tools/extension-kit.mjs remove extension-template`. It deletes that one folder and nothing else.
 - At the next start the loader finds no manifest. The registry holds no route for the extension. The address shows `ROUTE_NOT_FOUND`. The navigation entry is gone.
 - The screen file and the line in the mount table stay. They are source code, and git holds them. The command prints this.
-- The command renames the folder to a temporary name inside `apps/desktop/extensions`, checks it again, and deletes only from that folder, with `manifest.json` last. A part-way failure gives `REMOVE_INCOMPLETE` and lists what remains.
+- The command renames the folder to a temporary name `.removing-` and 12 hex digits, inside `apps/desktop/extensions`. It checks the folder again before each delete and deletes only from that folder, with `manifest.json` last.
+- A part-way failure gives `REMOVE_INCOMPLETE` and lists what remains. The loader skips a folder whose name starts with a dot, so the extension is no longer loaded. `check` and `list` report the leftover folder with `REMOVE_INCOMPLETE`.
+- To finish, run `node tools/extension-kit.mjs remove` with the leftover folder name. Or delete the folder by hand.
+- Node has no `unlinkat`, so a swap between the check and a delete is narrowed and not closed.
 - The registry frees every route of the removed extension, so the next extension can take them.
 - A default extension cannot be removed. The host refuses it with `PROTECTED`. The check fails closed: a registry that throws or gives a strange answer also gives `PROTECTED`.
 - No button and no call lets a person remove an extension inside the running app. If one is added later, it must go through `uninstallExtension` in `apps/desktop/main/extension-host.ts`.
@@ -185,7 +188,7 @@ The registry and the host give these. The list is `EXTENSION_CODES` in `apps/des
 
 The loader skips a folder and gives one of these. The list is `SKIP_CODES` in `apps/desktop/main/extension-loader.ts`.
 
-- `BAD_NAME` The folder name is not one plain name.
+- `BAD_NAME` The folder name is not one plain name, or it starts with a dot, or it has two dots in it.
 - `OUTSIDE_ROOT` The folder or the manifest file is a link to a place outside the bundle.
 - `UNREADABLE` The loader failed to read the folder or the file. The message holds the system code.
 - `NOT_A_FILE` The manifest path is not a regular file.
@@ -205,9 +208,10 @@ These codes come from `tools/extension-kit.mjs`. The kit also repeats codes of t
 
 - `BAD_ID` A new id is not a valid name or does not start with a letter. A folder name is not one plain name.
 - `BAD_TITLE` The title for a new extension holds a quote, a brace, an angle bracket, a backtick, a backslash or a control character.
-- `NO_MOUNT_TABLE` The kit cannot read the mount table `BUNDLED_MOUNTS`, so it cannot say that any screen exists.
+- `NO_MOUNT_TABLE` The kit cannot read the mount table `BUNDLED_MOUNTS`, so it cannot say that any screen exists. The message names the cause: a missing file, an unreadable file (with the system code), or a file with no table.
 - `ROUTE_MISMATCH` The routes of the manifest do not include the id, and the mount draws the screen only for the route that equals the id.
-- `REMOVE_INCOMPLETE` A removal stopped part way. The message lists the files that remain and the temporary folder that holds them.
+- `REMOVE_INCOMPLETE` A removal stopped part way. The message lists the files that remain and the leftover folder. `check` and `list` report that folder with this code.
+- `BAD_TEMPLATE` The template screen does not hold exactly one title literal, so the kit cannot set a title safely.
 - `NO_SCREEN` The manifest is valid and the mount table has no screen for its id, so the app does not register it.
 - `NOT_A_TREE` The root is not the Bowerloom repository, or it is not an absolute path.
 - `UNSAFE_PATH` A link or a folder in the way means the kit does not write or delete.

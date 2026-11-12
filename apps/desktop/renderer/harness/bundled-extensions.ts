@@ -9,8 +9,8 @@ import { refusalCode } from '../../shared/api/calls.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
 import type { Registry } from '../../shared/extensions/registry.js';
 import { REFRESH_MS } from '../../shared/local-models/view-model.js';
-import { registerBundled } from './extension-mounts.js';
-import type { ScreenMount } from './extension-mounts.js';
+import { registerBundledDetailed } from './extension-mounts.js';
+import type { RefusedBundled, ScreenMount } from './extension-mounts.js';
 
 export interface Bundled {
   /** The registered bundled extensions, in the order main listed them. */
@@ -23,6 +23,8 @@ export interface Bundled {
   readonly skipped: readonly SkippedExtension[];
   /** The manifests main listed that this build has no screen for: they loaded, and nothing draws them. */
   readonly unmounted?: readonly ExtensionManifest[];
+  /** The manifests main listed that have a screen and that the registry refused, each with its code. A refusal is not a missing screen. */
+  readonly refused?: readonly RefusedBundled[];
 }
 
 /**
@@ -31,13 +33,27 @@ export interface Bundled {
  */
 export type ExtensionAbsence =
   | { readonly kind: 'skipped'; readonly name: string; readonly code: string }
-  | { readonly kind: 'no-screen'; readonly id: string };
+  | { readonly kind: 'no-screen'; readonly id: string }
+  | { readonly kind: 'refused'; readonly id: string; readonly code: string };
 export function extensionAbsence(bundled: Bundled, route: string): ExtensionAbsence | null {
   if (!bundled.ready) return null;
   const skipped = bundled.skipped.find(x => x.name === route);
   if (skipped !== undefined) return { kind: 'skipped', name: skipped.name, code: skipped.code };
+  const refused = (bundled.refused ?? []).find(m => m.routes.includes(route) || m.id === route);
+  if (refused !== undefined) return { kind: 'refused', id: refused.id, code: refused.code };
   const unmounted = (bundled.unmounted ?? []).find(m => m.routes.includes(route));
   return unmounted === undefined ? null : { kind: 'no-screen', id: unmounted.id };
+}
+
+/**
+ * What the page draws for the route of an extension, in one order. 'wait': the list has not answered (a route that exists waits too, so the first frame is never a wrong not-found state).
+ * 'screen': the registry owns the route, or nothing explains why it has no owner, so the registry screen draws it (or the plain not-found state). 'absent': the list explains why the route has no owner.
+ */
+export function extensionRouteState(bundled: Bundled, registry: { resolve(route: string): { readonly found: boolean } }, route: string): { readonly kind: 'wait' } | { readonly kind: 'screen' } | { readonly kind: 'absent'; readonly absence: ExtensionAbsence } {
+  if (!bundled.ready) return { kind: 'wait' };
+  if (registry.resolve(route).found) return { kind: 'screen' };
+  const absence = extensionAbsence(bundled, route);
+  return absence === null ? { kind: 'screen' } : { kind: 'absent', absence };
 }
 
 export interface Scheduler { readonly after: (run: () => void, ms: number) => unknown; readonly cancel: (handle: unknown) => void }
@@ -57,10 +73,9 @@ export function followExtensions(registry: Registry<ScreenMount>, bridge: LocalB
     new Promise<ExtensionsListing>(resolve => resolve(bridge.listExtensions())).then(
       listing => {
         if (!live) return;
-        const registered = registerBundled(registry, listing.extensions);
-        const known = new Set(registered.map(m => m.id));
-        // A listed manifest with no screen in this build, or one the registry refused, is not registered. The page keeps it, so a deep link can say why.
-        onAnswer({ extensions: registered, ready: true, problem: null, skipped: Object.freeze([...listing.skipped]), unmounted: Object.freeze(listing.extensions.filter(m => !known.has(m.id))) });
+        const done = registerBundledDetailed(registry, listing.extensions);
+        // A listed manifest with no screen in this build, and one the registry refused, are kept apart, so a deep link can say which it is.
+        onAnswer({ extensions: done.registered, ready: true, problem: null, skipped: Object.freeze([...listing.skipped]), unmounted: done.noMount, refused: done.refused });
       },
       (error: unknown) => {
         if (!live) return;

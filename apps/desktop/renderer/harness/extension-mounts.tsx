@@ -143,10 +143,24 @@ export const BUNDLED_IDS: readonly string[] = Object.freeze(Object.keys(BUNDLED_
  * (RESERVED, ROUTE_TAKEN), is left out. Calling it again with the same list changes nothing.
  */
 export function registerBundled(registry: Registry<ScreenMount>, manifests: readonly ExtensionManifest[]): readonly ExtensionManifest[] {
+  return registerBundledDetailed(registry, manifests).registered;
+}
+
+/** One listed manifest the registry refused, with the id, the routes and the code (RESERVED, ROUTE_TAKEN, EXTENSION_EXISTS, MOUNT_FAILED or BAD_MANIFEST). */
+export interface RefusedBundled { readonly id: string; readonly routes: readonly string[]; readonly code: string }
+
+/**
+ * The same as registerBundled, and it says what it left out. `registered`: the manifests that are registered. `noMount`: manifests this build has no screen for. `refused`: manifests that have a screen
+ * and that the registry refused, each with its code. The two lists are never mixed: a refusal is not a missing screen.
+ */
+export function registerBundledDetailed(registry: Registry<ScreenMount>, manifests: readonly ExtensionManifest[]): { readonly registered: readonly ExtensionManifest[]; readonly noMount: readonly ExtensionManifest[]; readonly refused: readonly RefusedBundled[] } {
   const known = manifests.filter(m => Object.hasOwn(BUNDLED_MOUNTS, m.id));
+  const noMount = manifests.filter(m => !Object.hasOwn(BUNDLED_MOUNTS, m.id));
   const have = new Set(registry.list().map(m => m.id));
   const fresh = known.filter(m => !have.has(m.id));
-  registerLoaded(registry, fresh, m => BUNDLED_MOUNTS[m.id]!);
+  const answers = registerLoaded(registry, fresh, m => BUNDLED_MOUNTS[m.id]!);
+  const refused: RefusedBundled[] = [];
+  answers.forEach((answer, i) => { if (!answer.ok) refused.push({ id: fresh[i]!.id, routes: fresh[i]!.routes, code: answer.refusal.code }); });
   const now = new Set(registry.list().map(m => m.id));
-  return Object.freeze(known.filter(m => now.has(m.id)));
+  return Object.freeze({ registered: Object.freeze(known.filter(m => now.has(m.id))), noMount: Object.freeze(noMount), refused: Object.freeze(refused) });
 }

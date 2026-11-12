@@ -324,8 +324,8 @@ test('check and list report a leftover .removing folder as REMOVE_INCOMPLETE, ne
   putExt(root, '.hidden', manifestText('hidden-one'));
   for (const result of [checkTree(root), listTree(root)]) {
     assert.deepEqual(result.extensions.map(e => e.id), ['local-models']);
-    assert.deepEqual(codes(result), [`${REMOVING}:REMOVE_INCOMPLETE`, '.hidden:BAD_NAME']);
-    const message = result.problems[0].message;
+    assert.deepEqual(codes(result), ['.hidden:BAD_NAME', `${REMOVING}:REMOVE_INCOMPLETE`]);
+    const message = result.problems.find(p => p.name === REMOVING).message;
     assert.match(message, /remove \.removing-aabbccddeeff/); assert.match(message, /by hand/); assert.match(message, /skips/);
   }
   assert.equal(readExtension(path.join(root, 'apps/desktop/extensions'), '.hidden').code, 'BAD_NAME');

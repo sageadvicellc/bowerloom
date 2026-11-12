@@ -28,9 +28,9 @@ export interface LoadResult { readonly manifests: readonly ExtensionManifest[]; 
 const inside = (root: string, child: string): boolean => child === root || child.startsWith(root.endsWith(sep) ? root : root + sep);
 const fail = (code: SkipCode, message: string): { readonly ok: false; readonly refusal: Refusal } => refuse(code, message);
 
-/** A name is one plain path part. */
+/** A name is one plain path part, and does not start with a dot. A folder that starts with a dot is a hidden or a leftover folder (the kit renames a folder to .removing-<hex> while it removes it), so it is never loaded. */
 function plainName(name: unknown): name is string {
-  return typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !name.includes('..') && !/[\\/\0]/.test(name) && !isAbsolute(name);
+  return typeof name === 'string' && name !== '' && !name.startsWith('.') && !name.includes('..') && !/[\\/\0]/.test(name) && !isAbsolute(name);
 }
 
 /**

@@ -25,7 +25,7 @@ export const BASE_ROUTES = Object.freeze(['welcome', 'choose', 'read', 'notes', 
 export const RESERVED_NAMES = new Set([...DEFAULT_IDS, ...BASE_ROUTES]);
 
 /** The codes the kit gives that the app does not. Every code of the app that the kit repeats keeps its meaning. */
-export const KIT_CODES = Object.freeze(['BAD_ID', 'BAD_TITLE', 'NO_SCREEN', 'NO_MOUNT_TABLE', 'ROUTE_MISMATCH', 'NOT_A_TREE', 'UNSAFE_PATH', 'NOT_INSTALLED', 'REMOVE_INCOMPLETE']);
+export const KIT_CODES = Object.freeze(['BAD_ID', 'BAD_TITLE', 'BAD_TEMPLATE', 'NO_SCREEN', 'NO_MOUNT_TABLE', 'ROUTE_MISMATCH', 'NOT_A_TREE', 'UNSAFE_PATH', 'NOT_INSTALLED', 'REMOVE_INCOMPLETE']);
 /** A warning is not a refusal and does not fail a check. */
 export const KIT_WARNINGS = Object.freeze(['FIELD_DROPPED']);
 const MANIFEST_FIELDS = Object.freeze(['id', 'title', 'kind', 'routes', 'protected']);
@@ -72,9 +72,11 @@ export function reservedProblem(manifest) {
   return null;
 }
 
+/** The name of a folder that a stopped removal leaves behind. The loader skips it, because it starts with a dot. */
+const REMOVING = /^\.removing-[0-9a-f]{12}$/;
 const codeOf = error => (typeof error?.code === 'string' && /^[A-Z0-9_]{1,32}$/.test(error.code) ? error.code : 'unknown');
-// The loader rule: one plain path part, and no two dots anywhere in it.
-const plainName = name => typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !name.includes('..') && !/[\\/\0]/.test(name) && !path.isAbsolute(name);
+// The loader rule: one plain path part, no two dots anywhere in it, and no dot at the start.
+const plainName = name => typeof name === 'string' && name !== '' && !name.startsWith('.') && !name.includes('..') && !/[\\/\0]/.test(name) && !path.isAbsolute(name);
 
 /** Reads one extension folder as the loader does. Returns { name, manifest } or { name, code, message }. Never throws. */
 export function readExtension(extensionsDir, name) {
@@ -116,30 +118,43 @@ function needRealFolder(at, label) {
 }
 
 /**
- * The id keys of the mount table in extension-mounts.tsx (the object named BUNDLED_MOUNTS). Null when the file or the table is not there. A caller that needs the answer
- * must treat null as the refusal NO_MOUNT_TABLE: a check that cannot read the table cannot say that a screen exists.
+ * Reads the mount table of extension-mounts.tsx, the object named BUNDLED_MOUNTS. Returns { ids } or { cause }, and the cause says whether the file was not found, could not be read (with the error code),
+ * or held no BUNDLED_MOUNTS. The table is found by a text scan, and the scan has limits on purpose: it reads the keys at the start of a line between `const BUNDLED_MOUNTS` and the first `});`, so a key that is
+ * built in code, spread from another object, or written after a nested `});` is not seen, and a key in a comment at the start of a line is. It never runs the file. The tests of the app are the check of the real table.
  */
-export function mountedIds(root) {
+export function readMountTable(root) {
   let text;
-  try { text = fs.readFileSync(path.join(root, MOUNTS_FILE), 'utf8'); } catch { return null; }
+  try { text = fs.readFileSync(path.join(root, MOUNTS_FILE), 'utf8'); } catch (error) {
+    return { cause: error?.code === 'ENOENT' ? `${MOUNTS_FILE} was not found` : `${MOUNTS_FILE} could not be read (${codeOf(error)})` };
+  }
   const start = text.indexOf('const BUNDLED_MOUNTS');
-  if (start < 0) return null;
+  if (start < 0) return { cause: `${MOUNTS_FILE} holds no BUNDLED_MOUNTS` };
   const end = text.indexOf('});', start);
   const body = text.slice(start, end < 0 ? text.length : end);
   const ids = new Set();
   for (const match of body.matchAll(/^\s*(?:'([a-z0-9][a-z0-9-]*)'|([a-z0-9][a-z0-9-]*))\s*:/gm)) ids.add(match[1] ?? match[2]);
-  return ids;
+  return { ids };
+}
+
+/** The id keys of the mount table, or null when it cannot be read. A caller that needs the answer must use needMountTable: null is a refusal, not "no screens". */
+export function mountedIds(root) {
+  const table = readMountTable(root);
+  return table.ids ?? null;
 }
 
 function needMountTable(root) {
-  const ids = mountedIds(root);
-  if (ids === null) throw new KitError('NO_MOUNT_TABLE', `The mount table BUNDLED_MOUNTS cannot be read in ${MOUNTS_FILE}, so no screen can be checked.`);
-  return ids;
+  const table = readMountTable(root);
+  if (table.ids === undefined) throw new KitError('NO_MOUNT_TABLE', `The mount table cannot be read, so no screen can be checked: ${table.cause}.`);
+  return table.ids;
 }
 
 function needTree(root) {
   if (typeof root !== 'string' || !path.isAbsolute(root)) throw new KitError('NOT_A_TREE', 'The repository root must be an absolute path.');
-  if (!isDir(path.join(root, 'apps', 'desktop'))) throw new KitError('NOT_A_TREE', 'This is not the Bowerloom repository: apps/desktop is missing.');
+  // lstat, not stat: a link as apps/desktop or apps/desktop/renderer would send every read and write somewhere else.
+  const desktop = path.join(root, 'apps', 'desktop');
+  if (!exists(desktop)) throw new KitError('NOT_A_TREE', 'This is not the Bowerloom repository: apps/desktop is missing.');
+  needRealFolder(desktop, 'apps/desktop');
+  needRealFolder(path.join(desktop, 'renderer'), 'apps/desktop/renderer');
 }
 
 /**
@@ -156,6 +171,7 @@ export function checkTree(root, only = null) {
   const mounted = needMountTable(root);
   const ids = new Map(), owners = new Map();
   for (const name of names) {
+    if (REMOVING.test(name)) { problems.push({ name, code: 'REMOVE_INCOMPLETE', message: `A removal stopped part way and left this folder. The app skips it, because its name starts with a dot. Run: node tools/extension-kit.mjs remove ${name} to finish, or delete the folder by hand.` }); continue; }
     const read = readExtension(dir, name);
     if (read.manifest === undefined) { problems.push({ name, code: read.code, message: read.message }); continue; }
     const m = read.manifest;
@@ -189,7 +205,7 @@ export function checkNewId(id) {
 }
 
 // A title goes into source code as a string. Plain text only: no quote, brace, angle bracket, backtick or backslash, and no control or line-break character.
-const BAD_TITLE_CHARS = /["{}<>`\\\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+const BAD_TITLE_CHARS = /["{}<>`\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u17b4\u17b5\ufffc\u{1d173}-\u{1d17a}\u00a0\u2000-\u200a\u2800]/u;
 export function checkNewTitle(title) {
   if (typeof title !== 'string' || BAD_TITLE_CHARS.test(title)) throw new KitError('BAD_TITLE', 'The title cannot hold a quote, a brace, an angle bracket, a backtick, a backslash or a control character.');
 }
@@ -240,6 +256,8 @@ export function scaffold(root, { id, title = null }, ops = {}) {
   try { screen = fs.readFileSync(source, 'utf8'); } catch { throw new KitError('NOT_A_TREE', `The template screen ${SCREENS_DIR}/${TEMPLATE_SCREEN}.tsx is missing.`); }
   const target = path.join(root, SCREENS_DIR, `${component}.tsx`);
   if (exists(target)) throw new KitError('EXTENSION_EXISTS', `The screen file ${SCREENS_DIR}/${component}.tsx already exists.`);
+  const TITLE_LITERAL = 'title={"Extension template"}';
+  if (screen.split(TITLE_LITERAL).length !== 2) throw new KitError('BAD_TEMPLATE', `The template screen must hold exactly one ${TITLE_LITERAL}, so the kit can set the title safely.`);
   const made = screen.split(TEMPLATE_SCREEN).join(component).split(TEMPLATE_ID).join(id).split('"Extension template"').join(JSON.stringify(shown));
   const folder = path.join(root, EXTENSIONS_DIR, id);
   const manifestFile = path.join(folder, MANIFEST_FILE);
@@ -278,37 +296,48 @@ const REMOVE_NOTE = 'The screen file and the line in the mount table stay. They 
 
 /**
  * Removes the manifest folder of an extension, which is all that installs it. After that the app registers no route for it.
- * The folder must be a real folder that holds a manifest.json and plain files only. It is renamed to a unique temporary name inside the extensions folder, checked again (not a link, real path inside
- * the folder), and then only plain files in the renamed folder are deleted, manifest.json last. If an unlink fails, the rest stays where it is under the temporary name, and REMOVE_INCOMPLETE lists it.
+ * The folder must be a real folder that holds a manifest.json and plain files only. It is renamed to a unique temporary name inside the extensions folder (.removing-<12 hex digits>), checked again
+ * (not a link, real path inside the folder), and then only plain files in the renamed folder are deleted, manifest.json last. The real path of the temporary folder is checked again just before each unlink.
+ * The loader skips any folder whose name starts with a dot, so a folder left by a stopped removal is not loaded. If an unlink fails, the rest stays under the temporary name and REMOVE_INCOMPLETE lists it.
+ * A second run, `remove .removing-<hex>`, takes that name and finishes the job, with no rename and no manifest.json needed.
+ * Limit: Node has no unlinkat, so the unlink opens its path by name, and a swap between the check and the unlink is narrowed, not closed. A full fix needs unlinkat on a directory descriptor.
  * `ops.unlink` is a test seam. A default extension has no folder here, so it cannot be removed.
  */
 export function removeExtension(root, name, ops = {}) {
   const unlink = ops.unlink ?? fs.unlinkSync;
   needTree(root);
-  if (!plainName(name)) throw new KitError('BAD_ID', 'The extension name must be one plain folder name.');
+  const resuming = typeof name === 'string' && REMOVING.test(name);
+  if (!resuming && !plainName(name)) throw new KitError('BAD_ID', 'The extension name must be one plain folder name, or the name of a leftover folder that starts with .removing-.');
   const dir = path.join(root, EXTENSIONS_DIR), folder = path.join(dir, name);
   needRealFolder(dir, EXTENSIONS_DIR);
   let stat;
   try { stat = fs.lstatSync(folder); } catch { throw new KitError('NOT_INSTALLED', `No folder named "${name}" is in ${EXTENSIONS_DIR}.`); }
   if (stat.isSymbolicLink() || !stat.isDirectory()) throw new KitError('UNSAFE_PATH', `"${name}" is not a real folder, so it is not removed.`);
   const realDir = fs.realpathSync(dir);
-  if (path.dirname(fs.realpathSync(folder)) !== realDir) throw new KitError('UNSAFE_PATH', `"${name}" resolves outside ${EXTENSIONS_DIR}, so it is not removed.`);
+  const insideDir = at => path.dirname(fs.realpathSync(at)) === realDir;
+  if (!insideDir(folder)) throw new KitError('UNSAFE_PATH', `"${name}" resolves outside ${EXTENSIONS_DIR}, so it is not removed.`);
   const before = fs.readdirSync(folder, { withFileTypes: true });
   for (const entry of before) if (!entry.isFile()) throw new KitError('UNSAFE_PATH', `"${name}" holds "${entry.name}", which is not a plain file, so nothing is removed.`);
-  if (!before.some(entry => entry.name === MANIFEST_FILE)) throw new KitError('NOT_INSTALLED', `The folder "${name}" has no ${MANIFEST_FILE}, so it is not an extension and is not removed.`);
-  const temporary = path.join(dir, `.removing-${crypto.randomBytes(6).toString('hex')}`);
-  fs.renameSync(folder, temporary);
+  if (!resuming && !before.some(entry => entry.name === MANIFEST_FILE)) throw new KitError('NOT_INSTALLED', `The folder "${name}" has no ${MANIFEST_FILE}, so it is not an extension and is not removed.`);
+  const temporary = resuming ? folder : path.join(dir, `.removing-${crypto.randomBytes(6).toString('hex')}`);
+  if (!resuming) fs.renameSync(folder, temporary);
+  const tempName = path.basename(temporary);
   const after = fs.lstatSync(temporary);
-  if (after.isSymbolicLink() || !after.isDirectory() || path.dirname(fs.realpathSync(temporary)) !== realDir) throw new KitError('UNSAFE_PATH', `"${name}" changed while it was removed, so the kit stopped. It is now ${path.basename(temporary)}.`);
+  if (after.isSymbolicLink() || !after.isDirectory() || !insideDir(temporary)) throw new KitError('UNSAFE_PATH', `"${name}" changed while it was removed, so the kit stopped. It is now ${tempName}.`);
   const entries = fs.readdirSync(temporary, { withFileTypes: true });
-  for (const entry of entries) if (!entry.isFile()) throw new KitError('UNSAFE_PATH', `"${name}" changed while it was removed: "${entry.name}" is not a plain file. Nothing was deleted from ${path.basename(temporary)}.`);
+  for (const entry of entries) if (!entry.isFile()) throw new KitError('UNSAFE_PATH', `"${name}" changed while it was removed: "${entry.name}" is not a plain file. Nothing was deleted from ${tempName}.`);
   const order = [...entries.map(entry => entry.name).filter(entry => entry !== MANIFEST_FILE).sort(), ...entries.some(entry => entry.name === MANIFEST_FILE) ? [MANIFEST_FILE] : []];
   try {
-    for (const entry of order) unlink(path.join(temporary, entry));
+    for (const entry of order) {
+      const now = fs.lstatSync(temporary);
+      if (now.isSymbolicLink() || !now.isDirectory() || !insideDir(temporary)) throw new KitError('UNSAFE_PATH', `"${tempName}" changed while it was removed, so the kit stopped before it deleted "${entry}".`);
+      unlink(path.join(temporary, entry));
+    }
     fs.rmdirSync(temporary);
   } catch (error) {
+    if (error instanceof KitError) throw error;
     const left = fs.existsSync(temporary) ? fs.readdirSync(temporary).sort() : [];
-    throw new KitError('REMOVE_INCOMPLETE', `The removal of "${name}" stopped (${codeOf(error)}). ${left.length === 0 ? 'Only the empty folder' : `These files remain: ${left.join(', ')}. They are in`} ${EXTENSIONS_DIR}/${path.basename(temporary)}. Delete that by hand.`);
+    throw new KitError('REMOVE_INCOMPLETE', `The removal of "${name}" stopped (${codeOf(error)}). ${left.length === 0 ? 'Only the empty folder' : `These files remain: ${left.join(', ')}. They are in`} ${EXTENSIONS_DIR}/${tempName}. The app skips a folder whose name starts with a dot, so the extension is no longer loaded. Run: node tools/extension-kit.mjs remove ${tempName} to finish, or delete that folder by hand.`);
   }
   return { name, removed: [`${EXTENSIONS_DIR}/${name}`], note: REMOVE_NOTE };
 }
