@@ -1,6 +1,6 @@
 # Packaged-app spec
 
-Status: written for the v0.9 acceptance item 5 and item 8 of `carry-over-scope.md`. Read at commit `328dd90b` of `release/v0.9.0-beta.0` (then named `release/0.8.0-beta.2`). The pull request PR 171 (extension loader wiring) is open and changes the extension items. Each item that depends on it says "after PR 171". This page changes no code.
+Status: written for the v0.9 acceptance item 5 and item 8 of `carry-over-scope.md`. Read at commit `328dd90b` of `release/0.9.0-beta.1` (then named `release/0.8.0-beta.2`). The pull request PR 171 (extension loader wiring) is open and changes the extension items. Each item that depends on it says "after PR 171". This page changes no code.
 
 This page lists what the packaged Electron app must hold. Each item has a statement, a check, where the check runs, and a status.
 

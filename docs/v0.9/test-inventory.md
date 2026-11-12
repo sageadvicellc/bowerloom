@@ -1,6 +1,6 @@
 # Frozen test and skip inventory
 
-Status: written for the v0.9 parity item ("What working means", item 6, of `carry-over-scope.md`). Base: `release/v0.9.0-beta.0` (then named `release/0.8.0-beta.2`) at `5ca6df04`.
+Status: written for the v0.9 parity item ("What working means", item 6, of `carry-over-scope.md`). Base: `release/0.9.0-beta.1` (then named `release/0.8.0-beta.2`) at `5ca6df04`.
 
 `test-inventory.json` lists every test file and every test name that ran at the base, with the skip list. Every number below comes from reporter output of a real run at the base. Nothing is a guess.
 
