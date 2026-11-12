@@ -11,12 +11,13 @@ import * as fs from 'node:fs';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODULE_CHANNELS } from '../shared/api/modules.js';
+import type { MemoryState } from '../shared/memory/read-flow.js';
 import type { ModuleApproval, ModuleCall, ModuleFile, ModuleFileList, ModulePlace, ModulePlaces, ModulesBridge } from '../shared/api/modules.js';
 import { registerModulesIpc } from '../main/modules-ipc.js';
 import { startExtensions } from '../main/extension-host.js';
 import type { RealEvent } from '../main/real-ipc.js';
 import { APP_INDEX } from '../main/security.js';
-import { MEMORY_MODULE_ID, readAllMemory, readPlaceMemory } from '../shared/memory/read-flow.js';
+import { MEMORY_MODULE_ID, createMemoryReader, readAllMemory, readPlaceMemory } from '../shared/memory/read-flow.js';
 import { memoryRows } from '../shared/memory/view-model.js';
 import { MemoryView } from '../renderer/harness/memory/MemoryExplorer.js';
 import { REAL_LIMITS } from '../shared/real/types.js';
@@ -232,10 +233,12 @@ test('M6: parity through the screen for a duplicate-named pair, a hidden name, a
   fs.symlinkSync(join(r.home, 'Documents/odd/plain.md'), join(r.home, 'Documents/odd/link.md'));
   const results = await readAllMemory(r.bridge, MEMORY_MODULE_ID, [place], { cap: 5 });
   const direct = directCount(join(r.home, 'Documents', 'odd'));
-  assert.equal(results[0]!.analytics.notes, direct, 'Notes equals the file count, though only 5 are read');
+  assert.equal(results[0]!.analytics.notes, direct, 'Notes equals the visible file count, though only 5 are read');
+  assert.deepEqual(results[0]!.skipped, { folders: 0, entries: 3 }, 'the odd-name file, the tab-name file and the long path are told as skipped; the hidden ones are not');
   assert.equal(results[0]!.notShown, direct - 5);
   const html = renderToStaticMarkup(createElement(MemoryView, { ...viewProps(), memory: { status: 'ready', places: results, code: null } }));
   assert.deepEqual(attr(html, 'notes', place.id), [String(direct)]);
+  assert.match(html, /data-count="notes"[^>]*data-partial/, 'skipped notes make Notes a lower bound');
   assert.equal(direct, 17, 'Same twice, plain, UP, deep and the 12 past notes: the hidden, odd-name, link and long-path files are not counted');
 });
 
@@ -290,3 +293,56 @@ function viewProps(): Parameters<typeof MemoryView>[0] {
     context: { status: 'ok', agents: 0, skills: 0, tools: 0, sets: [] }, onApprove: () => undefined, onRemove: () => undefined, onRefresh: () => undefined,
   };
 }
+
+// ---- round 2
+
+test('M-a: Refresh reads again, a second read happens, and a failure that repeats stays on screen as failed', async () => {
+  let reads = 0;
+  const states: MemoryState[] = [];
+  const reader = createMemoryReader({ bridge: fake({}), moduleId: MEMORY_MODULE_ID, onState: s => states.push(s), read: async () => { reads += 1; return []; } });
+  await reader.run([PLACE]);
+  await reader.run([PLACE]);
+  assert.equal(reads, 2);
+  assert.deepEqual(states.map(s => s.status), ['loading', 'ready', 'loading', 'ready']);
+  const failing: MemoryState[] = [];
+  const bad = createMemoryReader({ bridge: fake({}), moduleId: MEMORY_MODULE_ID, onState: s => failing.push(s), read: async () => { throw new Error('boom'); } });
+  await bad.run([PLACE]);
+  await bad.run([PLACE]);
+  assert.deepEqual(failing.map(s => s.status), ['loading', 'failed', 'loading', 'failed']);
+  assert.equal(failing.at(-1)!.code, 'FAILED');
+});
+
+test('L-a: a read that was cancelled stops its workers, and its answer is not told', async () => {
+  let reads = 0, release: () => void = () => undefined;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const bridge = fake({ listModuleFiles: async () => listing(Array.from({ length: 200 }, (_, i) => `n${i}.md`)), readModuleFile: async () => { reads += 1; await gate; return { text: 'x' }; } });
+  const states: MemoryState[] = [];
+  const reader = createMemoryReader({ bridge, moduleId: MEMORY_MODULE_ID, onState: s => states.push(s) });
+  const pending = reader.run([PLACE]);
+  await new Promise(resolve => setImmediate(resolve));
+  reader.cancel();
+  release();
+  await pending;
+  assert.ok(reads <= 16, `${reads} reads started: only the ones in flight when the read was cancelled`);
+  assert.deepEqual(states.map(s => s.status), ['loading'], 'a cancelled read tells nothing more');
+  let more = 0;
+  await readPlaceMemory(fake({ listModuleFiles: async () => listing(['a.md', 'b.md', 'c.md']), readModuleFile: async () => { more += 1; return { text: '' }; } }), MEMORY_MODULE_ID, PLACE, { cancelled: () => true });
+  assert.equal(more, 0);
+});
+
+test('L-a: main keeps one list in flight for a module and place, and shares it with a caller that comes while it runs', async t => {
+  const base = tempDir(t, 'bowerloom-memory-'), home = join(base, 'home'), state = join(home, 'Library', 'state');
+  writeVault(state, {});
+  let runs = 0;
+  const handlers = new Map<string, Handler>();
+  registerModulesIpc({
+    ipc: { handle: (channel, listener) => { handlers.set(channel, listener as Handler); } }, appIndexUrl: APP_INDEX, home, stateRoot: state, extensionHost: () => startExtensions(DESKTOP), tell: () => undefined, choosePlace: async () => null,
+    list: () => { runs += 1; return { ok: true, files: ['a.md'], truncated: false, skipped: { folders: 0, entries: 0 } }; },
+  });
+  const call = (): Promise<unknown> => Promise.resolve((handlers.get(MODULE_CHANNELS.listModuleFiles) as Handler)(GOOD, MEMORY_MODULE_ID, 'place-0123456789ab'));
+  const [a, b] = await Promise.all([call(), call()]);
+  assert.equal(runs, 1);
+  assert.deepEqual(a, b);
+  await call();
+  assert.equal(runs, 2, 'once the first has finished, a new call runs again');
+});

@@ -186,3 +186,24 @@ test('L2: a place that is swapped during the walk gives PLACE_CHANGED, not a lis
   };
   assert.deepEqual(list(r, kept.place.id, 'memory-explorer', { opendir }), { ok: false, code: 'PLACE_CHANGED' });
 });
+
+// ---- round 2
+
+test('H2: a note whose path is over the limit, and a name that is not plain, are counted as skipped entries; hidden names are not', t => {
+  const r = rig(t), kept = approve(r);
+  fs.mkdirSync(path.join(r.notes, 'bad\u202edir')); fs.writeFileSync(path.join(r.notes, 'bad\u202edir', 'x.md'), 'x');
+  fs.writeFileSync(path.join(r.notes, 'tab\tname.md'), 'x');
+  let deep = r.notes;
+  const long = 'l'.repeat(120);
+  for (let i = 0; i < 5; i += 1) { deep = path.join(deep, long); fs.mkdirSync(deep); }
+  fs.writeFileSync(path.join(deep, 'far.md'), 'x');
+  const got = list(r, kept.place.id);
+  assert.deepEqual(got.files, ['A.md', 'b.md', 'sub/c.markdown', 'sub/deeper/d.MD']);
+  assert.deepEqual(got.skipped, { folders: 0, entries: 3 }, 'the odd folder, the odd file and the long path; the hidden file, the hidden folders and the text files are not counted');
+});
+
+test('L-b: an error on the first read of the place itself is UNREADABLE, not an empty list', t => {
+  const r = rig(t), kept = approve(r);
+  const opendir = p => { const d = fs.opendirSync(p); if (p === r.notes) d.readSync = () => { throw Object.assign(new Error('io'), { code: 'EIO' }); }; return d; };
+  assert.deepEqual(list(r, kept.place.id, 'memory-explorer', { opendir }), { ok: false, code: 'UNREADABLE' });
+});

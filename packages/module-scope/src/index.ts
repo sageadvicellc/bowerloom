@@ -298,8 +298,8 @@ export interface ListHooks {
 
 /**
  * Lists the markdown files of an approved place of a module. The gate is the one of `readPlaceFile`. The walk reads names only and opens no file. It reads each folder entry by entry and counts every entry as it reads it,
- * so a folder of a million names is never loaded whole. It never follows a link: a link to a file or a folder is left out, so a link cannot lead out of the place or to a hidden file. A hidden part, or a part with a
- * control, bidirectional or lone surrogate character, is left out with all that is below it. A folder on another device than the place is skipped. A folder that is replaced while it is read is dropped. The walk keeps
+ * so a folder of a million names is never loaded whole. It never follows a link: a link to a file or a folder is left out, so a link cannot lead out of the place or to a hidden file. A hidden part is left out with all that is below it, by design, and is not counted. A part with a
+ * control, bidirectional or lone surrogate character, and a note whose path is over `pathChars`, are left out and counted as skipped entries. A folder on another device than the place is skipped. A folder that is replaced while it is read is dropped. The walk keeps
  * at most `listFiles` files, looks at most at `listEntries` names and runs at most `listMs` milliseconds; a folder deeper than `listDepth` is left out and the walk goes on. After the walk the place is checked again, so a
  * place that was swapped meanwhile gives PLACE_CHANGED and no list. The answer holds relative paths only, never a full path.
  */
@@ -307,7 +307,7 @@ export function listPlaceFiles(o: { readonly stateRoot: string; readonly home: s
   const gate = openPlace(o);
   if (!gate.ok) return { ok: false, code: gate.code === 'NOT_APPROVED' || gate.code === 'PLACE_CHANGED' || gate.code === 'HOME_UNREADABLE' || gate.code === 'RECORD_DAMAGED' || gate.code === 'RECORD_BLOCKED' ? gate.code : 'UNREADABLE' };
   const h = o.hooks ?? {};
-  const opendir = h.opendir ?? ((dir: string) => fs.opendirSync(dir)), lstat = h.lstat ?? ((p: string) => fs.lstatSync(p)), now = h.now ?? Date.now, devOf = h.dev ?? ((_abs: string, info: fs.Stats) => info.dev);
+  const opendir = h.opendir ?? ((dir: string) => fs.opendirSync(dir)), lstat = h.lstat ?? ((p: string) => fs.lstatSync(p)), now = h.now ?? ((): number => performance.now()), devOf = h.dev ?? ((_abs: string, info: fs.Stats) => info.dev);
   const maxFiles = h.limits?.files ?? SCOPE_LIMITS.listFiles, maxDepth = h.limits?.depth ?? SCOPE_LIMITS.listDepth, maxEntries = h.limits?.entries ?? SCOPE_LIMITS.listEntries, maxMs = h.limits?.ms ?? SCOPE_LIMITS.listMs;
   const found: string[] = [];
   const started = now();
@@ -323,12 +323,14 @@ export function listPlaceFiles(o: { readonly stateRoot: string; readonly home: s
       for (;;) {
         if (stopped) break;
         let entry: fs.Dirent | null;
-        try { entry = dir.readSync(); } catch { skippedFolders += 1; found.length = mark; return; }
+        try { entry = dir.readSync(); } catch { if (depth === 0) rootFailed = true; skippedFolders += 1; found.length = mark; return; }
         if (entry === null) break;
         looked += 1;
         if (looked > maxEntries || now() - started > maxMs) { stopped = true; break; }
         const name = entry.name;
-        if (!plainPart(name)) continue;
+        // A hidden name is left out by design and is not counted. A name that is not plain, for a folder or a note, is left out and counted, so the notes are a lower bound.
+        if (name.startsWith('.')) continue;
+        if (!plainPart(name)) { if (entry.isDirectory() || MARKDOWN.test(name)) skippedEntries += 1; continue; }
         const abs = path.join(dirReal, name);
         let info: fs.Stats;
         try { info = lstat(abs); } catch { skippedEntries += 1; continue; }
@@ -339,7 +341,7 @@ export function listPlaceFiles(o: { readonly stateRoot: string; readonly home: s
           walk(abs, info, [...rel, name], depth + 1);
         } else if (info.isFile() && MARKDOWN.test(name)) {
           const joined = [...rel, name].join('/');
-          if (joined.length > SCOPE_LIMITS.pathChars) continue;
+          if (joined.length > SCOPE_LIMITS.pathChars) { skippedEntries += 1; continue; }
           if (found.length >= maxFiles) { stopped = true; break; }
           found.push(joined);
         }

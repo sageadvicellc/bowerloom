@@ -27,6 +27,8 @@ export interface ModulesIpcDeps {
   readonly extensionHost: () => ExtensionHost | null;
   /** Main's own chooser for a place in the home folder: the folder the person picked, or null. It is given the title of the module from main's own registry, to name the module in its window. */
   readonly choosePlace: (moduleTitle: string) => Promise<string | null>;
+  /** Test use: another lister. Defaults to the package. */
+  readonly list?: typeof listPlaceFiles;
   /** Test use: another remover. Defaults to the package. */
   readonly revoke?: typeof revokeInPackage;
   /** Where a failure is logged. Main passes its stderr line writer. The default writes to stderr. */
@@ -54,6 +56,9 @@ export function registerModulesIpc(deps: ModulesIpcDeps): void {
   const tell = deps.tell ?? ((line: string): void => { try { process.stderr.write(`${line}\n`); } catch { /* a closed stderr never stops a call */ } });
   const refuse = (code: string, detail?: string): never => { throw new Refusal(code, detail); };
   const revoke = deps.revoke ?? revokeInPackage;
+  const lister = deps.list ?? listPlaceFiles;
+  // One list in flight for each module and place. A caller that comes while it runs gets the same answer. The map holds the promise only until it settles.
+  const inFlight = new Map<string, Promise<ModuleFileList>>();
   /** The manifest of the module, when the id is well formed and main holds a stock extension with that id. The title comes from main's registry, never from the page. */
   const manifestOf = (id: unknown): { readonly id: string; readonly title: string } => {
     if (!isModuleId(id)) return refuse('BAD_ARGUMENT');
@@ -91,8 +96,23 @@ export function registerModulesIpc(deps: ModulesIpcDeps): void {
     listModuleFiles: async (id, placeId): Promise<ModuleFileList> => {
       const moduleId = moduleOf(id);
       if (!isPlaceId(placeId)) return refuse('BAD_ARGUMENT');
-      const listed = listPlaceFiles({ stateRoot: deps.stateRoot, home: deps.home, moduleId, placeId });
-      return listed.ok ? { files: [...listed.files], truncated: listed.truncated, skipped: { folders: listed.skipped.folders, entries: listed.skipped.entries } } : refuse(listed.code);
+      const key = `${moduleId}|${placeId}`;
+      const running = inFlight.get(key);
+      if (running !== undefined) return running;
+      // The walk starts on the next turn, so a second call made in the same turn finds it in flight and shares it.
+      const started = new Promise<ModuleFileList>((resolve, reject) => {
+        setImmediate(() => {
+          try {
+            const listed = lister({ stateRoot: deps.stateRoot, home: deps.home, moduleId, placeId });
+            if (listed.ok) resolve({ files: [...listed.files], truncated: listed.truncated, skipped: { folders: listed.skipped.folders, entries: listed.skipped.entries } });
+            else reject(new Refusal(listed.code));
+          } catch (error) { reject(error); }
+        });
+      });
+      inFlight.set(key, started);
+      const forget = (): void => { if (inFlight.get(key) === started) inFlight.delete(key); };
+      started.then(forget, forget);
+      return started;
     },
   };
 

@@ -13,7 +13,7 @@ import { useModules } from '../modules/modules-context.js';
 import { useModulePlaces } from '../modules/useModulePlaces.js';
 import { approvedDay, callWords } from '../../../shared/modules/view-model.js';
 import type { PlacesView } from '../../../shared/modules/places-flow.js';
-import { MEMORY_WORDS, contextPages, contextPagesPartial, contextSummary, failedWords, memoryRows, notShownWords, skippedEntriesWords, skippedFoldersWords, truncatedWords, unreadableWords } from '../../../shared/memory/view-model.js';
+import { MEMORY_WORDS, contextStatusOf, contextPages, contextPagesPartial, contextSummary, failedWords, memoryRows, notShownWords, skippedEntriesWords, skippedFoldersWords, truncatedWords, unreadableWords } from '../../../shared/memory/view-model.js';
 import type { ContextSummary } from '../../../shared/memory/view-model.js';
 import { MEMORY_MODULE_ID, layersArePartial, notesArePartial, totalIsPartial, totalNotes } from '../../../shared/memory/read-flow.js';
 import type { MemoryState, PlaceMemory } from '../../../shared/memory/read-flow.js';
@@ -47,6 +47,7 @@ function PlaceBlock({ memory, onRemove, busy }: { memory: PlaceMemory; onRemove:
           {memory.skipped.folders > 0 ? <p className="hx-text hx-muted" data-note="skipped-folders">{skippedFoldersWords(memory.skipped.folders)}</p> : null}
           {memory.skipped.entries > 0 ? <p className="hx-text hx-muted" data-note="skipped-entries">{skippedEntriesWords(memory.skipped.entries)}</p> : null}
           {memory.notShown > 0 ? <p className="hx-text hx-muted" data-note="not-shown">{notShownWords(memory.notShown)}</p> : null}
+          {a.capped ? <p className="hx-text hx-muted" data-note="capped">{MEMORY_WORDS.capped}</p> : null}
           {memory.truncated ? <p className="hx-text hx-muted" data-note="truncated">{truncatedWords}</p> : null}
           <h4 className="hxmem-sub">{MEMORY_WORDS.topTags}</h4>
           {a.topTags.length === 0 ? <p className="hx-text hx-muted">{MEMORY_WORDS.noTags}</p> : (
@@ -144,7 +145,7 @@ export function MemoryExplorer(): ReactElement {
   const places = useModulePlaces(bridge, MEMORY_MODULE_ID);
   const memory = useMemoryRead(bridge, places.places, places.status === 'ready');
   // Real launch: until the reader has run, the world holds nothing, and zeros would be false. A read that stopped early or could not read something makes the counts lower bounds.
-  const status = real && state.real === undefined ? 'not-loaded' : state.real !== undefined && (state.real.stoppedEarly || state.real.couldNotRead > 0) ? 'partial' : 'ok';
+  const status = contextStatusOf(real, state);
   const context = useMemo(() => contextSummary(state.parts, status), [state.parts, status]);
   return (
     <Screen slot="memory" title={MEMORY_WORDS.title}>

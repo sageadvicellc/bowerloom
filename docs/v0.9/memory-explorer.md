@@ -31,7 +31,7 @@ Remove stops the reads. It deletes no file.
 
 The explorer uses two calls of the `bowerloomModules` bridge:
 
-- `listModuleFiles(moduleId, placeId)`. Main lists the visible, non-hidden, non-link markdown files of the approved folder. It reads names only, one entry at a time, and counts each entry as it reads it. It never follows a link. It leaves out a hidden part and a name with a control or bidirectional character. It skips a folder on another device. It stops at 5,000 files, 50,000 names or 5 seconds, and then it says the list was cut. It leaves out a folder more than 6 deep, says the list was cut, and goes on. The answer also holds `skipped`: the count of folders it could not list and entries it could not look at. After the walk, main checks the place again. A place that moved gives `PLACE_CHANGED` and no list.
+- `listModuleFiles(moduleId, placeId)`. Main lists the visible, non-hidden, non-link markdown files of the approved folder. It reads names only, one entry at a time, and counts each entry as it reads it. It never follows a link. It leaves out a hidden part by design, and does not count it. It leaves out a name with a control or bidirectional character, and a note whose path is over 512 characters, and counts each one as a skipped entry. While one list runs for a module and a folder, a second call shares its answer. It skips a folder on another device. It stops at 5,000 files, 50,000 names or 5 seconds, and then it says the list was cut. It leaves out a folder more than 6 deep, says the list was cut, and goes on. The answer also holds `skipped`: the count of folders it could not list and entries it could not look at. After the walk, main checks the place again. A place that moved gives `PLACE_CHANGED` and no list.
 - `readModuleFile(moduleId, placeId, path)`. Lane 2's call. It reads one text file of an approved folder. Every refusal of lane 2 holds: `BAD_PATH`, `OUTSIDE_PLACE`, `NOT_A_FILE`, `TOO_LARGE` (over 256 KiB), `NOT_TEXT`, `PLACE_CHANGED`, `NOT_APPROVED`.
 
 The list is the one new call. No existing call lists the files of a place, and the Context page keeps no file path for a page. The call has its own golden file, `packages/engine-api/golden/module-list-calls.json`. The golden file of lane 2 and the base golden file are unchanged. `moduleCallSpec` finds the call. The decision is in `packages/module-scope` (`listPlaceFiles`), behind the same gate as a read.
@@ -44,11 +44,12 @@ The caps of the Context page still hold (`docs/v0.9/context-items.md`).
 
 - At most `pagesPerPlace` (2,000) notes are read for one folder. The rest are listed and not shown. The page says how many.
 - The count of notes and the index of links use every listed note, also those past the cap. A link to a note that was listed and not read is not a missing link.
-- A count is a lower bound when part of the folder is not in it. The screen draws it with a plus sign and `data-partial`. Notes is partial when the list was cut or a folder or entry was skipped. Links, tags and missing links are also partial when a note was not shown, could not be read, or a total cap on distinct tags (5,000) or distinct missing targets (5,000) was reached. Notes in all folders is partial when any folder failed or was cut.
+- A count is a lower bound when part of the folder is not in it. The screen draws it with a plus sign and `data-partial`. Notes is partial when the list was cut or a folder or entry was skipped (also a note with an odd name or a path over 512 characters). Links, tags and missing links are also partial when a note was not shown, could not be read, or a total cap on distinct tags (5,000) or distinct missing targets (5,000) was reached. Notes in all folders is partial when any folder failed or was cut.
 - A note that cannot be read still counts as a note. The page says how many could not be read, with the code. A failure of the parser has its own code, `PARSE_FAILED`.
 - A refusal about the whole folder (`NOT_APPROVED`, `PLACE_CHANGED`, `RECORD_DAMAGED`, `RECORD_BLOCKED`, `HOME_UNREADABLE`) stops the read. The folder shows as failed with that code.
-- Reads run 16 at a time. Refresh reads the folders again.
-- The harness context column says when the folders were not read yet, and does not show zeros. It marks counts partial when the reader stopped early. A set whose pages are not known shows `n/a`.
+- Reads run 16 at a time. Refresh reads the folders again. When the screen leaves or the folders change, the read in flight is cancelled and starts no more reads.
+- When a total cap on tags or missing targets is reached, the screen says so.
+- The harness context column says when the folders were not read yet, and does not show zeros. It marks counts partial when the reader stopped early, could not read something, read only part of a folder, cut a text, or could not read a linked notes folder. A set whose pages are not known shows `n/a`.
 
 ## The four layers
 

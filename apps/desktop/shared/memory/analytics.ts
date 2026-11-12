@@ -58,7 +58,8 @@ const tagOf = (raw: string): string | null => {
 
 /** The front matter and the body. A block that never closes is text, not front matter. */
 function split(text: string): { readonly front: string[]; readonly body: string[] } {
-  const lines = text.replace(/^﻿/, '').split(/\r\n?|\n/);
+  // Every line is cut to `lineChars` first, so no later step runs on an unbounded line.
+  const lines = text.replace(/^﻿/, '').split(/\r\n?|\n/).map(line => (line.length > MEMORY_LIMITS.lineChars ? line.slice(0, MEMORY_LIMITS.lineChars) : line));
   if (lines[0]?.trim() !== '---') return { front: [], body: lines };
   for (let i = 1; i < lines.length; i += 1) {
     const line = lines[i]!.trimEnd();
@@ -72,14 +73,17 @@ function frontTags(front: readonly string[]): string[] {
   const found: string[] = [];
   const take = (raw: string): boolean => { const tag = tagOf(raw); if (tag !== null) found.push(tag); return found.length >= MEMORY_LIMITS.tagsPerNote; };
   for (let i = 0; i < front.length; i += 1) {
-    const key = /^(?:tags?)\s*:\s*(.*)$/i.exec(front[i]!);
+    // No pattern here can backtrack: the key is matched at the start, then the rest is sliced and trimmed.
+    const key = /^tags?[ \t]*:/i.exec(front[i]!);
     if (key === null) continue;
-    let value = key[1]!.trim();
+    let value = front[i]!.slice(key[0].length).trim();
     if (value === '') {
       for (let j = i + 1; j < front.length; j += 1) {
-        const item = /^\s*-\s+(.+)$/.exec(front[j]!);
-        if (item === null) break;
-        if (take(item[1]!)) return found;
+        const line = front[j]!.trimStart();
+        if (!line.startsWith('-') || line.length < 2 || !/\s/.test(line[1]!)) break;
+        const item = line.slice(1).trim();
+        if (item === '') break;
+        if (take(item)) return found;
       }
     } else {
       if (value.startsWith('[')) value = value.slice(1);

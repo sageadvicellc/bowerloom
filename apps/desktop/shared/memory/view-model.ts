@@ -2,7 +2,8 @@
  * The display logic of the Memory explorer, pure: no React, no Node, no clock. The words live here, and they obey the preview's word rules (tests/harness-words.test.ts scans this folder).
  * Memory is the notes the person approved for this module. The harness context is what the Context tab of the Library shows: the agents, skills, tools and sets of notes the reader found.
  */
-import type { Part } from '../harness/types.js';
+import type { HarnessState, Part } from '../harness/types.js';
+import { linkProblems } from '../harness/library-add.js';
 import type { MemoryAnalytics } from './analytics.js';
 
 export const MEMORY_WORDS = Object.freeze({
@@ -38,6 +39,7 @@ export const MEMORY_WORDS = Object.freeze({
   contextNotLoaded: 'The harness context is not read yet. Choose your folders first, then come back.',
   contextPartial: 'The harness context was only partly read, so these counts can be higher.',
   notAvailable: 'n/a',
+  capped: 'Tag and missing-note lists stop at 5,000.',
   linkedNote: 'A notes folder linked on the Context tab shows in the harness context. Approve the same folder here to read its links and tags.',
 });
 
@@ -86,3 +88,14 @@ export const truncatedWords = 'The folder holds more notes than were listed.';
 export const failedWords = (code: string): string => `This folder could not be read. Code: ${code}.`;
 export const skippedFoldersWords = (count: number): string => `${count} ${count === 1 ? 'folder' : 'folders'} could not be listed.`;
 export const skippedEntriesWords = (count: number): string => `${count} ${count === 1 ? 'file' : 'files'} could not be looked at.`;
+
+/**
+ * What the harness context can be trusted for. `not-loaded`: the real launch has not read the folders yet. `partial`: the reader stopped early, could not read something, read only part of a folder, cut a text,
+ * or a notes folder linked in a harness was not read. Then the counts are lower bounds. `ok`: the reader finished and left nothing out.
+ */
+export function contextStatusOf(launchReal: boolean, state: Pick<HarnessState, 'real' | 'harnessPlaces'>): ContextStatus {
+  const real = state.real;
+  if (real === undefined) return launchReal ? 'not-loaded' : 'ok';
+  const partial = real.stoppedEarly || real.couldNotRead > 0 || real.onlyPartRead === true || real.textsCut > 0 || linkProblems(state as HarnessState).length > 0;
+  return partial ? 'partial' : 'ok';
+}

@@ -9,7 +9,7 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryView } from '../renderer/harness/memory/MemoryExplorer.js';
 import type { MemoryViewProps } from '../renderer/harness/memory/MemoryExplorer.js';
-import { MEMORY_WORDS, contextSummary, memoryRows } from '../shared/memory/view-model.js';
+import { MEMORY_WORDS, contextStatusOf, contextSummary, memoryRows } from '../shared/memory/view-model.js';
 import { MEMORY_MODULE_ID } from '../shared/memory/read-flow.js';
 import type { PlaceMemory } from '../shared/memory/read-flow.js';
 import { analyse, parseNote } from '../shared/memory/analytics.js';
@@ -204,4 +204,24 @@ test('L4: Refresh is there when a folder is approved, calls the read again, and 
   assert.match(html, />Refresh</);
   assert.doesNotMatch(render(createElement(MemoryView, base())), />Refresh</);
   void n;
+});
+
+test('H1: the context is partial when the reader read only part of it: stopped early, only part read, texts cut, could not read, or links that failed', () => {
+  const real = { couldNotRead: 0, stoppedEarly: false, notes: [], textsCut: 0 };
+  assert.equal(contextStatusOf(true, {}), 'not-loaded');
+  assert.equal(contextStatusOf(false, {}), 'ok');
+  assert.equal(contextStatusOf(true, { real }), 'ok');
+  for (const over of [{ stoppedEarly: true }, { couldNotRead: 2 }, { onlyPartRead: true }, { textsCut: 1 }]) assert.equal(contextStatusOf(true, { real: { ...real, ...over } }), 'partial', JSON.stringify(over));
+  const problem = { id: 'h', name: 'h', label: '~/h', readable: true, engines: [], parts: [], links: [], linkProblems: [{ reason: 'gone', label: 'x' }] };
+  assert.equal(contextStatusOf(true, { real, harnessPlaces: [problem as never] }), 'partial');
+});
+
+test('L-d: a total cap is told in a line', () => {
+  const html = withPlace(placeMemory({ analytics: { ...placeMemory().analytics, capped: true } }));
+  assert.match(html, /data-note="capped"[^>]*>[^<]*5,000/);
+  assert.doesNotMatch(withPlace(placeMemory()), /data-note="capped"/);
+});
+
+test('H2: notes the walk skipped make Notes a lower bound', () => {
+  assert.match(tagOf(withPlace(placeMemory({ skipped: { folders: 0, entries: 3 } })), 'notes'), /data-partial/);
 });

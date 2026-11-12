@@ -192,3 +192,21 @@ test('L3: a missing target with a bidirectional or control character is counted 
   assert.equal(result.missingLinks, 3);
   assert.deepEqual(result.missing.map(m => m.target), ['ok gone']);
 });
+
+test('S1b: front matter lines of spaces followed by a line break finish fast, in both shapes, and gain nothing', () => {
+  const spaces = ' '.repeat(250000);
+  for (const text of [`---\ntags:${spaces}\u2028x\n---\nb`, `---\ntags:${spaces}\r- x\n---\nb`, `---\ntags:\n  -${spaces}\u2028\n---\nb`, `---\ntags:\n  - ${spaces}\u2029x\n---\nb`, `---\ntag :${spaces}:\n---\n`]) {
+    const started = Date.now();
+    assert.doesNotThrow(() => parseNote('a.md', text));
+    assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  }
+  assert.deepEqual(parseNote('a.md', '---\ntags : [a]\n---\n').tags, ['a'], 'a space before the colon still works');
+  assert.deepEqual(parseNote('a.md', '---\ntags:\n  -   spaced\n---\n').tags, ['spaced']);
+});
+
+test('L-c: the analysis of 5,000 notes is not slow: a guard of ten seconds catches a big slowdown', () => {
+  const { paths, parsed } = parseAll(chain(5000));
+  const started = Date.now();
+  analyse(paths, parsed);
+  assert.ok(Date.now() - started < 10000);
+});

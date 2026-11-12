@@ -48,7 +48,9 @@ const EMPTY: MemoryAnalytics = Object.freeze({ notes: 0, links: 0, tags: 0, tagU
 
 const failedPlace = (place: ModulePlace, code: string): PlaceMemory => ({ placeId: place.id, label: place.label, status: 'failed', code, listed: 0, read: 0, notShown: 0, truncated: false, skipped: { folders: 0, entries: 0 }, unreadable: [], analytics: EMPTY });
 
-export interface ReadOptions { /** Test use: another cap. */ readonly cap?: number; /** Test use: another number of reads at once. */ readonly parallel?: number; /** Test use: another parser. */ readonly parse?: typeof parseNote }
+export interface ReadOptions { /** Test use: another cap. */ readonly cap?: number; /** Test use: another number of reads at once. */ readonly parallel?: number; /** Test use: another parser. */ readonly parse?: typeof parseNote;
+  /** True when the read was cancelled (the screen left, or the folders changed). Each worker asks before it starts a read, so a cancelled read starts no more. */
+  readonly cancelled?: () => boolean }
 
 /** A refusal that is about the folder, not about one note: the rest of the reads would fail the same way, so the read stops. */
 const PLACE_LEVEL: ReadonlySet<string> = new Set(['NOT_APPROVED', 'PLACE_CHANGED', 'RECORD_DAMAGED', 'RECORD_BLOCKED', 'HOME_UNREADABLE', 'UNKNOWN_MODULE', 'NOT_ALLOWED']);
@@ -68,7 +70,7 @@ async function readPlace(bridge: Pick<ModulesBridge, 'listModuleFiles' | 'readMo
   let next = 0, aborted: string | null = null;
   const count = (code: string): void => { unreadable.set(code, (unreadable.get(code) ?? 0) + 1); };
   const worker = async (): Promise<void> => {
-    for (let i = next++; i < shown.length && aborted === null; i = next++) {
+    for (let i = next++; i < shown.length && aborted === null && options.cancelled?.() !== true; i = next++) {
       const path = shown[i]!;
       let text: string;
       try {
@@ -99,7 +101,7 @@ async function readPlace(bridge: Pick<ModulesBridge, 'listModuleFiles' | 'readMo
 /** Reads each approved folder in turn. */
 export async function readAllMemory(bridge: Pick<ModulesBridge, 'listModuleFiles' | 'readModuleFile'>, moduleId: string, places: readonly ModulePlace[], options: ReadOptions = {}): Promise<PlaceMemory[]> {
   const out: PlaceMemory[] = [];
-  for (const place of places) out.push(await readPlaceMemory(bridge, moduleId, place, options));
+  for (const place of places) { if (options.cancelled?.() === true) break; out.push(await readPlaceMemory(bridge, moduleId, place, options)); }
   return out;
 }
 
@@ -114,3 +116,31 @@ export const notesArePartial = (p: PlaceMemory): boolean => p.truncated || p.ski
 
 /** Links, tags and missing links are lower bounds when any note was left out of the read: not shown, not read, cut, skipped, or a total cap was reached. */
 export const layersArePartial = (p: PlaceMemory): boolean => notesArePartial(p) || p.notShown > 0 || p.unreadable.length > 0 || p.analytics.capped;
+
+/**
+ * The state of the read, held apart from React so a test drives it: `run` reads the folders and tells each state (`loading`, then `ready` or `failed`); a new `run` is a refresh; `cancel` stops the read in flight
+ * and tells nothing more. A read that fails outside every call is a failed state with its code, also on a second run. `read` is for a test.
+ */
+export function createMemoryReader(o: {
+  readonly bridge: Pick<ModulesBridge, 'listModuleFiles' | 'readModuleFile'>;
+  readonly moduleId: string;
+  readonly onState: (state: MemoryState) => void;
+  readonly read?: (bridge: Pick<ModulesBridge, 'listModuleFiles' | 'readModuleFile'>, moduleId: string, places: readonly ModulePlace[], options: ReadOptions) => Promise<PlaceMemory[]>;
+}): { run(places: readonly ModulePlace[]): Promise<void>; cancel(): void } {
+  let turn = 0;
+  const read = o.read ?? readAllMemory;
+  return {
+    async run(places) {
+      const mine = ++turn;
+      const live = (): boolean => turn === mine;
+      o.onState({ status: 'loading', places: [], code: null });
+      try {
+        const done = await read(o.bridge, o.moduleId, places, { cancelled: () => !live() });
+        if (live()) o.onState({ status: 'ready', places: done, code: null });
+      } catch {
+        if (live()) o.onState({ status: 'failed', places: [], code: 'FAILED' });
+      }
+    },
+    cancel() { turn += 1; },
+  };
+}
