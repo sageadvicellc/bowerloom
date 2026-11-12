@@ -18,6 +18,10 @@ const MODULE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PLACE_ID = /^place-[0-9a-f]{12}$/;
 const KEY = /^[0-9a-f]{32}$/;
 const REL_PART = /^[^./\\\0][^/\\\0]{0,254}$/;
+/** Control characters and format characters (zero-width and bidirectional marks), and the two line separators: none may be in the name of a place or of a path inside it. The rule of notes-source's plainName, with the format class added. */
+const ODD_CHARACTER = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+/** One plain part of a path: not hidden, no separator, no NUL, no control or bidirectional character, at most 255 characters. */
+const plainPart = (part: string): boolean => REL_PART.test(part) && !ODD_CHARACTER.test(part);
 
 export const scopeFileOf = (stateRoot: string): string => path.join(stateRoot, 'module-scope', 'approved.json');
 const keyOf = (realFolder: string): string => createHash('sha256').update(`bowerloom-module-scope\u0000${realFolder}`).digest('hex').slice(0, 32);
@@ -32,6 +36,13 @@ const uid = (): number | undefined => process.getuid?.();
 const ownFolder = (info: fs.Stats): boolean => !info.isSymbolicLink() && info.isDirectory() && (uid() === undefined || info.uid === uid());
 const isPrivate = (info: fs.Stats): boolean => (info.mode & 0o022) === 0;
 const codeOf = (error: unknown): string => (typeof error === 'object' && error !== null && typeof (error as { code?: unknown }).code === 'string' ? (error as { code: string }).code : '');
+/** The class of a failure as a short word, for a log: the error code (such as ENOENT) or the error name. Never the message, which can hold a path. */
+export function causeOf(error: unknown): string {
+  const code = codeOf(error);
+  if (/^[A-Z0-9_]{1,40}$/.test(code)) return code;
+  const name = typeof error === 'object' && error !== null ? (error as { name?: unknown }).name : undefined;
+  return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(name) ? name : 'Error';
+}
 const inside = (root: string, child: string): boolean => child !== root && child.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 
 type Record_ = { readonly status: 'none' } | { readonly status: 'damaged' } | { readonly status: 'blocked' } | { readonly status: 'ok'; readonly modules: Modules };
@@ -41,7 +52,7 @@ function validStored(value: unknown): value is Stored {
   const v = value as Record<string, unknown>;
   if (typeof v.id !== 'string' || !PLACE_ID.test(v.id) || typeof v.key !== 'string' || !KEY.test(v.key) || v.id !== placeIdOf(v.key)) return false;
   if (typeof v.at !== 'string' || v.at.length > 40 || typeof v.rel !== 'string' || v.rel.length > SCOPE_LIMITS.pathChars) return false;
-  return v.rel.split('/').every(part => REL_PART.test(part));
+  return v.rel.split('/').every(plainPart);
 }
 
 function readRecord(stateRoot: string): Record_ {
@@ -112,27 +123,46 @@ export function listPlaces(o: { readonly stateRoot: string; readonly home: strin
   return { status: 'ok', places: Object.freeze((record.modules[o.moduleId] ?? []).map(viewOf)) };
 }
 
-export type ApproveRefusal = 'BAD_MODULE' | 'NOT_A_FOLDER' | 'NOT_IN_HOME' | 'HIDDEN_PART' | 'STATE_FOLDER' | 'FULL' | 'RECORD_BLOCKED' | 'RECORD_NOT_MOVED' | 'FAILED';
-export type Approved = { readonly status: 'kept'; readonly place: PlaceView } | { readonly status: 'refused'; readonly code: ApproveRefusal };
-const refused = (code: ApproveRefusal): Approved => ({ status: 'refused', code });
+export type ApproveRefusal = 'BAD_MODULE' | 'NOT_A_FOLDER' | 'HOME_UNREADABLE' | 'NOT_IN_HOME' | 'HIDDEN_PART' | 'BAD_NAME' | 'PATH_TOO_LONG' | 'STATE_FOLDER' | 'LIBRARY_FOLDER' | 'FULL'
+  | 'RECORD_BLOCKED' | 'RECORD_NOT_MOVED' | 'RECORD_RESET_FAILED' | 'FAILED';
+/** `cause`: the class of the failure behind a refusal (a code or a name, never a message), for a log. `resetRecord`: a damaged record was set aside during this call, so the old list is no longer the list in use. */
+export type Approved =
+  | { readonly status: 'kept'; readonly place: PlaceView; readonly resetRecord?: true }
+  | { readonly status: 'refused'; readonly code: ApproveRefusal; readonly cause?: string; readonly resetRecord?: true };
+const refused = (code: ApproveRefusal, cause?: string, resetRecord?: true): Approved => ({ status: 'refused', code, ...(cause === undefined ? {} : { cause }), ...(resetRecord === undefined ? {} : { resetRecord }) });
 
 /**
- * Records the person's pick of a folder as a place for one module. The pick is resolved to its real path, so a shortcut is approved as the folder it leads to. A place must be below the home folder (not the
- * home folder itself), must have no hidden part (such as `.ssh`), and must not hold or sit in the state folder. A damaged record is moved aside under a dated name first: the pick is the person's consent to a new list.
+ * The checks of a place, for an approval and again for every read: below the home folder (not the home folder itself), every part plain (no hidden part, no control or bidirectional character, a path of at most
+ * `pathChars`), not touching the state folder, and not in Library. Both paths are real paths. Null when the place passes.
  */
-export function approvePlace(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly picked: string; readonly now?: () => string }): Approved {
+function placeProblem(home: string, real: string, stateRoot: string): ApproveRefusal | null {
+  if (!inside(home, real)) return 'NOT_IN_HOME';
+  const rel = path.relative(home, real).split(path.sep);
+  if (rel.some(part => part.startsWith('.'))) return 'HIDDEN_PART';
+  if (!rel.every(plainPart)) return 'BAD_NAME';
+  if (rel.join('/').length > SCOPE_LIMITS.pathChars) return 'PATH_TOO_LONG';
+  const state = plannedReal(stateRoot);
+  if (state === null || state === real || inside(real, state) || inside(state, real)) return 'STATE_FOLDER';
+  if (rel[0]!.toLowerCase() === 'library') return 'LIBRARY_FOLDER';
+  return null;
+}
+
+/**
+ * Records the person's pick of a folder as a place for one module. The pick is resolved to its real path, so a shortcut is approved as the folder it leads to. A place must pass `placeProblem`. A damaged record is moved
+ * aside under a dated name first: the pick is the person's consent to a new list, and the answer says so (`resetRecord`). `write` is for a test: another writer of the record.
+ */
+export function approvePlace(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly picked: string; readonly now?: () => string; readonly write?: (stateRoot: string, modules: Modules) => void }): Approved {
   if (typeof o.moduleId !== 'string' || !MODULE_ID.test(o.moduleId)) return refused('BAD_MODULE');
-  let real: string, home: string;
+  let home: string, real: string;
+  try { home = fs.realpathSync.native(o.home); } catch (error) { return refused('HOME_UNREADABLE', causeOf(error)); }
   try {
-    home = fs.realpathSync.native(o.home);
     real = fs.realpathSync.native(o.picked);
     if (!fs.statSync(real).isDirectory()) return refused('NOT_A_FOLDER');
-  } catch { return refused('NOT_A_FOLDER'); }
-  if (!inside(home, real)) return refused('NOT_IN_HOME');
+  } catch (error) { return refused('NOT_A_FOLDER', causeOf(error)); }
+  const problem = placeProblem(home, real, o.stateRoot);
+  if (problem !== null) return refused(problem);
   const rel = path.relative(home, real).split(path.sep);
-  if (!rel.every(part => REL_PART.test(part)) || rel.join('/').length > SCOPE_LIMITS.pathChars) return refused(rel.some(part => part.startsWith('.')) ? 'HIDDEN_PART' : 'FAILED');
-  const state = plannedReal(o.stateRoot);
-  if (state === null || state === real || inside(real, state) || inside(state, real)) return refused('STATE_FOLDER');
+  let reset = false;
   try {
     const dir = path.join(o.stateRoot, 'module-scope');
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -142,6 +172,7 @@ export function approvePlace(o: { readonly stateRoot: string; readonly home: str
     if (record.status === 'blocked') return refused('RECORD_BLOCKED');
     if (record.status === 'damaged') {
       if (!setAside(dir, scopeFileOf(o.stateRoot))) return refused('RECORD_NOT_MOVED');
+      reset = true;
       record = { status: 'none' };
     }
     const modules: Modules = Object.create(null) as Modules;
@@ -149,19 +180,19 @@ export function approvePlace(o: { readonly stateRoot: string; readonly home: str
     const key = keyOf(real);
     const list = modules[o.moduleId] ?? [];
     const held = list.find(s => s.key === key);
-    if (held !== undefined) return { status: 'kept', place: viewOf(held) };
-    if (list.length >= SCOPE_LIMITS.placesPerModule || (modules[o.moduleId] === undefined && Object.keys(modules).length >= SCOPE_LIMITS.modules)) return refused('FULL');
+    if (held !== undefined) return { status: 'kept', place: viewOf(held), ...(reset ? { resetRecord: true as const } : {}) };
+    if (list.length >= SCOPE_LIMITS.placesPerModule || (modules[o.moduleId] === undefined && Object.keys(modules).length >= SCOPE_LIMITS.modules)) return refused('FULL', undefined, reset ? true : undefined);
     const stored: Stored = { id: placeIdOf(key), rel: rel.join('/'), key, at: (o.now ?? ((): string => new Date().toISOString()))() };
     modules[o.moduleId] = [...list, stored];
-    writeRecord(o.stateRoot, modules);
-    return { status: 'kept', place: viewOf(stored) };
-  } catch { return refused('FAILED'); }
+    (o.write ?? writeRecord)(o.stateRoot, modules);
+    return { status: 'kept', place: viewOf(stored), ...(reset ? { resetRecord: true as const } : {}) };
+  } catch (error) { return refused(reset ? 'RECORD_RESET_FAILED' : 'FAILED', causeOf(error), reset ? true : undefined); }
 }
 
-export type Revoked = { readonly status: 'revoked' } | { readonly status: 'unknown' } | { readonly status: 'damaged' } | { readonly status: 'blocked' } | { readonly status: 'failed' };
+export type Revoked = { readonly status: 'revoked' } | { readonly status: 'unknown' } | { readonly status: 'damaged' } | { readonly status: 'blocked' } | { readonly status: 'failed'; readonly cause: string };
 
 /** Removes one place of one module from the record. It deletes no file of the person's. */
-export function revokePlace(o: { readonly stateRoot: string; readonly moduleId: unknown; readonly placeId: unknown }): Revoked {
+export function revokePlace(o: { readonly stateRoot: string; readonly moduleId: unknown; readonly placeId: unknown; readonly write?: (stateRoot: string, modules: Modules) => void }): Revoked {
   const record = readRecord(o.stateRoot);
   if (record.status === 'damaged' || record.status === 'blocked') return { status: record.status };
   if (record.status === 'none' || typeof o.moduleId !== 'string' || !MODULE_ID.test(o.moduleId) || typeof o.placeId !== 'string') return { status: 'unknown' };
@@ -170,43 +201,55 @@ export function revokePlace(o: { readonly stateRoot: string; readonly moduleId: 
   const modules: Modules = Object.create(null) as Modules;
   for (const [id, l] of Object.entries(record.modules)) modules[id] = id === o.moduleId ? l.filter(s => s.id !== o.placeId) : [...l];
   if (modules[o.moduleId]!.length === 0) delete modules[o.moduleId];
-  try { writeRecord(o.stateRoot, modules); return { status: 'revoked' }; } catch { return { status: 'failed' }; }
+  try { (o.write ?? writeRecord)(o.stateRoot, modules); return { status: 'revoked' }; } catch (error) { return { status: 'failed', cause: causeOf(error) }; }
 }
 
-export type ReadCode = 'NOT_APPROVED' | 'PLACE_CHANGED' | 'BAD_PATH' | 'OUTSIDE_PLACE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_TEXT' | 'UNREADABLE';
+export type ReadCode = 'NOT_APPROVED' | 'PLACE_CHANGED' | 'BAD_PATH' | 'OUTSIDE_PLACE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_TEXT' | 'UNREADABLE' | 'RECORD_DAMAGED' | 'RECORD_BLOCKED';
 export type ReadAnswer = { readonly ok: true; readonly text: string } | { readonly ok: false; readonly code: ReadCode };
 const no = (code: ReadCode): ReadAnswer => ({ ok: false, code });
 
-/** True for a path that is one plain relative path of parts with no dot part, no hidden part, no empty part and no separator of another system. */
+/** True for a path that is one plain relative path of plain parts: no dot part, no hidden part, no empty part, no separator of another system, no control or bidirectional character. */
 function cleanRelative(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= SCOPE_LIMITS.pathChars && value.split('/').every(part => REL_PART.test(part));
+  return typeof value === 'string' && value.length > 0 && value.length <= SCOPE_LIMITS.pathChars && value.split('/').every(plainPart);
 }
 
 /**
- * Reads one text file of an approved place of a module. The answer is the text or one short code, and it never holds a path. The gate, in order: the module and place id are well formed and the record
- * holds that place for that module (NOT_APPROVED); the place is still the same folder (PLACE_CHANGED); the relative path is plain (BAD_PATH); the real path of the file is inside the real path of the
- * place, so a link cannot lead out (OUTSIDE_PLACE); the file is a regular file (NOT_A_FILE) of at most `readBytes` (TOO_LARGE) that is valid UTF-8 text with no NUL (NOT_TEXT).
+ * Reads one text file of an approved place of a module. The answer is the text or one short code, and it never holds a path. The gate, in order: the module and place id are well formed; the record can be used
+ * (RECORD_DAMAGED, RECORD_BLOCKED) and holds that place for that module (NOT_APPROVED); the place is still the same folder (PLACE_CHANGED) and still passes the checks of an approval (NOT_APPROVED); the relative path
+ * is plain (BAD_PATH); the real path of the file is inside the real path of the place, so a link cannot lead out (OUTSIDE_PLACE), and every part of its path inside the place is plain, so a link cannot lead to a
+ * hidden file (BAD_PATH). The file is opened without following a link and without blocking, the opened file must be the one that was looked at, and must be a regular file (NOT_A_FILE: never a pipe or a device);
+ * the real path is worked out again before the read. At most `readBytes` (TOO_LARGE), valid UTF-8 text with no NUL (NOT_TEXT).
  */
 export function readPlaceFile(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly placeId: unknown; readonly path: unknown }): ReadAnswer {
   if (typeof o.moduleId !== 'string' || !MODULE_ID.test(o.moduleId) || typeof o.placeId !== 'string' || !PLACE_ID.test(o.placeId)) return no('NOT_APPROVED');
   const record = readRecord(o.stateRoot);
+  if (record.status === 'damaged') return no('RECORD_DAMAGED');
+  if (record.status === 'blocked') return no('RECORD_BLOCKED');
   if (record.status !== 'ok') return no('NOT_APPROVED');
   const stored = (record.modules[o.moduleId] ?? []).find(s => s.id === o.placeId);
   if (stored === undefined) return no('NOT_APPROVED');
-  let placeReal: string;
-  try { placeReal = fs.realpathSync.native(path.join(fs.realpathSync.native(o.home), ...stored.rel.split('/'))); } catch { return no('PLACE_CHANGED'); }
+  let home: string, placeReal: string;
+  try { home = fs.realpathSync.native(o.home); } catch { return no('UNREADABLE'); }
+  try { placeReal = fs.realpathSync.native(path.join(home, ...stored.rel.split('/'))); } catch { return no('PLACE_CHANGED'); }
   if (keyOf(placeReal) !== stored.key) return no('PLACE_CHANGED');
+  if (placeProblem(home, placeReal, o.stateRoot) !== null) return no('NOT_APPROVED');
   if (!cleanRelative(o.path)) return no('BAD_PATH');
-  let fileReal: string;
-  try { fileReal = fs.realpathSync.native(path.join(placeReal, ...o.path.split('/'))); } catch { return no('UNREADABLE'); }
+  const walk = (): string | null => { try { return fs.realpathSync.native(path.join(placeReal, ...(o.path as string).split('/'))); } catch { return null; } };
+  const fileReal = walk();
+  if (fileReal === null) return no('UNREADABLE');
   if (!inside(placeReal, fileReal)) return no('OUTSIDE_PLACE');
+  if (!path.relative(placeReal, fileReal).split(path.sep).every(plainPart)) return no('BAD_PATH');
   let fd: number | undefined;
   try {
     const before = fs.lstatSync(fileReal);
     if (!before.isFile()) return no('NOT_A_FILE');
-    fd = fs.openSync(fileReal, 'r');
+    fd = fs.openSync(fileReal, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
     const info = fs.fstatSync(fd);
     if (!info.isFile()) return no('NOT_A_FILE');
+    if (info.dev !== before.dev || info.ino !== before.ino) return no('UNREADABLE');
+    // The path is worked out again: a link that was moved while the file was opened must still lead to this file, inside the place.
+    const again = walk();
+    if (again !== fileReal || !inside(placeReal, again)) return no('OUTSIDE_PLACE');
     if (info.size > SCOPE_LIMITS.readBytes) return no('TOO_LARGE');
     const buffer = Buffer.alloc(SCOPE_LIMITS.readBytes + 1);
     let length = 0;
