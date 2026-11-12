@@ -1,0 +1,7 @@
+{
+  "id": "extension-template",
+  "title": "Extension template",
+  "kind": "ui",
+  "routes": ["extension-template"],
+  "protected": false
+}

@@ -20,7 +20,7 @@ import { createScreenRegistry, registerBundled, screenMountOf } from '../rendere
 import { localRouteState } from '../renderer/harness/bundled-extensions.js';
 import type { Bundled } from '../renderer/harness/bundled-extensions.js';
 import { LOCAL_MODELS_MANIFEST, MODULES_MANIFEST, createSampleLocal } from '../shared/local-models/sample.js';
-import { MODULE_WORDS, moduleRows } from '../shared/modules/view-model.js';
+import { MODULE_WORDS, moduleRows, ownRouteOf } from '../shared/modules/view-model.js';
 import { formatRoute, navKeyOf, parseRoute } from '../shared/harness/route.js';
 import { createHarnessStore } from '../shared/harness/store.js';
 import { createSampleWorld } from '../shared/harness/sample.js';
@@ -251,4 +251,39 @@ test('the missing bridge is logged once, at launch by the client, and the screen
   const client = readFileSync(join(DESKTOP, 'renderer/api/client.ts'), 'utf8');
   assert.doesNotMatch(screen, /console\./);
   assert.equal((client.match(/BRIDGE_MISSING/g) ?? []).length >= 1 && (client.match(/console\.error\(/g) ?? []).length, 1);
+});
+
+const TEMPLATE = { id: 'extension-template', title: 'Extension template', kind: 'ui' as const, routes: ['extension-template'], protected: false };
+
+test('an installed extension-template row opens its own page at the generic extension address, and Local models keeps its own route', () => {
+  assert.deepEqual(ownRouteOf(LOCAL_MODELS_MANIFEST), { name: 'local-models' });
+  assert.deepEqual(ownRouteOf(TEMPLATE), { name: 'extension', route: 'extension-template' });
+  assert.equal(formatRoute(ownRouteOf(TEMPLATE), '#app'), '#app/extension/extension-template');
+  const rows = moduleRows([LOCAL_MODELS_MANIFEST, MODULES_MANIFEST, TEMPLATE], 'extension-template');
+  assert.deepEqual(rows.map(r => r.id), ['local-models', 'extension-template']);
+  const html = body({ rows, selected: rows[1]!, reads: reads(), embedded: null });
+  assert.match(html, /data-module="extension-template"/);
+  assert.match(html, /Open its own page/);
+});
+
+test('#app/modules still reaches the Modules screen after the generic extension routes joined: the screen draws, and no extension state stands in for it', () => {
+  const registry = createScreenRegistry();
+  registerBundled(registry, [MODULES_MANIFEST]);
+  (globalThis as G).location = { hash: '#app/modules' };
+  try {
+    const store = createHarnessStore({ initial: createSampleWorld(NOW), now: () => NOW, finishRunning: false });
+    const html = render(createElement(HarnessApp, { store, engine: null, local: null, modules: null, realMode: true, registry } as never));
+    assert.match(html, /data-screen="modules"/);
+    assert.doesNotMatch(html, /data-extension-pending|data-extension-absent|ROUTE_NOT_FOUND/);
+  } finally { delete (globalThis as G).location; }
+  assert.deepEqual(parseRoute('#app/modules'), { name: 'modules' });
+  assert.deepEqual(parseRoute('#app/extension/modules'), { name: 'extension', route: 'modules' }, 'the generic address stays a different address');
+  assert.equal(navKeyOf({ name: 'modules' }), 'modules');
+  assert.equal(navKeyOf({ name: 'extension', route: 'extension-template' }), 'ext:extension-template');
+});
+
+test('the navigation opens the Modules entry at its own route before the generic fallback', () => {
+  const text = readFileSync(join(DESKTOP, 'renderer/harness/Shell.tsx'), 'utf8');
+  assert.ok(text.indexOf("x.id === 'modules'") > 0 && text.indexOf("x.id === 'modules'") < text.indexOf('extensionRouteOf(x)'), 'the modules branch comes first');
+  assert.match(text, /onOpen: \(\) => go\(\{ name: 'modules' \}\)/);
 });

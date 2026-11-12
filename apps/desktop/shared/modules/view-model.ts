@@ -5,6 +5,8 @@
  * The words live here. They obey the preview's word rules (tests/harness-words.test.ts scans this folder).
  */
 import type { ExtensionManifest } from '../extensions/types.js';
+import { extensionRouteOf } from '../extensions/nav.js';
+import type { Route } from '../harness/route.js';
 import type { ModuleApproval, ModulePlace, ModuleRefusalCode } from '../api/modules.js';
 
 /** The id of the Modules view itself. It is listed in the navigation, and it is not one of its own modules. */
@@ -104,6 +106,9 @@ export function moduleRows(listed: readonly ExtensionManifest[], selected: strin
     .filter(m => !m.protected && m.id !== MODULES_ID && m.routes.length > 0)
     .map(m => Object.freeze({ id: m.id, title: m.title, route: m.routes[0]!, current: m.id === selected })));
 }
+
+/** The page of a module on its own route: Local models has a route of its own, and every other stock extension opens at `#app/extension/<route>`. */
+export const ownRouteOf = (manifest: ExtensionManifest): Route => (manifest.id === 'local-models' ? { name: 'local-models' } : extensionRouteOf(manifest));
 
 /** The count line after the title, such as "1 module". Null when there is none. */
 export const moduleCount = (rows: readonly ModuleRow[]): string | undefined => (rows.length === 0 ? undefined : `${rows.length} ${rows.length === 1 ? 'module' : 'modules'}`);

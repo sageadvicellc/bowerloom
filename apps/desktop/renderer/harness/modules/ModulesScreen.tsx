@@ -8,7 +8,7 @@ import { Screen } from '../Screen.js';
 import { HButton } from '../parts/controls.js';
 import { HIcon } from '../icons.js';
 import { go } from '../router.js';
-import { MODULE_WORDS, approvedDay, callWords, moduleCount, moduleRows } from '../../../shared/modules/view-model.js';
+import { MODULE_WORDS, approvedDay, callWords, moduleCount, moduleRows, ownRouteOf } from '../../../shared/modules/view-model.js';
 import type { ModuleRow } from '../../../shared/modules/view-model.js';
 import type { ExtensionManifest } from '../../../shared/extensions/types.js';
 import { PendingBody } from '../local-models/LocalModels.js';
@@ -117,8 +117,8 @@ export function ModulesBody({ rows, selected, missing, reads, embedded, onOpen, 
   );
 }
 
-/** The route of an extension that has its own page: its first route, as a base route name or an extension route. Only a name the router knows opens. */
-const openOwn = (route: string): void => { if (route === 'local-models') go({ name: 'local-models' }); };
+/** The page of a module on its own route (shared/modules/view-model.ts: `ownRouteOf`). An installed extension such as the template opens at `#app/extension/<route>`. */
+const openOwn = (manifest: ExtensionManifest | undefined): void => { if (manifest !== undefined) go(ownRouteOf(manifest)); };
 
 export function Modules({ id }: { id: string | null }): ReactElement {
   const { bridge, sample, real, listed } = useModules();
@@ -132,7 +132,7 @@ export function Modules({ id }: { id: string | null }): ReactElement {
   return (
     <Screen slot="modules" title={MODULE_WORDS.title} count={moduleCount(rows)}>
       <ModulesBody rows={rows} selected={selected} missing={id !== null && selected === null} reads={reads} embedded={Page === undefined ? null : <Page />}
-        onOpen={next => go({ name: 'modules', id: next })} onBack={() => go({ name: 'modules' })} onOpenOwn={openOwn} />
+        onOpen={next => go({ name: 'modules', id: next })} onBack={() => go({ name: 'modules' })} onOpenOwn={route => openOwn(listed.find(m => m.routes[0] === route))} />
     </Screen>
   );
 }
