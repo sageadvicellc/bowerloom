@@ -10,7 +10,7 @@ import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HarnessApp } from '../renderer/harness/HarnessApp.js';
 import { RouteScreen, createScreenRegistry, registerBundled, screenMountOf } from '../renderer/harness/extension-mounts.js';
-import { extensionAbsence } from '../renderer/harness/bundled-extensions.js';
+import { extensionAbsence, extensionRouteState, followExtensions } from '../renderer/harness/bundled-extensions.js';
 import type { Bundled } from '../renderer/harness/bundled-extensions.js';
 import { ExtensionAbsentBody, ExtensionPendingBody } from '../renderer/harness/extensions/ExtensionPending.js';
 import { LOCAL_MODELS_MANIFEST } from '../shared/local-models/sample.js';
@@ -321,7 +321,7 @@ test('a mount that does not own the generic address names the route of the addre
 
 const BUNDLE = (over: Partial<Bundled>): Bundled => ({ extensions: [], ready: true, problem: null, skipped: [], unmounted: [], ...over });
 
-test('a deep link to an extension that main skipped names the folder and the code, and one that loaded with no screen says so', () => {
+test('extensionAbsence and the absent body (the pure parts, not the page): a skipped folder gives its name and code, a manifest with no screen says so, an unrelated skip is not blamed', () => {
   assert.deepEqual(extensionAbsence(BUNDLE({ skipped: [{ name: 'weekly-notes', code: 'BAD_MANIFEST' }] }), 'weekly-notes'), { kind: 'skipped', name: 'weekly-notes', code: 'BAD_MANIFEST' });
   assert.deepEqual(extensionAbsence(BUNDLE({ unmounted: [{ id: 'no-screen', title: 'No screen', kind: 'ui', routes: ['no-screen', 'second'], protected: false }] }), 'second'), { kind: 'no-screen', id: 'no-screen' });
   assert.equal(extensionAbsence(BUNDLE({ skipped: [{ name: 'other', code: 'NOT_JSON' }] }), 'weekly-notes'), null, 'an unrelated skip is not blamed');
@@ -339,4 +339,43 @@ test('the waiting screen of an extension says the host has not started only for 
   const other = renderToStaticMarkup(createElement(ExtensionPendingBody, { problem: 'FAILED' }));
   assert.match(other, /FAILED/); assert.doesNotMatch(other, /host has not started/);
   assert.match(renderToStaticMarkup(createElement(ExtensionPendingBody, { problem: null })), /Looking for this extension/);
+});
+
+const ID_REFUSED: Record<string, unknown> = { id: 'extension-template', title: 'Template', kind: 'ui', routes: ['help'], protected: false };
+const NO_MOUNT: Record<string, unknown> = { id: 'nothing-here', title: 'Nothing', kind: 'ui', routes: ['nothing-here'], protected: false };
+
+test('followExtensions keeps a listed manifest with no screen apart from one the registry refused', async () => {
+  const screens = createScreenRegistry();
+  const bridge = { localModels: () => Promise.reject(new Error('x')), listExtensions: () => Promise.resolve({ extensions: [NO_MOUNT, ID_REFUSED], skipped: [] }) } as unknown as LocalBridge;
+  const state = await new Promise<Bundled>(resolve => { followExtensions(screens, bridge, resolve, { after: () => 0, cancel: () => undefined }); });
+  assert.deepEqual((state.unmounted ?? []).map(m => m.id), ['nothing-here']);
+  assert.deepEqual((state.refused ?? []).map(r => [r.id, r.code]), [['extension-template', 'RESERVED']]);
+  assert.deepEqual(state.extensions, []);
+});
+
+test('a refusal shows its code, and only a true no-mount says this build has no screen for it', () => {
+  const refused = BUNDLE({ refused: [{ id: 'extension-template', routes: ['help', 'extension-template'], code: 'RESERVED' }], unmounted: [] });
+  assert.deepEqual(extensionAbsence(refused, 'extension-template'), { kind: 'refused', id: 'extension-template', code: 'RESERVED' });
+  const html = renderToStaticMarkup(createElement(ExtensionAbsentBody, { absence: { kind: 'refused', id: 'extension-template', code: 'RESERVED' } }));
+  assert.match(html, /RESERVED/); assert.match(html, /extension-template/); assert.doesNotMatch(html, /no screen for it/);
+  assert.match(renderToStaticMarkup(createElement(ExtensionAbsentBody, { absence: { kind: 'no-screen', id: 'x' } })), /no screen for it/);
+});
+
+test('the route of an extension decides in one order: wait, then the screen the registry owns, then the absence the list explains, then the plain not-found', () => {
+  const screens = createScreenRegistry();
+  registerBundled(screens, [JSON.parse(readFileSync(TEMPLATE_MANIFEST, 'utf8'))]);
+  const skipped = [{ name: 'weekly-notes', code: 'BAD_MANIFEST' }];
+  assert.deepEqual(extensionRouteState(BUNDLE({ ready: false, skipped }), screens, 'weekly-notes'), { kind: 'wait' });
+  assert.deepEqual(extensionRouteState(BUNDLE({ ready: false }), screens, TEMPLATE_ID), { kind: 'wait' }, 'even a route that exists waits until the list answers');
+  assert.deepEqual(extensionRouteState(BUNDLE({ skipped }), screens, TEMPLATE_ID), { kind: 'screen' });
+  assert.deepEqual(extensionRouteState(BUNDLE({ skipped }), screens, 'weekly-notes'), { kind: 'absent', absence: { kind: 'skipped', name: 'weekly-notes', code: 'BAD_MANIFEST' } });
+  assert.deepEqual(extensionRouteState(BUNDLE({ skipped }), screens, 'unknown-route'), { kind: 'screen' }, 'nothing explains it, so the screen draws the plain not-found state');
+  assert.match(render('#app/extension/unknown-route', screens), NOT_FOUND);
+});
+
+test('HarnessApp picks the extension screen with extensionRouteState, and draws the waiting line, then the absent line, then the registry screen', () => {
+  const app = readFileSync(join(DESKTOP, 'renderer/harness/HarnessApp.tsx'), 'utf8');
+  assert.match(app, /extensionRouteState\(bundled, registry, route\.route\)/);
+  const wait = app.indexOf("ext?.kind === 'wait'"), absent = app.indexOf("ext?.kind === 'absent'"), screen = app.indexOf("at === 'screen'");
+  assert.ok(wait > 0 && absent > wait && screen > absent, 'the order in the page is wait, absent, screen');
 });

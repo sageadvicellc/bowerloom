@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { KitError, KIT_CODES, KIT_WARNINGS, readExtension, checkManifestValue, checkNewId, checkTree, installTemplate, listTree, mountLines, mountedIds, removeExtension, scaffold, TEMPLATE_ID } from '../lib/extension-kit.mjs';
+import { KitError, KIT_CODES, KIT_WARNINGS, readExtension, readMountTable, checkManifestValue, checkNewId, checkTree, installTemplate, listTree, mountLines, mountedIds, removeExtension, scaffold, TEMPLATE_ID } from '../lib/extension-kit.mjs';
 
 const script = fileURLToPath(new URL('../extension-kit.mjs', import.meta.url));
 const made = [];
@@ -313,6 +313,93 @@ test('install-template refuses when the template has no screen in the mount tabl
   fs.rmSync(file);
   assert.equal(refusal(() => installTemplate(root)), 'NO_MOUNT_TABLE');
   assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/extension-template')), false);
+});
+
+
+const REMOVING = '.removing-aabbccddeeff';
+
+test('check and list report a leftover .removing folder as REMOVE_INCOMPLETE, never as an extension, and name the remedy', () => {
+  const root = tree();
+  putExt(root, REMOVING, manifestText('left-over'));
+  putExt(root, '.hidden', manifestText('hidden-one'));
+  for (const result of [checkTree(root), listTree(root)]) {
+    assert.deepEqual(result.extensions.map(e => e.id), ['local-models']);
+    assert.deepEqual(codes(result), [`${REMOVING}:REMOVE_INCOMPLETE`, '.hidden:BAD_NAME']);
+    const message = result.problems[0].message;
+    assert.match(message, /remove \.removing-aabbccddeeff/); assert.match(message, /by hand/); assert.match(message, /skips/);
+  }
+  assert.equal(readExtension(path.join(root, 'apps/desktop/extensions'), '.hidden').code, 'BAD_NAME');
+});
+
+test('remove accepts a .removing folder, so a second run finishes a removal that stopped', () => {
+  const root = tree();
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/b-notes.txt'), 'x');
+  const failing = { unlink: file => { if (path.basename(file) === 'b-notes.txt') throw Object.assign(new Error('no'), { code: 'EACCES' }); fs.unlinkSync(file); } };
+  let error;
+  try { removeExtension(root, 'local-models', failing); } catch (e) { error = e; }
+  assert.equal(error.code, 'REMOVE_INCOMPLETE');
+  assert.match(error.message, /skips a folder/); assert.match(error.message, /remove \.removing-[0-9a-f]{12}/); assert.match(error.message, /by hand/);
+  const [left] = fs.readdirSync(path.join(root, 'apps/desktop/extensions'));
+  assert.deepEqual(codes(checkTree(root)), [`${left}:REMOVE_INCOMPLETE`]);
+  const done = removeExtension(root, left);
+  assert.deepEqual(done.removed, [`apps/desktop/extensions/${left}`]);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'apps/desktop/extensions')), []);
+  assert.equal(refusal(() => removeExtension(root, '.removing-zzzz')), 'BAD_ID', 'only the exact shape of a leftover is accepted');
+  assert.equal(refusal(() => removeExtension(root, '.hidden')), 'BAD_ID');
+});
+
+test('a title with a format or invisible character is refused, as the loader treats such text', () => {
+  const root = tree();
+  for (const title of ['a‮b', 'a​b', 'a b', 'a⠀b', 'a﻿b', 'a឴b']) assert.equal(refusal(() => scaffold(root, { id: 'safe-three', title })), 'BAD_TITLE', JSON.stringify(title));
+});
+
+test('scaffold refuses a template that does not hold exactly one title literal', () => {
+  const root = tree();
+  const file = path.join(root, 'apps/desktop/renderer/harness/extensions/ExtensionTemplate.tsx');
+  fs.writeFileSync(file, SCREEN + 'const again = (<Screen title={"Extension template"} />);\n');
+  assert.equal(refusal(() => scaffold(root, { id: 'safe-four' })), 'BAD_TEMPLATE');
+  fs.writeFileSync(file, "export function ExtensionTemplate(): string { return 'extension-template'; }\n");
+  assert.equal(refusal(() => scaffold(root, { id: 'safe-four' })), 'BAD_TEMPLATE');
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/safe-four')), false);
+});
+
+test('NO_MOUNT_TABLE says whether the file was not found, could not be read, or held no BUNDLED_MOUNTS', () => {
+  const root = tree();
+  const file = path.join(root, 'apps/desktop/renderer/harness/extension-mounts.tsx');
+  fs.writeFileSync(file, 'const OTHER = 1;\n');
+  assert.match(readMountTable(root).cause, /holds no BUNDLED_MOUNTS/);
+  assert.throws(() => checkTree(root), /holds no BUNDLED_MOUNTS/);
+  fs.rmSync(file);
+  assert.match(readMountTable(root).cause, /was not found/);
+  fs.mkdirSync(file);
+  assert.match(readMountTable(root).cause, /could not be read \(EISDIR\)/);
+  assert.throws(() => installTemplate(root), /could not be read \(EISDIR\)/);
+});
+
+test('remove checks the real path of the temporary folder again before each unlink, and stops when it was swapped', () => {
+  const root = tree();
+  const outside = tmp();
+  fs.writeFileSync(path.join(outside, 'manifest.json'), 'outside');
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/a-notes.txt'), 'x');
+  let swapped = false;
+  const ops = { unlink: file => {
+    fs.unlinkSync(file);
+    if (!swapped) { swapped = true; const dir = path.dirname(file); const moved = `${dir}-moved`; fs.renameSync(dir, moved); fs.symlinkSync(outside, dir); }
+  } };
+  assert.equal(refusal(() => removeExtension(root, 'local-models', ops)), 'UNSAFE_PATH');
+  assert.equal(fs.readFileSync(path.join(outside, 'manifest.json'), 'utf8'), 'outside', 'nothing outside was deleted');
+});
+
+test('a link as apps/desktop or apps/desktop/renderer is refused with UNSAFE_PATH', () => {
+  const outside = tmp();
+  const root = tmp();
+  fs.mkdirSync(path.join(root, 'apps'));
+  fs.symlinkSync(outside, path.join(root, 'apps/desktop'));
+  assert.equal(refusal(() => checkTree(root)), 'UNSAFE_PATH');
+  const root2 = tree();
+  fs.renameSync(path.join(root2, 'apps/desktop/renderer'), path.join(outside, 'renderer'));
+  fs.symlinkSync(path.join(outside, 'renderer'), path.join(root2, 'apps/desktop/renderer'));
+  for (const fn of [() => checkTree(root2), () => scaffold(root2, { id: 'safe-five' }), () => installTemplate(root2), () => removeExtension(root2, 'local-models')]) assert.equal(refusal(fn), 'UNSAFE_PATH');
 });
 
 // ---- the command line

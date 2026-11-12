@@ -127,3 +127,20 @@ test('the kit is stricter than the loader about a link inside the bundle: the lo
   assert.equal(loaded.skipped.find(x => x.name === 'n-link')?.code, 'DUPLICATE');
   assert.equal(kit.readExtension(dir, 'n-link').code, 'OUTSIDE_ROOT');
 });
+
+test('a folder name that starts with a dot is skipped by the loader as BAD_NAME and refused by the kit alike', async t => {
+  const kit = await loadKit();
+  const { root, dir } = makeFolders(t);
+  const { loadBundledManifest } = await import('../main/extension-loader.js');
+  for (const name of ['.hidden', '.removing-aabbccddeeff', '.a']) {
+    mkdirSync(join(dir, name), { recursive: true });
+    writeFileSync(join(dir, name, 'manifest.json'), FOLDERS['a-ok']!);
+    const real = loadBundledManifest(join(root, 'apps', 'desktop'), name);
+    assert.equal(real.ok, false, name);
+    if (!real.ok) assert.equal(real.refusal.code, 'BAD_NAME', name);
+    assert.equal(kit.readExtension(dir, name).code, 'BAD_NAME', name);
+  }
+  const loaded = loadBundledManifests(join(root, 'apps', 'desktop'));
+  assert.deepEqual(loaded.skipped.filter(s => s.name.startsWith('.')).map(s => s.code), ['BAD_NAME', 'BAD_NAME', 'BAD_NAME']);
+  assert.equal(startExtensions(join(root, 'apps', 'desktop')).registry.list().some(m => m.id === 'a-ok'), true, 'the real a-ok still loads, and a dotted twin does not win its id');
+});
