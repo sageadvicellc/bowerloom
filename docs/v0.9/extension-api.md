@@ -32,7 +32,7 @@ Other rules.
 - A field that is not one of the five is dropped. The app never reads it. No field can name code to load.
 - The file is UTF-8 text, with or without a byte order mark. It is at most 64 KiB (65,536 bytes).
 - The `id` and the routes cannot be a default name. The next block lists the default names.
-- The folder name is one plain name. It has no two dots in it and does not start with a dot. It does not have to equal the `id`. The loader skips a folder whose name starts with a dot.
+- The folder name is one plain name. It never holds two dots in a row (`..`) and never starts with a dot. It does not have to equal the `id`. The loader skips a folder whose name starts with a dot.
 - A folder or a manifest file that is a link to a place outside the bundle is refused.
 
 The default ids are these six.
@@ -188,7 +188,7 @@ The registry and the host give these. The list is `EXTENSION_CODES` in `apps/des
 
 The loader skips a folder and gives one of these. The list is `SKIP_CODES` in `apps/desktop/main/extension-loader.ts`.
 
-- `BAD_NAME` The folder name is not one plain name, or it starts with a dot, or it has two dots in it.
+- `BAD_NAME` The folder name is not one plain name. It starts with a dot, or it has two dots in a row (`..`).
 - `OUTSIDE_ROOT` The folder or the manifest file is a link to a place outside the bundle.
 - `UNREADABLE` The loader failed to read the folder or the file. The message holds the system code.
 - `NOT_A_FILE` The manifest path is not a regular file.
@@ -207,7 +207,7 @@ These codes come from `tools/extension-kit.mjs`. The kit also repeats codes of t
 - It refuses a new title with a character that is not plain text.
 
 - `BAD_ID` A new id is not a valid name or does not start with a letter. A folder name is not one plain name.
-- `BAD_TITLE` The title for a new extension holds a quote, a brace, an angle bracket, a backtick, a backslash or a control character.
+- `BAD_TITLE` The title for a new extension holds a quote, a brace, an angle bracket, a backtick, a backslash or a control character. It also refuses format and invisible characters, such as a zero-width space. It refuses non-ASCII space characters too.
 - `NO_MOUNT_TABLE` The kit cannot read the mount table `BUNDLED_MOUNTS`, so it cannot say that any screen exists. The message names the cause: a missing file, an unreadable file (with the system code), or a file with no table.
 - `ROUTE_MISMATCH` The routes of the manifest do not include the id, and the mount draws the screen only for the route that equals the id.
 - `REMOVE_INCOMPLETE` A removal stopped part way. The message lists the files that remain and the leftover folder. `check` and `list` report that folder with this code.

@@ -205,9 +205,9 @@ export function checkNewId(id) {
 }
 
 // A title goes into source code as a string. Plain text only: no quote, brace, angle bracket, backtick or backslash, and no control or line-break character.
-const BAD_TITLE_CHARS = /["{}<>`\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u17b4\u17b5\ufffc\u{1d173}-\u{1d17a}\u00a0\u2000-\u200a\u2800]/u;
+export const BAD_TITLE_CHARS = /["{}<>`\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u17b4\u17b5\ufffc\u{1d173}-\u{1d17a}\u00a0\u2000-\u200a\u2800]/u;
 export function checkNewTitle(title) {
-  if (typeof title !== 'string' || BAD_TITLE_CHARS.test(title)) throw new KitError('BAD_TITLE', 'The title cannot hold a quote, a brace, an angle bracket, a backtick, a backslash or a control character.');
+  if (typeof title !== 'string' || BAD_TITLE_CHARS.test(title)) throw new KitError('BAD_TITLE', 'The title cannot hold a quote, a brace, an angle bracket, a backtick, a backslash, a control character, a format or invisible character (such as a zero-width space or a right-to-left override), or a non-ASCII space.');
 }
 
 /** The refusal when a folder that holds the id or a route is already in the tree. Checks the real manifests, not only the folder names. */
@@ -258,7 +258,10 @@ export function scaffold(root, { id, title = null }, ops = {}) {
   if (exists(target)) throw new KitError('EXTENSION_EXISTS', `The screen file ${SCREENS_DIR}/${component}.tsx already exists.`);
   const TITLE_LITERAL = 'title={"Extension template"}';
   if (screen.split(TITLE_LITERAL).length !== 2) throw new KitError('BAD_TEMPLATE', `The template screen must hold exactly one ${TITLE_LITERAL}, so the kit can set the title safely.`);
-  const made = screen.split(TEMPLATE_SCREEN).join(component).split(TEMPLATE_ID).join(id).split('"Extension template"').join(JSON.stringify(shown));
+  // Only the exact literal that the guard counted is replaced. The names are replaced in the text on each side of it, so a title that holds a name is never changed, and any other text is left as it is.
+  const swap = text => text.split(TEMPLATE_SCREEN).join(component).split(TEMPLATE_ID).join(id);
+  const [beforeTitle, afterTitle] = screen.split(TITLE_LITERAL);
+  const made = `${swap(beforeTitle)}title={${JSON.stringify(shown)}}${swap(afterTitle)}`;
   const folder = path.join(root, EXTENSIONS_DIR, id);
   const manifestFile = path.join(folder, MANIFEST_FILE);
   const manifestText = `${JSON.stringify({ id, title: shown, kind: 'ui', routes: [id], protected: false }, null, 2)}\n`;
@@ -301,7 +304,7 @@ const REMOVE_NOTE = 'The screen file and the line in the mount table stay. They 
  * The loader skips any folder whose name starts with a dot, so a folder left by a stopped removal is not loaded. If an unlink fails, the rest stays under the temporary name and REMOVE_INCOMPLETE lists it.
  * A second run, `remove .removing-<hex>`, takes that name and finishes the job, with no rename and no manifest.json needed.
  * Limit: Node has no unlinkat, so the unlink opens its path by name, and a swap between the check and the unlink is narrowed, not closed. A full fix needs unlinkat on a directory descriptor.
- * `ops.unlink` is a test seam. A default extension has no folder here, so it cannot be removed.
+ * `ops.unlink` and `ops.afterRename` are test seams. A default extension has no folder here, so it cannot be removed.
  */
 export function removeExtension(root, name, ops = {}) {
   const unlink = ops.unlink ?? fs.unlinkSync;
@@ -322,15 +325,25 @@ export function removeExtension(root, name, ops = {}) {
   const temporary = resuming ? folder : path.join(dir, `.removing-${crypto.randomBytes(6).toString('hex')}`);
   if (!resuming) fs.renameSync(folder, temporary);
   const tempName = path.basename(temporary);
+  // An UNSAFE_PATH stop after the rename says what remains and how to go on, as REMOVE_INCOMPLETE does. It lists a folder only when that folder is still a real folder inside the extensions folder: it never lists through a link.
+  const stopped = reason => {
+    let list = null;
+    try { const now = fs.lstatSync(temporary); if (!now.isSymbolicLink() && now.isDirectory() && insideDir(temporary)) list = fs.readdirSync(temporary).sort(); } catch { /* nothing to list */ }
+    const where = list === null
+      ? `The kit lists nothing, because ${tempName} is not a real folder in ${EXTENSIONS_DIR} now. Look at it by hand.`
+      : `${list.length === 0 ? 'The folder is empty' : `These files remain: ${list.join(', ')}`}, in ${EXTENSIONS_DIR}/${tempName}. The app skips a folder whose name starts with a dot. After you check it, run: node tools/extension-kit.mjs remove ${tempName} to finish, or delete that folder by hand.`;
+    return new KitError('UNSAFE_PATH', `${reason} ${where}`);
+  };
+  ops.afterRename?.(temporary);
   const after = fs.lstatSync(temporary);
-  if (after.isSymbolicLink() || !after.isDirectory() || !insideDir(temporary)) throw new KitError('UNSAFE_PATH', `"${name}" changed while it was removed, so the kit stopped. It is now ${tempName}.`);
+  if (after.isSymbolicLink() || !after.isDirectory() || !insideDir(temporary)) throw stopped(`"${name}" changed while it was removed, so the kit stopped.`);
   const entries = fs.readdirSync(temporary, { withFileTypes: true });
-  for (const entry of entries) if (!entry.isFile()) throw new KitError('UNSAFE_PATH', `"${name}" changed while it was removed: "${entry.name}" is not a plain file. Nothing was deleted from ${tempName}.`);
+  for (const entry of entries) if (!entry.isFile()) throw stopped(`"${name}" changed while it was removed: "${entry.name}" is not a plain file. Nothing was deleted.`);
   const order = [...entries.map(entry => entry.name).filter(entry => entry !== MANIFEST_FILE).sort(), ...entries.some(entry => entry.name === MANIFEST_FILE) ? [MANIFEST_FILE] : []];
   try {
     for (const entry of order) {
       const now = fs.lstatSync(temporary);
-      if (now.isSymbolicLink() || !now.isDirectory() || !insideDir(temporary)) throw new KitError('UNSAFE_PATH', `"${tempName}" changed while it was removed, so the kit stopped before it deleted "${entry}".`);
+      if (now.isSymbolicLink() || !now.isDirectory() || !insideDir(temporary)) throw stopped(`"${tempName}" changed while it was removed, so the kit stopped before it deleted "${entry}".`);
       unlink(path.join(temporary, entry));
     }
     fs.rmdirSync(temporary);
