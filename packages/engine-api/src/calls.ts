@@ -59,7 +59,7 @@ const RUNS_PREFIX = 'bowerloom-runs:';
 const run = (name: string, arity: number): CallSpec => Object.freeze({ name, arity, optionalArgs: 0, channel: `${RUNS_PREFIX}${name}`, returns: 'plain' as ReturnKind });
 
 /**
- * The calls of the fourth bridge, `bowerloomRuns`, added in 0.8.0-beta.2: the manual record of runs and the figures read from an engine's own session log. They are not engine calls,
+ * The calls of the fourth bridge, `bowerloomRuns`, added in 0.9.0-beta.1: the manual record of runs and the figures read from an engine's own session log. They are not engine calls,
  * reader calls or local calls: those lists stay frozen, and `callSpec` and `localCallSpec` do not find these. Every call answers plain data and takes the arguments of its arity as
  * one value each. The only refusals are the call's own: see `RUN_CALL_REFUSAL_CODES`.
  */
