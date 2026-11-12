@@ -40,6 +40,7 @@ import type { LocalBridge } from '../../shared/local-models/types.js';
 import { LocalProvider, SkippedProvider, useLocal } from './local-models/local.js';
 import { LocalModelsPending } from './local-models/LocalModels.js';
 import { localRouteState, useBundledExtensions } from './bundled-extensions.js';
+import { ExtensionPending } from './extensions/ExtensionPending.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 
 function Overlays(): ReactElement {
@@ -69,10 +70,12 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
   const at = route.name === 'local-models' ? localRouteState(bundled, localBridge !== null) : 'screen';
   // When the extension is absent, only the skipped entries of that extension are listed: another extension's skip is not this screen's.
   const own = bundled.skipped.filter(x => x.name === 'local-models');
+  // The address of any other stock extension waits the same way: until the list has answered, its route is not "not found".
+  const waitingForExtension = route.name === 'extension' && !bundled.ready;
   return (
     <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>
       <SkippedProvider skipped={bundled.skipped}>
-        {at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /> : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
+        {waitingForExtension ? <ExtensionPending problem={bundled.problem} /> : at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /> : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
       </SkippedProvider>
     </Shell>
   );

@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -43,7 +44,8 @@ function install(root: string, name = TEMPLATE_ID): void {
 }
 const put = (root: string, name: string, text: string): void => { mkdirSync(join(root, 'extensions', name), { recursive: true }); writeFileSync(join(root, 'extensions', name, 'manifest.json'), text); };
 
-function render(hash: string, registry: ReturnType<typeof createScreenRegistry>, local: LocalBridge = createSampleLocal(() => '2026-11-12T10:00:00.000Z')): string {
+/** With no local bridge the extension list has nothing to wait for, so the first frame is the final one. A test that gives a bridge sees the waiting line of the first frame. */
+function render(hash: string, registry: ReturnType<typeof createScreenRegistry>, local: LocalBridge | null = null): string {
   (globalThis as G).location = { hash };
   try {
     const store = createHarnessStore({ initial: createSampleWorld(NOW), now: () => NOW, finishRunning: false });
@@ -89,6 +91,13 @@ test('the generic extension route never reaches a default extension: its route s
   registerDefaults(registry, id => { const real = screenMountOf(id); return props => { calls.push(`${id}:${props.route.name}`); return real(props); }; });
   for (const name of ['overview', 'library', 'help', 'welcome']) assert.match(render(`#sample/extension/${name}`, registry), NOT_FOUND, name);
   assert.deepEqual(calls, []);
+});
+
+test('a deep link to an extension waits for the list: with a bridge, the first frame is a waiting line and never the not-found state; with none, the route is not found', () => {
+  const waiting = render('#sample/extension/extension-template', createScreenRegistry(), createSampleLocal(() => '2026-11-12T10:00:00.000Z'));
+  assert.match(waiting, /data-extension-pending=""/);
+  assert.doesNotMatch(waiting, NOT_FOUND);
+  assert.match(render('#app/extension/extension-template', createScreenRegistry()), NOT_FOUND);
 });
 
 // ---- install, mount, read, remove
@@ -278,4 +287,17 @@ test('the screen of the template is handed its calls by the page and imports no 
   const text = sourceOf(SCREEN_FILE);
   assert.match(text, /useLocal\(\)/);
   assert.doesNotMatch(text, /api\/transport|getApiClient|createApiClient|bowerloom(?:Real|Engine|Local|Runs)/);
+});
+
+test('a new extension made by the kit from the template passes the client purity check and has a valid manifest', async t => {
+  const kit = (await import(pathToFileURL(join(DESKTOP, '..', '..', 'tools', 'lib', 'extension-kit.mjs')).href)) as { scaffold(root: string, o: { id: string; title?: string }): { created: string[] } };
+  const root = tempDir(t);
+  mkdirSync(join(root, 'apps', 'desktop', 'renderer', 'harness', 'extensions'), { recursive: true });
+  copyFileSync(join(DESKTOP, SCREEN_FILE), join(root, 'apps', 'desktop', SCREEN_FILE));
+  const made = kit.scaffold(root, { id: 'weekly-notes', title: 'Weekly notes' });
+  const screen = readFileSync(join(root, made.created[1]!), 'utf8');
+  assert.deepEqual(problemsOf('renderer/harness/extensions/WeeklyNotes.tsx', screen), []);
+  assert.match(screen, /export function WeeklyNotes\(\)/);
+  const manifest = checkManifest(JSON.parse(readFileSync(join(root, made.created[0]!), 'utf8')));
+  assert.equal(manifest.ok && manifest.value.id, 'weekly-notes');
 });

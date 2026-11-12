@@ -155,6 +155,70 @@
       "example": "node tools/lane-tree.mjs create --name my-lane --base origin/release/0.9.0-beta.1 --dest /abs/path/my-lane --json"
     },
     {
+      "name": "extension-kit",
+      "path": "tools/extension-kit.mjs",
+      "help": true,
+      "safetyClass": "local-write",
+      "destructive": true,
+      "mcp_exposure": "hidden",
+      "description": "Makes, checks, installs, lists, and removes a stock extension of the desktop app; check and list only read, new writes two files and never writes over one, and remove deletes one real folder of apps/desktop/extensions.",
+      "args": [
+        {
+          "name": "new|check|install-template|remove|list",
+          "required": true,
+          "description": "The command."
+        },
+        {
+          "name": "ID_OR_FOLDER",
+          "required": false,
+          "description": "new: the id of the new extension, which is also its route. check and remove: the folder name under apps/desktop/extensions (check reads every folder when it is left out)."
+        },
+        {
+          "name": "--title TEXT",
+          "required": false,
+          "description": "new: the title shown in the navigation (default: the id with spaces and a capital)."
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "Print exactly one JSON object on stdout, also for a usage error."
+        }
+      ],
+      "output": {
+        "format": "json",
+        "keys": {
+          "ok": "boolean",
+          "command": "string",
+          "id": "string (new, install-template)",
+          "name": "string (remove)",
+          "created": "array (new, install-template)",
+          "next": "object (new)",
+          "removed": "array (remove)",
+          "extensions": "array (check, list)",
+          "problems": "array (check, list)",
+          "code": "string (refused)",
+          "message": "string (refused)",
+          "exit": "number (refused, usage error)",
+          "error": "string (usage error)"
+        },
+        "optional": [
+          "id",
+          "name",
+          "created",
+          "next",
+          "removed",
+          "extensions",
+          "problems",
+          "code",
+          "message",
+          "exit",
+          "error"
+        ],
+        "note": "A refusal has code and message, and exit 1. A problem of check has name, code and message, and the code is the one the app gives when it loads the folder, or NO_SCREEN when the manifest is valid and the mount table has no screen for it."
+      },
+      "example": "node tools/extension-kit.mjs check --json"
+    },
+    {
       "name": "public-scan",
       "path": "tools/public-scan.mjs",
       "help": true,

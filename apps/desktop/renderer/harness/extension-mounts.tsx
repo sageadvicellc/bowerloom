@@ -31,6 +31,8 @@ import { Interfaces } from './screens/Interfaces.js';
 import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
 import { LocalModels } from './local-models/LocalModels.js';
+import { ExtensionTemplate } from './extensions/ExtensionTemplate.js';
+import { DEFAULT_IDS } from '../../shared/extensions/defaults.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
 import { registerLoaded } from '../../shared/extensions/register.js';
 
@@ -117,13 +119,20 @@ export function createScreenRegistry(): Registry<ScreenMount> {
 
 /** The screen a route names: the mount of the extension that owns the route, or the named not-found state. */
 export function RouteScreen({ registry, ...props }: MountProps & { registry: Registry<ScreenMount> }): ReactElement {
-  const found = registry.resolve(props.route.name);
-  return found.found ? found.mount(props) : <RouteNotFound route={found.route} />;
+  const { route } = props;
+  // A stock extension without its own route name is reached at #app/extension/<route>. The route in the address names the route to resolve. A default extension is never reached this way:
+  // its routes have their own addresses, so the generic address shows the named not-found state for them.
+  const name = route.name === 'extension' ? route.route : route.name;
+  const found = registry.resolve(name);
+  if (!found.found) return <RouteNotFound route={found.route} />;
+  if (route.name === 'extension' && (DEFAULT_IDS as readonly string[]).includes(found.id)) return <RouteNotFound route={name} />;
+  return found.mount(props);
 }
 
 /** The screens of bundled extensions, by extension id. An extension in the bundle that has no screen here is not registered: a manifest carries no code. */
 const BUNDLED_MOUNTS: Readonly<Record<string, ScreenMount>> = Object.freeze({
   'local-models': ({ route }) => (route.name === 'local-models' ? <LocalModels /> : stray(route)),
+  'extension-template': ({ route }) => (route.name === 'extension' && route.route === 'extension-template' ? <ExtensionTemplate /> : stray(route)),
 });
 
 /** The ids of the bundled extensions this build has a screen for. */

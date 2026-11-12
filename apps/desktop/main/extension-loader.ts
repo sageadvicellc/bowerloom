@@ -18,7 +18,9 @@ export const MANIFEST_MAX_BYTES = 64 * 1024;
 /** A folder name in a report is cut to this many characters. */
 const NAME_SHOWN = 64;
 
-export type SkipCode = 'BAD_NAME' | 'OUTSIDE_ROOT' | 'UNREADABLE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_JSON' | 'BAD_MANIFEST' | 'DUPLICATE';
+/** The codes of a skipped folder. The extension API page lists each one (docs/v0.9/extension-api.md), and tools/lib/extension-kit.mjs repeats them. */
+export const SKIP_CODES = Object.freeze(['BAD_NAME', 'OUTSIDE_ROOT', 'UNREADABLE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_JSON', 'BAD_MANIFEST', 'DUPLICATE'] as const);
+export type SkipCode = (typeof SKIP_CODES)[number];
 export interface Skipped { readonly name: string; readonly code: SkipCode; readonly message: string }
 export interface LoadResult { readonly manifests: readonly ExtensionManifest[]; readonly skipped: readonly Skipped[] }
 

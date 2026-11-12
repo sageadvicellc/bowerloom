@@ -33,7 +33,7 @@ test('the kit holds the same default ids, base routes and reserved names as the 
   const kit = await loadKit();
   assert.deepEqual([...kit.DEFAULT_IDS], [...DEFAULT_IDS]);
   assert.deepEqual([...kit.BASE_ROUTES], [...BASE_ROUTES]);
-  assert.deepEqual([...kit.RESERVED_NAMES].sort(), [...DEFAULT_IDS, ...BASE_ROUTES].sort());
+  assert.deepEqual([...kit.RESERVED_NAMES].sort(), [...new Set<string>([...DEFAULT_IDS, ...BASE_ROUTES])].sort());
   assert.deepEqual([...kit.KINDS], ['ui']);
 });
 
@@ -59,7 +59,7 @@ const FOLDERS: Readonly<Record<string, string>> = {
   'a-ok': JSON.stringify({ ...GOOD, id: 'a-ok', routes: ['a-ok'] }),
   'b-not-json': '{ nope',
   'c-array': '[]',
-  'd-bom': `﻿${JSON.stringify({ ...GOOD, id: 'd-bom', routes: ['d-bom'] })}`,
+  'd-bom': `\ufeff${JSON.stringify({ ...GOOD, id: 'd-bom', routes: ['d-bom'] })}`,
   'e-big': JSON.stringify({ ...GOOD, id: 'e-big', title: 'x'.repeat(70 * 1024) }),
   'f-reserved-id': JSON.stringify({ ...GOOD, id: 'overview' }),
   'g-reserved-route': JSON.stringify({ ...GOOD, id: 'g-reserved-route', routes: ['library'] }),
@@ -82,12 +82,14 @@ test('the kit reads each folder as the loader does: the same manifest, or the sa
   const { root, dir } = makeFolders(t);
   const loaded = loadBundledManifests(join(root, 'apps', 'desktop'));
   const skipped = new Map(loaded.skipped.map(s => [s.name, s.code]));
-  const accepted = new Map(loaded.manifests.map(m => [m.id, m]));
-  for (const name of [...Object.keys(FOLDERS), 'l-no-manifest', 'm-dir-manifest']) {
+  const names = [...Object.keys(FOLDERS), 'l-no-manifest', 'm-dir-manifest'].sort();
+  const mineOk: unknown[] = [], mineFailed = new Map<string, string>();
+  for (const name of names) {
     const mine = kit.readExtension(dir, name);
-    if (mine.manifest === undefined) assert.equal(mine.code, skipped.get(name), name);
-    else { assert.equal(skipped.has(name), false, name); assert.deepEqual(JSON.parse(JSON.stringify(mine.manifest)), JSON.parse(JSON.stringify(accepted.get((mine.manifest as { id: string }).id)))); }
+    if (mine.manifest === undefined) mineFailed.set(name, mine.code ?? '?'); else mineOk.push(JSON.parse(JSON.stringify(mine.manifest)));
   }
+  assert.deepEqual([...mineFailed].sort(), [...skipped].sort(), 'the same folders fail with the same code');
+  assert.deepEqual(mineOk, JSON.parse(JSON.stringify(loaded.manifests)), 'the same manifests load, in the same order');
 });
 
 test('the kit judges a whole folder of extensions as the app does: the same extensions load, and each problem has the code the app gives', async t => {
