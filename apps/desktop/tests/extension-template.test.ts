@@ -371,9 +371,10 @@ test('the route of an extension decides in one order: wait, then the screen the 
   assert.deepEqual(extensionRouteState(BUNDLE({ skipped }), screens, 'weekly-notes'), { kind: 'absent', absence: { kind: 'skipped', name: 'weekly-notes', code: 'BAD_MANIFEST' } });
   assert.deepEqual(extensionRouteState(BUNDLE({ skipped }), screens, 'unknown-route'), { kind: 'screen' }, 'nothing explains it, so the screen draws the plain not-found state');
   assert.match(render('#app/extension/unknown-route', screens), NOT_FOUND);
+  assert.deepEqual(extensionRouteState(BUNDLE({ skipped: [{ name: TEMPLATE_ID, code: 'BAD_MANIFEST' }] }), screens, TEMPLATE_ID), { kind: 'screen' }, 'a route the registry owns wins over a skip of its own name');
 });
 
-test('HarnessApp picks the extension screen with extensionRouteState, and draws the waiting line, then the absent line, then the registry screen', () => {
+test('source order check: HarnessApp calls extensionRouteState, and its source holds the waiting line, then the absent line, then the registry screen, in that order', () => {
   const app = readFileSync(join(DESKTOP, 'renderer/harness/HarnessApp.tsx'), 'utf8');
   assert.match(app, /extensionRouteState\(bundled, registry, route\.route\)/);
   const wait = app.indexOf("ext?.kind === 'wait'"), absent = app.indexOf("ext?.kind === 'absent'"), screen = app.indexOf("at === 'screen'");

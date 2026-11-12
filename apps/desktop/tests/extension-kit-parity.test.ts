@@ -2,7 +2,7 @@
 // This test holds the copy equal to the real thing, so a rule cannot change on one side alone.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BASE_ROUTES, DEFAULT_IDS } from '../shared/extensions/defaults.js';
@@ -13,7 +13,7 @@ import { DESKTOP, tempDir } from './support.js';
 
 interface Kit {
   readonly DEFAULT_IDS: readonly string[]; readonly BASE_ROUTES: readonly string[]; readonly RESERVED_NAMES: ReadonlySet<string>; readonly LOADER_CODES: readonly string[]; readonly KINDS: readonly string[];
-  readonly MANIFEST_MAX_BYTES: number;
+  readonly MANIFEST_MAX_BYTES: number; readonly BAD_TITLE_CHARS: RegExp;
   checkManifestValue(value: unknown): { ok: true; value: unknown } | { ok: false; code: string; message: string };
   readExtension(dir: string, name: string): { name: string; manifest?: unknown; code?: string; message?: string };
   checkTree(root: string): { extensions: { id: string }[]; problems: { name: string; code: string }[] };
@@ -143,4 +143,13 @@ test('a folder name that starts with a dot is skipped by the loader as BAD_NAME 
   const loaded = loadBundledManifests(join(root, 'apps', 'desktop'));
   assert.deepEqual(loaded.skipped.filter(s => s.name.startsWith('.')).map(s => s.code), ['BAD_NAME', 'BAD_NAME', 'BAD_NAME']);
   assert.equal(startExtensions(join(root, 'apps', 'desktop')).registry.list().some(m => m.id === 'a-ok'), true, 'the real a-ok still loads, and a dotted twin does not win its id');
+});
+
+test('the unsafe character class of a new title is the unsafe class of the loader, plus the five characters that break out of source text', async () => {
+  const kit = await loadKit();
+  const loader = readFileSync(join(DESKTOP, 'main', 'extension-loader.ts'), 'utf8');
+  const match = /const UNSAFE = \/\[([^\n]*)\]\/gu;/.exec(loader);
+  assert.ok(match, 'the loader holds one UNSAFE pattern');
+  assert.equal(kit.BAD_TITLE_CHARS.source, `["{}<>\`\\\\${match[1]}]`);
+  assert.equal(kit.BAD_TITLE_CHARS.flags, 'u');
 });

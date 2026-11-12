@@ -84,3 +84,10 @@ test('the page says where the kit is stricter than the app, and does not claim t
   assert.match(doc, /stricter than the app/);
   assert.doesNotMatch(doc, /same meaning/);
 });
+
+test('the page says two dots in a row, and names the title characters the kit refuses', () => {
+  assert.match(doc, /two dots in a row \(`\.\.`\)/);
+  assert.doesNotMatch(doc, /no two dots/);
+  const line = /^- `BAD_TITLE`.*$/m.exec(doc)?.[0] ?? '';
+  for (const word of [/format/, /invisible/, /non-ASCII space/]) assert.match(line, word);
+});

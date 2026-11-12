@@ -402,6 +402,49 @@ test('a link as apps/desktop or apps/desktop/renderer is refused with UNSAFE_PAT
   for (const fn of [() => checkTree(root2), () => scaffold(root2, { id: 'safe-five' }), () => installTemplate(root2), () => removeExtension(root2, 'local-models')]) assert.equal(refusal(fn), 'UNSAFE_PATH');
 });
 
+test('scaffold replaces only the exact title literal, and leaves any other text that says Extension template alone', () => {
+  const root = tree();
+  const file = path.join(root, 'apps/desktop/renderer/harness/extensions/ExtensionTemplate.tsx');
+  fs.writeFileSync(file, SCREEN + 'export const note = "Extension template";\n');
+  const made = scaffold(root, { id: 'safe-six', title: 'Safe six' });
+  const out = fs.readFileSync(path.join(root, made.created[1]), 'utf8');
+  assert.match(out, /title=\{"Safe six"\}/);
+  assert.match(out, /export const note = "Extension template";/);
+});
+
+test('the BAD_TITLE message names the format, invisible and non-ASCII space characters', () => {
+  const root = tree();
+  let error;
+  try { scaffold(root, { id: 'safe-seven', title: 'a​b' }); } catch (e) { error = e; }
+  assert.equal(error.code, 'BAD_TITLE');
+  for (const word of [/format/, /invisible/, /non-ASCII space/]) assert.match(error.message, word);
+});
+
+test('a remove that UNSAFE_PATH stops part way lists the files that remain and the resume command, as REMOVE_INCOMPLETE does', () => {
+  const root = tree();
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/a-notes.txt'), 'x');
+  const ops = { afterRename: temporary => fs.mkdirSync(path.join(temporary, 'sub')) };
+  let error;
+  try { removeExtension(root, 'local-models', ops); } catch (e) { error = e; }
+  assert.equal(error.code, 'UNSAFE_PATH');
+  for (const word of [/a-notes\.txt/, /manifest\.json/, /sub/, /remove \.removing-[0-9a-f]{12}/, /by hand/]) assert.match(error.message, word);
+  assert.equal(fs.existsSync(path.join(root, 'apps/desktop/extensions/local-models')), false);
+});
+
+test('a remove stopped by a swapped folder does not list a link target, and still says to look by hand', () => {
+  const root = tree();
+  const outside = tmp();
+  fs.writeFileSync(path.join(outside, 'secret-name.txt'), 'x');
+  fs.writeFileSync(path.join(root, 'apps/desktop/extensions/local-models/a-notes.txt'), 'x');
+  let swapped = false;
+  const ops = { unlink: file => { fs.unlinkSync(file); if (!swapped) { swapped = true; const dir = path.dirname(file); fs.renameSync(dir, `${dir}-moved`); fs.symlinkSync(outside, dir); } } };
+  let error;
+  try { removeExtension(root, 'local-models', ops); } catch (e) { error = e; }
+  assert.equal(error.code, 'UNSAFE_PATH');
+  assert.doesNotMatch(error.message, /secret-name/);
+  assert.match(error.message, /by hand/);
+});
+
 // ---- the command line
 
 const run = (args, { env = {}, input } = {}) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env }, input, timeout: 60000 });
