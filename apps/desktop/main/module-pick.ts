@@ -31,11 +31,13 @@ function viewOf(result: Approved): ModuleApproval {
 }
 
 export async function pickModulePlace(d: ModulePickDeps): Promise<ModuleApproval> {
+  // A logger that throws never changes the answer.
+  const say = (line: string): void => { try { d.tell(line); } catch { /* the log is lost; the answer stands */ } };
   const picked = await d.show();
   if (picked === null) return { status: 'cancelled' };
   const result = (d.approve ?? approvePlace)({ stateRoot: d.stateRoot, home: d.home, moduleId: d.moduleId, picked });
   // A damaged list that was set aside is always told, whatever came after. The cause is a class word (an error code or name), never a message and never a path.
-  if (result.resetRecord === true) d.tell('Bowerloom set aside a damaged list of approved folders and started a new one.');
-  if (result.status === 'refused') d.tell(`Bowerloom could not approve a folder for a module (${result.code}${result.cause !== undefined && CAUSE.test(result.cause) ? `, ${result.cause}` : ''}).`);
+  if (result.resetRecord === true) say('Bowerloom set aside a damaged list of approved folders and started a new one.');
+  if (result.status === 'refused') say(`Bowerloom could not approve a folder for a module (${result.code}${result.cause !== undefined && CAUSE.test(result.cause) ? `, ${result.cause}` : ''}).`);
   return viewOf(result);
 }

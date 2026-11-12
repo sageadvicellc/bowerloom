@@ -70,7 +70,8 @@ test('a module id, a place id and a path text have only the shapes main accepts'
   for (const id of ['place-0123456789ab']) assert.equal(isPlaceId(id), true, id);
   for (const id of ['place-', 'place-0123456789a', 'place-0123456789abc', 'place-0123456789AB', 'Place-0123456789ab', 'place-0123456789ab\n', '../place-0123456789ab', 4, null, undefined]) assert.equal(isPlaceId(id), false, String(id));
   for (const p of ['a.md', 'sub/b.md', '../x', 'x'.repeat(MODULE_PATH_LIMIT)]) assert.equal(isPathText(p), true, p);
-  for (const p of ['', 'x'.repeat(MODULE_PATH_LIMIT + 1), 'a\0b', 5, null, undefined, [], {}]) assert.equal(isPathText(p), false, String(p));
+  for (const p of ['', 'x'.repeat(MODULE_PATH_LIMIT + 1), 'a\0b', 5, null, undefined, [], {}, 'a\ud800b', '\udc00', 'x\ud83d']) assert.equal(isPathText(p), false, String(p));
+  assert.equal(isPathText('caf\u00e9 \u{1F33F}.md'), true, 'a whole pair is text');
 });
 
 // ---- the preload

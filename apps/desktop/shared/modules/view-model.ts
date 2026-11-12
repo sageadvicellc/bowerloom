@@ -38,6 +38,7 @@ export const MODULE_WORDS = Object.freeze({
   noEmbed: 'This module has no page inside this view.',
   bridgeMissing: 'The window did not give this module its folder calls. Folders cannot be approved or read.',
   approvedNoRefresh: 'The folder was approved, but the list could not be read again.',
+  resetNote: 'The saved list was damaged. It was set aside, and a new list was started.',
   approvedReset: 'Approved. The saved list was damaged. It was set aside, and a new list was started.',
 });
 
@@ -71,6 +72,9 @@ const CALL_WORDS: Readonly<Record<string, string>> = Object.freeze({
 const known = (table: Readonly<Record<string, string>>, key: unknown): key is string => typeof key === 'string' && Object.hasOwn(table, key);
 export const pickWords = (code: unknown): string => (known(PICK_WORDS, code) ? PICK_WORDS[code]! : PICK_WORDS.FAILED!);
 export const callWords = (code: unknown): string => (known(CALL_WORDS, code) ? CALL_WORDS[code]! : CALL_WORDS.FAILED!);
+
+/** The sentence after an approval whose list could not be read again: the folder was approved, and, after a reset, the old list was set aside. */
+export const approvalNoticeNoRefresh = (result: ModuleApproval): string => (result.status === 'kept' && result.listReset === true ? `${MODULE_WORDS.approvedNoRefresh} ${MODULE_WORDS.resetNote}` : MODULE_WORDS.approvedNoRefresh);
 
 /** What a person reads when a removal fails. A removal that fails leaves the folder approved, and the words say so. A code with no words of its own reads as the general line. */
 const REMOVE_WORDS: Readonly<Record<string, string>> = Object.freeze({

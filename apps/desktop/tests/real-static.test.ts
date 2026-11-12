@@ -18,6 +18,12 @@ import type { BundleAllowance, Policy } from './fixtures-real/static-check.js';
 import { buildFixture } from './fixtures-real/build.js';
 
 const read = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8');
+/** The imports, re-exports and requires of a source text that are not type-only, over any number of lines. */
+function nonTypeImports(text: string): string[] {
+  const found: string[] = [];
+  for (const m of text.matchAll(/\bexport\s*(\*|\{[^}]*\})\s*from\b|(?<![\w.])import\s*(?!type\b)(?:[\w*{][^;]*?\bfrom\b|['"])|\brequire\s*\(|(?<![\w.])import\s*\(/g)) found.push(m[0].replace(/\s+/g, ' ').trim());
+  return found;
+}
 const strip = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 const names = (dir: string, pattern: RegExp): string[] => readdirSync(join(DESKTOP, dir)).filter(f => pattern.test(f)).map(f => `${dir}/${f}`);
 
@@ -332,8 +338,11 @@ test('usableHome accepts an absolute folder only', () => {
 
 test('the bridge file exposes the reader\'s object with exactly three functions and the sheets\' object with one function per engine call, each sending on its own channel, and nothing generic', () => {
   const code = strip(read('preload/real-preload.ts')).replace(/^import .*$/gm, '');
-  const modulesTable = strip(read('shared/api/modules.ts'));
-  assert.deepEqual(modulesTable.split('\n').filter(l => /^\s*(?:import|export\s+.*\bfrom)\b|\brequire\s*\(|\bimport\s*\(/.test(l) && !/^import type /.test(l)), [], 'shared/api/modules.ts has no import or require line other than `import type`');
+  assert.deepEqual(nonTypeImports(strip(read('shared/api/modules.ts'))), [], 'shared/api/modules.ts has no import or require other than `import type`');
+  assert.deepEqual(nonTypeImports("export {\n  x\n} from './y.js';\n"), ['export { x } from'], 'the check sees a re-export over several lines');
+  assert.deepEqual(nonTypeImports("import type { A } from './a.js';\nexport type {\n  B\n} from './b.js';\n"), [], 'a type-only import and re-export are fine');
+  assert.equal(nonTypeImports("const x = require('node:fs');").length, 1);
+  assert.equal(nonTypeImports("import {\n  a\n} from './a.js';").length, 1);
   assert.equal([...code.matchAll(/exposeInMainWorld\(/g)].length, 5);
   assert.match(code, /exposeInMainWorld\('bowerloomModules', Object\.freeze\(modules as unknown as ModulesBridge\)\)/);
   assert.match(code, /for \(const call of MODULE_CALLS\) modules\[call\] = \(\.\.\.args: unknown\[\]\) => ipcRenderer\.invoke\(MODULE_CHANNELS\[call\], \.\.\.args\.slice\(0, MODULE_ARITY\[call\]\)\)/, 'a modules call sends no more arguments than its count');

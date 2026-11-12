@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('bowerloomRuns', Object.freeze(runs as unknown a
 
 /** The modules calls send exactly as many arguments as the call takes. They refuse with one short code, never Electron's long sentence. The page gives no path to approve: main opens its own chooser. */
 const modulesRefusal = (error: unknown): Error => {
-  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_MODULE|NOT_APPROVED|PLACE_CHANGED|BAD_PATH|OUTSIDE_PLACE|NOT_A_FILE|TOO_LARGE|NOT_TEXT|UNREADABLE|RECORD_DAMAGED|RECORD_BLOCKED)\b/);
+  const found = String(error instanceof Error ? error.message : error).match(/\b(NOT_ALLOWED|BAD_ARGUMENT|UNKNOWN_MODULE|NOT_APPROVED|PLACE_CHANGED|BAD_PATH|OUTSIDE_PLACE|NOT_A_FILE|TOO_LARGE|NOT_TEXT|UNREADABLE|HOME_UNREADABLE|RECORD_DAMAGED|RECORD_BLOCKED)\b/);
   return new Error(found === null ? 'FAILED' : found[1]);
 };
 const modules: Record<string, unknown> = {};

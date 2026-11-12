@@ -7,7 +7,9 @@ import { createElement } from 'react';
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HarnessApp } from '../renderer/harness/HarnessApp.js';
-import { ModulesBody, ReadsPanel } from '../renderer/harness/modules/ModulesScreen.js';
+import { Modules, ModulesBody, ReadsPanel } from '../renderer/harness/modules/ModulesScreen.js';
+import { ModulesProvider } from '../renderer/harness/modules/modules-context.js';
+import { Shell } from '../renderer/harness/Shell.js';
 import type { ModulesBodyProps, ReadsProps } from '../renderer/harness/modules/ModulesScreen.js';
 import { embeddedPageOf } from '../renderer/harness/modules/embeds.js';
 import { LocalModelsEmbedded, LocalModels } from '../renderer/harness/local-models/LocalModels.js';
@@ -129,6 +131,9 @@ test('a failed removal shows its words and keeps the folders in the list; a fail
   const html = render(createElement(ReadsPanel, reads({ places: { status: 'ready', places: [PLACE], code: 'FAILED', busy: false, notice: 'Bowerloom could not remove that folder. It is still approved.' } })));
   assert.match(html, /data-place="place-aaaaaaaaaaaa"/);
   assert.match(html, /data-module-notice="">Bowerloom could not remove that folder\. It is still approved\.</);
+  const list = render(createElement(ReadsPanel, reads({ places: { status: 'failed', places: [], code: 'RECORD_DAMAGED', busy: false, notice: null } })));
+  assert.match(list, /data-module-state="failed" data-module-code="RECORD_DAMAGED">The saved list of approved folders could not be read\. Approve a folder to start a new list\. Code: RECORD_DAMAGED\./);
+  assert.doesNotMatch(list, /could not remove/);
 });
 
 // ---- Local models inside the view
@@ -216,4 +221,34 @@ test('the page reaches the modules bridge through the client alone: no renderer 
     const text = readFileSync(join(DESKTOP, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(text, /bowerloomModules|bowerloom-modules|MODULE_CHANNELS|MODULE_ARITY|module-scope|node:|electron|ipcRenderer|\bfetch\(/, f);
   }
+});
+
+function renderModules(real: boolean, sample: boolean): string {
+  (globalThis as G).location = { hash: '#app/modules/local-models' };
+  try {
+    const store = createHarnessStore({ initial: createSampleWorld(NOW), now: () => NOW, finishRunning: false });
+    const tree = createElement(HarnessProvider, { store }, createElement(UiProvider, null, createElement(ModulesProvider, { bridge: null, sample, real, listed: [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST] }, createElement(Shell, { route: { name: 'modules', id: 'local-models' } }, createElement(Modules, { id: 'local-models' })))));
+    return render(tree);
+  } finally { delete (globalThis as G).location; }
+}
+
+test('the screen of the view in the app on the person\'s own folders with no modules bridge shows the BRIDGE_MISSING alert, and not the neutral line', () => {
+  const html = renderModules(true, false);
+  assert.match(html, /data-module-open="local-models"/);
+  assert.match(html, /role="alert" data-module-state="bridge-missing" data-module-code="BRIDGE_MISSING"/);
+  assert.doesNotMatch(html, /data-module-state="no-bridge"/);
+  assert.doesNotMatch(html, /Approve a folder/);
+});
+
+test('a window that is not the real app and not the sample, with no modules bridge, still shows the neutral no-approvals line', () => {
+  const html = renderModules(false, false);
+  assert.match(html, /role="status" data-module-state="no-bridge">This window keeps no approvals\./);
+  assert.doesNotMatch(html, /bridge-missing/);
+});
+
+test('the missing bridge is logged once, at launch by the client, and the screen does not log it again', () => {
+  const screen = readFileSync(join(DESKTOP, 'renderer/harness/modules/ModulesScreen.tsx'), 'utf8');
+  const client = readFileSync(join(DESKTOP, 'renderer/api/client.ts'), 'utf8');
+  assert.doesNotMatch(screen, /console\./);
+  assert.equal((client.match(/BRIDGE_MISSING/g) ?? []).length >= 1 && (client.match(/console\.error\(/g) ?? []).length, 1);
 });

@@ -3,7 +3,6 @@
  * plus folders in the home folder that the person approved once for that module. The view shows what each module can read, lets the person approve a folder (main opens its own chooser: this page never names a folder)
  * and remove one. Everything stays on this computer. All display logic is in shared/modules/view-model.ts. Structure copied from Local models: Screen, a hint line, then rows with a tile, a name and an action.
  */
-import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import { Screen } from '../Screen.js';
 import { HButton } from '../parts/controls.js';
@@ -127,8 +126,7 @@ export function Modules({ id }: { id: string | null }): ReactElement {
   const selected = rows.find(r => r.id === id) ?? null;
   const places = useModulePlaces(bridge, selected === null ? null : selected.id);
   const missing = real && bridge === null;
-  // The failure is told on the screen and in the console of the window, once for as long as it stands.
-  useEffect(() => { if (missing) console.error('Bowerloom: the window gave no whole modules bridge (BRIDGE_MISSING).'); }, [missing]);
+  // The failure is told on the screen. The console line is written once, at launch, by renderer/api/client.ts.
   const Page = selected === null ? undefined : embeddedPageOf(selected.id);
   const reads: ReadsProps | null = selected === null ? null : { title: selected.id, sample, hasBridge: bridge !== null, missing, places: places, onApprove: places.approve, onRemove: places.remove };
   return (

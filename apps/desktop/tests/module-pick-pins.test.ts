@@ -85,3 +85,12 @@ test('a damaged list that was set aside is logged, and the page is told on a kep
   const plain = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'kept', place }), tell: line => lines.push(line) });
   assert.equal('listReset' in plain, false);
 });
+
+test('a logger that throws cannot turn a kept or a refused answer into a failure', async t => {
+  const place = { id: 'place-0123456789ab', label: '~/x', approvedAt: 'now' };
+  const boom = (): void => { throw new Error('the log is closed'); };
+  const kept = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'kept', place, resetRecord: true }), tell: boom });
+  assert.deepEqual(kept, { status: 'kept', place, listReset: true });
+  const refused = await pickModulePlace({ moduleId: 'memory', show: async () => '/x', stateRoot: tempDir(t), home: tempDir(t), approve: () => ({ status: 'refused', code: 'NOT_IN_HOME' }), tell: boom });
+  assert.deepEqual(refused, { status: 'refused', code: 'NOT_IN_HOME' });
+});

@@ -58,7 +58,7 @@ test('a cancelled chooser changes nothing but the busy flag, and a refused pick 
 });
 
 test('an approval that the bridge refuses is the state "failed" with its code, and not busy', async () => {
-  assert.deepEqual(await approveFlow(fake({ approveModulePlace: refuse('UNKNOWN_MODULE') }), 'memory'), { status: 'failed', places: [], code: 'UNKNOWN_MODULE', busy: false, notice: null });
+  assert.deepEqual(await approveFlow(fake({ approveModulePlace: refuse('UNKNOWN_MODULE') }), 'memory'), { status: 'failed', code: 'UNKNOWN_MODULE', busy: false, notice: null });
 });
 
 test('an approval that kept the folder but whose list then fails keeps the old places and drops "Approved."', async () => {
@@ -77,4 +77,25 @@ test('a removal gives the folders that are left and says the files are untouched
   assert.deepEqual(failed, { code: 'FAILED', busy: false, notice: removeWords('FAILED') }, 'a failed removal keeps the list and says the folder is still approved');
   assert.equal('status' in failed, false);
   assert.equal('places' in failed, false);
+});
+
+test('a failed approve call keeps the places the page holds: no places key in the patch, for a thrown call, FAILED and UNKNOWN_MODULE', async () => {
+  for (const code of ['FAILED', 'UNKNOWN_MODULE']) {
+    const patch = await approveFlow(fake({ approveModulePlace: refuse(code) }), 'memory');
+    assert.equal('places' in patch, false, code);
+    assert.deepEqual(patch, { status: 'failed', code, busy: false, notice: null });
+  }
+  const thrown = await approveFlow(fake({ approveModulePlace: () => { throw new Error('/Users/someone/secret'); } }), 'memory');
+  assert.equal('places' in thrown, false);
+  assert.equal(thrown.code, 'FAILED');
+  assert.equal('places' in await loadPlaces(fake({ listModulePlaces: refuse('FAILED') }), 'memory'), true, 'the first load still empties the list');
+});
+
+test('a kept place after a reset whose list then cannot be read again says both: approved, list not read, old list set aside', async () => {
+  const bridge = fake({ approveModulePlace: async () => ({ status: 'kept', place: B, listReset: true }), listModulePlaces: refuse('FAILED') });
+  const patch = await approveFlow(bridge, 'memory');
+  assert.equal(patch.notice, `${MODULE_WORDS.approvedNoRefresh} ${MODULE_WORDS.resetNote}`);
+  assert.match(patch.notice ?? '', /could not be read again/);
+  assert.match(patch.notice ?? '', /set aside/);
+  assert.equal('places' in patch, false);
 });

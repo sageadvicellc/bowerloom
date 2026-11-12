@@ -22,10 +22,10 @@ export const MODULE_CHANNELS: Readonly<Record<ModuleCall, string>> = Object.free
 /**
  * The short codes a modules call can be refused with. NOT_ALLOWED: the sender is not the app page. BAD_ARGUMENT: the count or the shape of the arguments is wrong. UNKNOWN_MODULE: main holds no stock extension
  * with that id. NOT_APPROVED: the module was never approved for that place (or the place was removed). PLACE_CHANGED: the approved place is now another folder, or is gone. BAD_PATH: the path is not one plain
- * relative path. OUTSIDE_PLACE: a link leads out of the place. NOT_A_FILE, TOO_LARGE, NOT_TEXT, UNREADABLE: the file refusals. RECORD_DAMAGED and RECORD_BLOCKED: the saved record of approvals cannot be used.
+ * relative path. OUTSIDE_PLACE: a link leads out of the place. NOT_A_FILE, TOO_LARGE, NOT_TEXT, UNREADABLE: the file refusals. HOME_UNREADABLE: the home folder could not be read. RECORD_DAMAGED and RECORD_BLOCKED: the saved record of approvals cannot be used.
  * FAILED: anything else; main logs the class of the cause, and the page never sees a message.
  */
-export const MODULE_REFUSAL_CODES = ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED', 'FAILED'] as const;
+export const MODULE_REFUSAL_CODES = ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'HOME_UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED', 'FAILED'] as const;
 export type ModuleRefusalCode = (typeof MODULE_REFUSAL_CODES)[number];
 export const MODULE_REFUSALS: readonly string[] = Object.freeze([...MODULE_REFUSAL_CODES]);
 

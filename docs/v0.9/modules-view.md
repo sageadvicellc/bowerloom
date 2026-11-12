@@ -49,9 +49,9 @@ Two differences from linked notes:
 
 1. The module id and place id are well formed. A damaged or blocked record is `RECORD_DAMAGED` or `RECORD_BLOCKED`. The record must hold that place for that module, otherwise `NOT_APPROVED`.
 2. The place is still the same folder, otherwise `PLACE_CHANGED`. It must still pass every check of an approval (home, hidden, odd characters, state folder, Library), otherwise `NOT_APPROVED`.
-3. The path is one plain relative path: no `..`, no absolute path, no hidden part, no empty part, no control or bidirectional character. Otherwise `BAD_PATH`.
+3. The path is one plain relative path: no `..`, no absolute path, no hidden part, no empty part, no control, bidirectional or lone surrogate character. Otherwise `BAD_PATH`.
 4. The real path of the file is inside the real path of the place. A link that leads out is `OUTSIDE_PLACE`. Every part of the real path inside the place must be plain too, so a link to `.env` or `.git` is `BAD_PATH`.
-5. The file is opened without following a link and without blocking, and the opened file must be the one that was looked at. The real path is worked out again before the read. The file is a regular file, never a pipe or a device (`NOT_A_FILE`), at most 256 KiB (`TOO_LARGE`), and valid UTF-8 text with no NUL byte (`NOT_TEXT`). Any other failure is `UNREADABLE`.
+5. The file is opened without following a link and without blocking, and the opened file must be the one that was looked at. The real path is worked out again before the read. The file is a regular file, never a pipe or a device (`NOT_A_FILE`), at most 256 KiB (`TOO_LARGE`), and valid UTF-8 text with no NUL byte (`NOT_TEXT`). A home folder that cannot be read is `HOME_UNREADABLE`. Any other failure is `UNREADABLE`. After the second real path, the file at that path must still be the file that is open.
 
 The answer is the text or one code. It never holds a path.
 

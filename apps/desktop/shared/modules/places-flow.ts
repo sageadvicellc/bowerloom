@@ -5,7 +5,7 @@
  */
 import { refusalCode } from '../api/calls.js';
 import type { ModuleApproval, ModulePlace, ModulesBridge } from '../api/modules.js';
-import { MODULE_WORDS, approvalNotice, removeWords } from './view-model.js';
+import { MODULE_WORDS, approvalNotice, approvalNoticeNoRefresh, removeWords } from './view-model.js';
 
 export interface PlacesView {
   /** `none`: there is no bridge. `loading`: the first read has not answered. `ready`: the list is in `places`. `failed`: a call was refused, with its code in `code`. */
@@ -25,6 +25,7 @@ async function attempt<T>(run: () => Promise<T>): Promise<{ readonly ok: true; r
   try { return { ok: true, value: await run() }; } catch (error) { return { ok: false, code: refusalCode(error, 'modules') }; }
 }
 
+/** The first read failed: the page holds nothing, so the list is empty. A failure after the page holds a list keeps that list: it is still what main holds. */
 const failed = (code: string): PlacesPatch => ({ status: 'failed', places: [], code });
 
 /** The first read, and every read after a change. */
@@ -39,12 +40,13 @@ export async function loadPlaces(bridge: ModulesBridge, moduleId: string): Promi
  */
 export async function approveFlow(bridge: ModulesBridge, moduleId: string): Promise<PlacesPatch> {
   const done = await attempt<ModuleApproval>(() => bridge.approveModulePlace(moduleId));
-  if (!done.ok) return { ...failed(done.code), busy: false, notice: null };
+  // The approve call itself failed: nothing is known to have changed, so the places the page holds are kept.
+  if (!done.ok) return { status: 'failed', code: done.code, busy: false, notice: null };
   const notice = approvalNotice(done.value);
   if (done.value.status !== 'kept') return { busy: false, notice };
   const list = await loadPlaces(bridge, moduleId);
   // A list that cannot be read again keeps the places the page holds, and the notice no longer says only "Approved.": the person is told the folder was approved and the list was not read.
-  if (list.status === 'failed') return { status: 'failed', code: list.code ?? 'FAILED', busy: false, notice: MODULE_WORDS.approvedNoRefresh };
+  if (list.status === 'failed') return { status: 'failed', code: list.code ?? 'FAILED', busy: false, notice: approvalNoticeNoRefresh(done.value) };
   return { ...list, busy: false, notice };
 }
 
