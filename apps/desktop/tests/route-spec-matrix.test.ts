@@ -101,9 +101,11 @@ test('the five routes that had no spec at the base each name the spec written fo
 
 const extensionRows = (JSON.parse(readFileSync(join(REPO, 'docs', 'v0.9', 'route-spec-matrix.json'), 'utf8')) as { extensionRoutes?: Row[] }).extensionRoutes ?? [];
 
-test('extensionRoutes lists local-models, owned by the bundled extension of that name and by no base route', () => {
-  assert.deepEqual(extensionRows.map(r => r.route), ['local-models']);
+test('extensionRoutes lists local-models and modules, each owned by the bundled extension of that name and by no base route', () => {
+  assert.deepEqual(extensionRows.map(r => r.route), ['local-models', 'modules']);
   const row = extensionRows[0]!;
+  assert.equal(extensionRows[1]!.targetExtension, 'modules');
+  assert.ok(existsSync(join(DESKTOP, 'extensions', 'modules', 'manifest.json')));
   assert.equal(row.targetExtension, 'local-models');
   assert.equal((DEFAULT_IDS as readonly string[]).includes(row.targetExtension!), false);
   assert.equal((BASE_ROUTES as readonly string[]).includes(row.route!), false);

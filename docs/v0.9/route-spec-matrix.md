@@ -159,6 +159,14 @@ These are routes of bundled extensions. They are not base routes, so the 15 abov
   - e2e (sample): `apps/desktop/e2e/harness-local-models.spec.ts`
   - e2e (no bridge): `apps/desktop/e2e/harness-local-models-no-bridge.spec.ts`
   - real mode has no spec yet. It needs a fixture server inside the sandbox.
+- **modules** (`extension-route:modules`)
+  - params: id (which module is open)
+  - modes: sample, no-bridge
+  - owner: the bundled extension `modules`
+  - e2e (sample): `apps/desktop/e2e/harness-modules.spec.ts`
+  - e2e (no bridge): `apps/desktop/e2e/harness-modules-no-bridge.spec.ts`
+  - unit: `modules-view-model`, `modules-flow`, `modules-screen`, `modules-ipc`, `modules-bridge`, `module-pick-pins`
+  - real mode has no end-to-end spec. Approving a folder opens a native chooser. The unit tests hold the bridge, main and the steps of the screen.
 
 ### Route params
 

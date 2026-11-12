@@ -12,6 +12,7 @@ import type { NavMode } from '../home/shell/shell-state.js';
 import { useWindowWidth } from '../home/shell/useWindowWidth.js';
 import { IconButton } from '../home/kit/IconButton.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
+import type { HarnessIconName } from './icons.js';
 import { navKeyOf } from '../../shared/harness/route.js';
 import type { Route } from '../../shared/harness/route.js';
 import { Navigation } from './Navigation.js';
@@ -100,7 +101,7 @@ export function Shell({ route, children, overlays, extensions }: { route: Route;
           onNewHarness={() => { ui.showToast(BUILDER_REFUSALS['new-harness']); ui.openAdopt({}); }}
           onHarnesses={() => go({ name: 'harnesses' })} onLibrary={kind => go({ name: 'library', kind: kind ?? 'skill' })} onProjects={() => go({ name: 'projects' })} onRuns={() => go({ name: 'runs' })}
           onInterfaces={() => go({ name: 'interfaces' })} onHistory={() => go({ name: 'history' })} onHelp={() => go({ name: 'help' })}
-          extensions={(extensions ?? []).flatMap(x => (x.id === 'local-models' ? [{ id: x.id, title: x.title, icon: 'chip' as const, onOpen: () => go({ name: 'local-models' }) }] : []))} />
+          extensions={(extensions ?? []).flatMap((x): { id: string; title: string; icon: HarnessIconName; onOpen: () => void }[] => (x.id === 'local-models' ? [{ id: x.id, title: x.title, icon: 'chip', onOpen: () => go({ name: 'local-models' }) }] : x.id === 'modules' ? [{ id: x.id, title: x.title, icon: 'columns', onOpen: () => go({ name: 'modules' }) }] : []))} />
         {mode === 'hidden' && overlay ? <div className="hm-nav-scrim" data-nav-scrim="" aria-hidden="true" onClick={() => { setOverlay(false); requestAnimationFrame(() => topToggle.current?.focus()); }} /> : null}
         {children}
         <div id="hx-layer" />

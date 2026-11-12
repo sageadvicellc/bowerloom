@@ -53,12 +53,12 @@ export function followExtensions(registry: Registry<ScreenMount>, bridge: LocalB
 }
 
 /**
- * What the Local models route draws. 'wait': the list has not answered. 'absent': it answered and this extension is not in it (and the window has a bridge), so the screen says it did not load.
+ * What the route of a bundled extension draws (Local models by default; the Modules view passes its own id). 'wait': the list has not answered. 'absent': it answered and this extension is not in it (and the window has a bridge), so the screen says it did not load.
  * 'screen': the registry draws it (or, with no bridge, says the route is not available).
  */
-export function localRouteState(bundled: Bundled, hasBridge: boolean): 'wait' | 'absent' | 'screen' {
+export function localRouteState(bundled: Bundled, hasBridge: boolean, id: string = 'local-models'): 'wait' | 'absent' | 'screen' {
   if (!bundled.ready) return 'wait';
-  return hasBridge && !bundled.extensions.some(x => x.id === 'local-models') ? 'absent' : 'screen';
+  return hasBridge && !bundled.extensions.some(x => x.id === id) ? 'absent' : 'screen';
 }
 
 export function useBundledExtensions(registry: Registry<ScreenMount>, bridge: LocalBridge | null): Bundled {

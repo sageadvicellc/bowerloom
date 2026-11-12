@@ -1268,6 +1268,47 @@
       ],
       "newSpec": null,
       "notes": "A bundled extension, not a base route. The screen follows listExtensions. Real mode has no spec yet: it needs a fixture server inside the sandbox."
+    },
+    {
+      "id": "extension-route:modules",
+      "kind": "route",
+      "route": "modules",
+      "params": [
+        "id"
+      ],
+      "sheets": [],
+      "modes": [
+        "sample",
+        "no-bridge"
+      ],
+      "screenFiles": [
+        "apps/desktop/renderer/harness/modules/ModulesScreen.tsx",
+        "apps/desktop/renderer/harness/modules/useModulePlaces.ts",
+        "apps/desktop/renderer/harness/modules/embeds.tsx",
+        "apps/desktop/shared/modules/view-model.ts",
+        "apps/desktop/shared/modules/places-flow.ts",
+        "apps/desktop/extensions/modules/manifest.json"
+      ],
+      "targetExtension": "modules",
+      "e2e": {
+        "sample": [
+          "apps/desktop/e2e/harness-modules.spec.ts"
+        ],
+        "real": [],
+        "noBridge": [
+          "apps/desktop/e2e/harness-modules-no-bridge.spec.ts"
+        ]
+      },
+      "unit": [
+        "apps/desktop/tests/modules-view-model.test.ts",
+        "apps/desktop/tests/modules-flow.test.ts",
+        "apps/desktop/tests/modules-screen.test.ts",
+        "apps/desktop/tests/modules-ipc.test.ts",
+        "apps/desktop/tests/modules-bridge.test.ts",
+        "apps/desktop/tests/module-pick-pins.test.ts"
+      ],
+      "newSpec": null,
+      "notes": "A bundled extension, not a base route. The view lists the stock extensions and runs the open one inside it. The read-scope approval is a call of the bowerloomModules bridge and opens a native chooser, so real mode has no end-to-end spec: the unit tests hold the bridge, main and the steps of the screen."
     }
   ]
 }

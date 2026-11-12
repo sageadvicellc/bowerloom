@@ -9,6 +9,9 @@ import type { LocalModel, LocalModelsReport } from './types.js';
 /** The manifest of the bundled extension, as in apps/desktop/extensions/local-models/manifest.json (a test holds the two equal). */
 export const LOCAL_MODELS_MANIFEST: ExtensionManifest = Object.freeze({ id: 'local-models', title: 'Local models', kind: 'ui', routes: Object.freeze(['local-models']), protected: false });
 
+/** The manifest of the bundled Modules view, as in apps/desktop/extensions/modules/manifest.json (a test holds the two equal). */
+export const MODULES_MANIFEST: ExtensionManifest = Object.freeze({ id: 'modules', title: 'Modules', kind: 'ui', routes: Object.freeze(['modules']), protected: false });
+
 const base = (port: number): Omit<LocalModel, 'id' | 'state' | 'stateReason' | 'sampledAt'> => ({
   provider: 'llama-server', port, modelName: null, modelFile: null, quantization: null, parameterCount: null, fileBytes: null, contextSize: null, contextTrain: null, contextUsedPeak: null, notes: [],
   slotsTotal: null, activeRequests: null, deferredRequests: null, promptTokensPerSecond: null, generationTokensPerSecond: null, processMemoryBytes: null, uptimeSeconds: null, build: null,
@@ -32,6 +35,6 @@ export function sampleLocalReport(sampledAt: string): LocalModelsReport {
 export function createSampleLocal(now: () => string): LocalBridge {
   return {
     localModels: async () => sampleLocalReport(now()),
-    listExtensions: async () => ({ extensions: [LOCAL_MODELS_MANIFEST], skipped: [] }),
+    listExtensions: async () => ({ extensions: [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST], skipped: [] }),
   };
 }

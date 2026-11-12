@@ -36,6 +36,17 @@ The package imports nothing from `apps/desktop`, nothing from Electron, and no N
 
 Codes that come from other packages (`ADOPTION_*`, `PORTABLE_*`, `SAVE_*` and so on) are an open list. The contract fixes only their format.
 
+## The module calls
+
+Lane 2 of the v0.9 next phase adds a fifth bridge, `bowerloomModules`, with its own list and its own golden file. The 39 engine calls, the 3 reader calls and their golden file do not change. `callSpec` does not find a module call.
+
+- `listModulePlaces(moduleId)`: the folders approved for one module.
+- `approveModulePlace(moduleId)`: main opens its own folder chooser, and the pick is the approval. The page gives no folder.
+- `revokeModulePlace(moduleId, placeId)`: removes one approved folder from the list of that module. It deletes no file.
+- `readModuleFile(moduleId, placeId, path)`: reads one text file inside an approved folder.
+
+The list is `MODULE_CALLS` in `packages/engine-api/src/calls.ts`. The refusal codes are `MODULE_CALL_REFUSAL_CODES`. `packages/engine-api/golden/module-calls.json` holds both, and `packages/engine-api/test/module-calls.test.mjs` compares the file with the code. `docs/v0.9/modules-view.md` says what the calls are for.
+
 ## The golden file
 
 `packages/engine-api/golden/base-d4c8a478.json` was made by `packages/engine-api/scripts/make-golden.mjs`. The script reads these files as text and runs none of them:

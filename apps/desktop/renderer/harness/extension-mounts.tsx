@@ -31,6 +31,7 @@ import { Interfaces } from './screens/Interfaces.js';
 import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
 import { LocalModels } from './local-models/LocalModels.js';
+import { Modules } from './modules/ModulesScreen.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
 import { registerLoaded } from '../../shared/extensions/register.js';
 
@@ -124,6 +125,7 @@ export function RouteScreen({ registry, ...props }: MountProps & { registry: Reg
 /** The screens of bundled extensions, by extension id. An extension in the bundle that has no screen here is not registered: a manifest carries no code. */
 const BUNDLED_MOUNTS: Readonly<Record<string, ScreenMount>> = Object.freeze({
   'local-models': ({ route }) => (route.name === 'local-models' ? <LocalModels /> : stray(route)),
+  modules: ({ route }) => (route.name === 'modules' ? <Modules id={route.id ?? null} /> : stray(route)),
 });
 
 /** The ids of the bundled extensions this build has a screen for. */

@@ -1,5 +1,5 @@
 /**
- * Module scope: what a module may read. A module reads only what the person picks, plus places in the home folder that the person approved once for that module (Hanna, 2026-11-11). Nothing leaves this computer:
+ * Module scope: what a module may read. A module reads only what the person picks, plus places in the home folder that the person approved once for that module (the maintainer, 2026-11-11). Nothing leaves this computer:
  * this package imports no network module and starts no program. A place the person picks in main's own chooser is the approval. It is kept in the private state folder, `<state>/module-scope/approved.json`,
  * by module id, as the home-relative path (never a full path) and the key of the real folder (SHA-256 of its native real path, cut to 32 characters). A place that is later swapped for another folder
  * (a shortcut) has another key, so it is no longer approved. The model of the record is the one of the linked notes folders (packages/notes-source/src/approvals.ts, docs/v0.9/context-items.md), with
