@@ -80,6 +80,7 @@ A screen reads only through the engine API client. The page makes the client onc
 - Engine side: 39 calls of the adopt, install and save sheets (`apps/desktop/shared/engine/types.ts`). A screen gets it from `useEngine()` in `apps/desktop/renderer/harness/engine.tsx`. When the window has none, it is null.
 - Local side: two read-only calls with no argument, `localModels` and `listExtensions` (`apps/desktop/shared/api/local.ts`). A screen gets it from `useLocal()` in `apps/desktop/renderer/harness/local-models/local.tsx`.
 - Runs side: five calls for the run record (`apps/desktop/shared/api/runs.ts`). A screen gets it from `useRuns()` in `apps/desktop/renderer/harness/runs-real/runs-session.tsx`.
+- Modules side: four calls for the read scope of a module (`apps/desktop/shared/api/modules.ts`). They list, approve and remove the places a person approved for a module, and read one text file inside such a place. A screen gets it from `useModules()` in `apps/desktop/renderer/harness/modules/modules-context.tsx` (`docs/v0.9/modules-view.md`).
 
 The template reads one call: `listExtensions`. A call that fails gives an error. The screen turns the error into a short code with `refusalCode` (`apps/desktop/shared/api/calls.ts`). It never shows the message of an error.
 
@@ -270,6 +271,6 @@ The list is `RUN_REFUSAL_CODES` in `apps/desktop/shared/api/runs.ts`.
 
 - It loads no third-party or community code.
 - It changes nothing in the protection of the shell: the fuses and the policy stay as `docs/v0.9/packaged-app-spec.md` records them.
-- It adds no call to the engine API. The golden files stay as they were.
+- It adds no call to the engine API. This lane leaves the golden files as they were. The file `module-calls.json` is new: lane 2 added it for the modules calls.
 - It has no read scope for generic extension routes. The read scope is part of the Modules view (`docs/v0.9/modules-view.md`).
 - It has no uninstall inside the running app.

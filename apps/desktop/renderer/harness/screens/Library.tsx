@@ -26,6 +26,7 @@ import { addState, contextEmpty, linkProblems, unreadableHarnesses } from '../..
 import { AddSheet } from '../sheets/AddSheet.js';
 import { useSavedScan } from '../real/saved-scan.js';
 import { REAL } from '../real/words-real.js';
+import { PartOrigin } from '../parts/PartOrigin.js';
 
 type SortMode = 'name' | 'used' | 'source';
 const SORTS = [{ mode: 'name', label: 'Name' }, { mode: 'used', label: 'Most used' }, { mode: 'source', label: 'Source' }] as const satisfies readonly { mode: SortMode; label: string }[];
@@ -59,6 +60,7 @@ function Details({ state, part, onAdd }: { state: HarnessState; part: Part; onAd
     <>
       <DetailsHead tile={<Tile name={KIND_ICON[part.kind]} size="large" />} title={part.name} subtitle={fromWords(part.kind, part.source, part.version)} />
       <p className="hx-text">{part.description}</p>
+      <PartOrigin state={state} part={part} />
       {part.fromHarness === undefined ? (
         <section className="hx-block" aria-labelledby="hx-lib-file">
           <h3 className="hx-h3" id="hx-lib-file">{WORDS.label.file}</h3>

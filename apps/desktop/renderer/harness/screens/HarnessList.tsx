@@ -29,6 +29,7 @@ import { chooseFolderCall, foldersCall, useCall } from '../sheets/use-call.js';
 import { ENGINE_WORDS } from '../words-engine.js';
 import { openFolderName } from '../words.js';
 import { SHARE } from '../words-share.js';
+import { PartsOfHarness } from '../parts/PartsOfHarness.js';
 
 function Row({ harness, state, selected, onPick, onStart }: { harness: Harness; state: HarnessState; selected: boolean; onPick(): void; onStart(): void }): ReactElement {
   const status = harnessStatus(state, harness.id);
@@ -58,6 +59,7 @@ function Details({ harness, state }: { harness: Harness; state: HarnessState }):
     <>
       <DetailsHead tile={<Tile name="harness" size="large" />} title={harness.name} subtitle={WORDS.label.harness} />
       <p className="hx-text">{harness.summary}</p>
+      <PartsOfHarness state={state} harness={harness} />
       <section className="hx-block" aria-labelledby="hx-runs-in">
         <h3 className="hx-h3" id="hx-runs-in">{WORDS.label.runsIn}</h3>
         {state.real === undefined ? <ul className="hx-inline-list">{runsIn(state).map(i => <li key={i.id}><StateDot tone="good">{i.name}</StateDot></li>)}</ul> : <NotChecked />}
