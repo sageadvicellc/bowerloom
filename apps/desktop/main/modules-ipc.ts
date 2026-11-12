@@ -1,5 +1,5 @@
 /**
- * The four calls of the `bowerloomModules` bridge, answered in the main process (shared/api/modules.ts names them). Registered for the default launch only.
+ * The five calls of the `bowerloomModules` bridge, answered in the main process (shared/api/modules.ts names them). Registered for the default launch only.
  * Each call:
  *  - is answered only for the app's own page, in its main frame, before anything else happens;
  *  - takes exactly its number of arguments, and each argument is checked for its shape (shared/api/modules-shape.ts) before main acts on it;
@@ -8,9 +8,9 @@
  * The decision whether a module may read a place is made by packages/module-scope and by nothing here: `readModuleFile` is the package's `readPlaceFile`. `approveModulePlace` opens main's own chooser
  * (main/module-pick.ts), so the page never names a folder. The page never holds a full path: a place is an id and a label written with `~`. Nothing here starts a program or reads the network.
  */
-import { listPlaces, readPlaceFile, revokePlace as revokeInPackage } from '../../../packages/module-scope/src/index.js';
+import { listPlaceFiles, listPlaces, readPlaceFile, revokePlace as revokeInPackage } from '../../../packages/module-scope/src/index.js';
 import { MODULE_ARITY, MODULE_CALLS, MODULE_CHANNELS } from '../shared/api/modules.js';
-import type { ModuleApproval, ModuleCall, ModuleFile, ModulePlaces } from '../shared/api/modules.js';
+import type { ModuleApproval, ModuleCall, ModuleFile, ModuleFileList, ModulePlaces } from '../shared/api/modules.js';
 import { isModuleId, isPathText, isPlaceId } from '../shared/api/modules-shape.js';
 import type { ExtensionHost } from './extension-host.js';
 import { pickModulePlace } from './module-pick.js';
@@ -87,6 +87,12 @@ export function registerModulesIpc(deps: ModulesIpcDeps): void {
       if (!isPlaceId(placeId) || !isPathText(path)) return refuse('BAD_ARGUMENT');
       const read = readPlaceFile({ stateRoot: deps.stateRoot, home: deps.home, moduleId, placeId, path });
       return read.ok ? { text: read.text } : refuse(read.code);
+    },
+    listModuleFiles: async (id, placeId): Promise<ModuleFileList> => {
+      const moduleId = moduleOf(id);
+      if (!isPlaceId(placeId)) return refuse('BAD_ARGUMENT');
+      const listed = listPlaceFiles({ stateRoot: deps.stateRoot, home: deps.home, moduleId, placeId });
+      return listed.ok ? { files: [...listed.files], truncated: listed.truncated } : refuse(listed.code);
     },
   };
 

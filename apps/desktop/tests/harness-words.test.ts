@@ -95,7 +95,7 @@ function textPieces(source: string): string[] {
 }
 
 test('no source file of the preview, its engine screens or main\'s dialogs has a banned word in a string literal or in JSX text', () => {
-  const dirs = ['renderer/harness', 'shared/harness', 'shared/engine', 'shared/local-models', 'shared/modules'];
+  const dirs = ['renderer/harness', 'shared/harness', 'shared/engine', 'shared/local-models', 'shared/modules', 'shared/memory'];
   const files = [...dirs.flatMap(dir => readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join((e as unknown as { parentPath: string }).parentPath, e.name))), join(DESKTOP, 'main', 'engine-consent.ts')];
   assert.ok(files.length >= 30, `${files.length} files`);
   assert.ok(files.some(f => f.endsWith(`${sep}main${sep}engine-consent.ts`)) && files.some(f => f.includes(`${sep}shared${sep}engine${sep}`)), 'the dialog words and the engine words are scanned');
@@ -138,7 +138,7 @@ test('the Local models speed unit is the only text allowed to say "token", and o
   for (const file of ['renderer/harness/local-models/LocalModels.tsx', 'renderer/harness/local-models/local-models.css', 'shared/local-models/sample.ts', 'shared/harness/words.ts', 'renderer/harness/words.ts', 'shared/local-models/view-model.tsx', 'renderer/harness/local-models/view-model.ts']) assert.notEqual(bannedFor(file, SPEED_UNIT), null, file);
   for (const text of ['tokens per second', 'Speed in tokens/s', 'token', 'tokens', 'tokens/s limit']) assert.notEqual(bannedFor(LOCAL_MODELS_WORDS_FILE, text), null, text);
   // No file the preview scans, other than the words file of the screen, holds the word in a string or in JSX text.
-  const dirs = ['renderer/harness', 'shared/harness', 'shared/engine', 'shared/local-models', 'shared/modules'];
+  const dirs = ['renderer/harness', 'shared/harness', 'shared/engine', 'shared/local-models', 'shared/modules', 'shared/memory'];
   const files = dirs.flatMap(dir => readdirSync(join(DESKTOP, dir), { recursive: true, withFileTypes: true }).filter(e => e.isFile() && /\.tsx?$/.test(e.name)).map(e => join((e as unknown as { parentPath: string }).parentPath, e.name)));
   for (const file of files) {
     const name = relative(DESKTOP, file).split(sep).join('/');

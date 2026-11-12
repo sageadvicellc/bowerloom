@@ -22,7 +22,7 @@ const BAD_SENDERS: Record<string, RealEvent> = {
   'a file page': { senderFrame: { url: 'file:///etc/hosts', parent: null } }, 'a child frame of the app page': { senderFrame: { url: APP_INDEX, parent: {} } },
 };
 const manifestText = (id: string, extra: Record<string, unknown> = {}): string => JSON.stringify({ id, title: id, kind: 'ui', routes: [`${id}-route`], protected: false, ...extra });
-const ARGS: Record<(typeof MODULE_CALLS)[number], unknown[]> = { listModulePlaces: ['memory'], approveModulePlace: ['memory'], revokeModulePlace: ['memory', 'place-0123456789ab'], readModuleFile: ['memory', 'place-0123456789ab', 'a.md'] };
+const ARGS: Record<(typeof MODULE_CALLS)[number], unknown[]> = { listModulePlaces: ['memory'], approveModulePlace: ['memory'], revokeModulePlace: ['memory', 'place-0123456789ab'], readModuleFile: ['memory', 'place-0123456789ab', 'a.md'], listModuleFiles: ['memory', 'place-0123456789ab'] };
 
 interface Rig { readonly titles: string[]; readonly home: string; readonly state: string; readonly handlers: Map<string, Handler>; readonly told: string[]; readonly picks: (string | null)[]; readonly asked: { count: number } }
 /** A real extension host over a made-up bundle with two stock extensions, "memory" and "engines", over a made-up home folder. */

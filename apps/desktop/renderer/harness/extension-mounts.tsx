@@ -32,6 +32,7 @@ import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
 import { LocalModels } from './local-models/LocalModels.js';
 import { Modules } from './modules/ModulesScreen.js';
+import { MemoryExplorer } from './memory/MemoryExplorer.js';
 import { ExtensionTemplate } from './extensions/ExtensionTemplate.js';
 import { DEFAULT_IDS } from '../../shared/extensions/defaults.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
@@ -134,6 +135,7 @@ export function RouteScreen({ registry, ...props }: MountProps & { registry: Reg
 const BUNDLED_MOUNTS: Readonly<Record<string, ScreenMount>> = Object.freeze({
   'local-models': ({ route }) => (route.name === 'local-models' ? <LocalModels /> : stray(route)),
   modules: ({ route }) => (route.name === 'modules' ? <Modules id={route.id ?? null} /> : stray(route)),
+  'memory-explorer': ({ route }) => (route.name === 'extension' && route.route === 'memory-explorer' ? <MemoryExplorer /> : stray(route)),
   'extension-template': ({ route }) => (route.name === 'extension' && route.route === 'extension-template' ? <ExtensionTemplate /> : stray(route)),
 });
 

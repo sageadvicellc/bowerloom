@@ -47,6 +47,8 @@ Lane 2 of the v0.9 next phase adds a fifth bridge, `bowerloomModules`, with its 
 
 The list is `MODULE_CALLS` in `packages/engine-api/src/calls.ts`. The refusal codes are `MODULE_CALL_REFUSAL_CODES`. `packages/engine-api/golden/module-calls.json` holds both, and `packages/engine-api/test/module-calls.test.mjs` compares the file with the code. `docs/v0.9/modules-view.md` says what the calls are for.
 
+The Memory explorer (lane 4) adds a fifth call to this bridge: `listModuleFiles(moduleId, placeId)` lists the markdown files of an approved folder, by relative path. It sits in its own list, `MODULE_LIST_CALLS`, with its own golden file, `packages/engine-api/golden/module-list-calls.json`, so `module-calls.json` stays as lane 2 wrote it. The page table `MODULE_CALLS` in `apps/desktop/shared/api/modules.ts` holds all five calls, and `apps/desktop/tests/modules-bridge.test.ts` holds it equal to the two golden files. `docs/v0.9/memory-explorer.md` says what the call reads.
+
 ## The golden file
 
 `packages/engine-api/golden/base-d4c8a478.json` was made by `packages/engine-api/scripts/make-golden.mjs`. The script reads these files as text and runs none of them:

@@ -2,21 +2,21 @@
  * The calls of the fifth bridge, `bowerloomModules`: the read scope of a module (v0.9, lane 2). A module reads only what the person picks, plus home-folder places the person approved once for that module.
  * A project the person picked is read through the engine calls, as before. This bridge holds the other half: the places in the home folder, and the one read of a text file inside such a place.
  * The 39 engine calls with their golden file, the 3 reader calls, the local calls and the runs calls stay as they are: nothing is added to them. The calls, their counts and their channels are held equal to
- * packages/engine-api/golden/module-calls.json by tests/modules-bridge.test.ts.
+ * packages/engine-api/golden/module-calls.json (four calls) and module-list-calls.json (the fifth, `listModuleFiles`) by tests/modules-bridge.test.ts.
  *
  * What crosses the bridge is plain data. A place is an id, a label written with `~` and the time it was approved, never a full path. The page cannot name a folder to approve: `approveModulePlace` takes the module id
  * only, and main opens its own folder chooser; the pick is the approval (main/module-pick.ts). Only types and constants are here, and no import at all (tests/real-static.test.ts holds that the file has no import or require line other than `import type`), so the
  * preload, main and the page read one table. The checks of an argument are in shared/api/modules-shape.ts, which the preload does not load.
  */
-export const MODULE_CALLS = Object.freeze(['listModulePlaces', 'approveModulePlace', 'revokeModulePlace', 'readModuleFile'] as const);
+export const MODULE_CALLS = Object.freeze(['listModulePlaces', 'approveModulePlace', 'revokeModulePlace', 'readModuleFile', 'listModuleFiles'] as const);
 export type ModuleCall = (typeof MODULE_CALLS)[number];
 
 /** How many arguments each call takes. A call with another count is refused BAD_ARGUMENT. */
-export const MODULE_ARITY: Readonly<Record<ModuleCall, number>> = Object.freeze({ listModulePlaces: 1, approveModulePlace: 1, revokeModulePlace: 2, readModuleFile: 3 });
+export const MODULE_ARITY: Readonly<Record<ModuleCall, number>> = Object.freeze({ listModulePlaces: 1, approveModulePlace: 1, revokeModulePlace: 2, readModuleFile: 3, listModuleFiles: 2 });
 
 /** One channel for each call, in the namespace of this bridge. */
 export const MODULE_CHANNELS: Readonly<Record<ModuleCall, string>> = Object.freeze({
-  listModulePlaces: 'bowerloom-modules:listModulePlaces', approveModulePlace: 'bowerloom-modules:approveModulePlace', revokeModulePlace: 'bowerloom-modules:revokeModulePlace', readModuleFile: 'bowerloom-modules:readModuleFile',
+  listModulePlaces: 'bowerloom-modules:listModulePlaces', approveModulePlace: 'bowerloom-modules:approveModulePlace', revokeModulePlace: 'bowerloom-modules:revokeModulePlace', readModuleFile: 'bowerloom-modules:readModuleFile', listModuleFiles: 'bowerloom-modules:listModuleFiles',
 });
 
 /**
@@ -52,6 +52,9 @@ export type ModuleApproval =
 /** The answer of `readModuleFile`. */
 export interface ModuleFile { readonly text: string }
 
+/** The answer of `listModuleFiles`: the relative paths of the markdown files of a place, sorted, and whether the walk stopped at a limit. Never a full path. */
+export interface ModuleFileList { readonly files: readonly string[]; readonly truncated: boolean }
+
 /** The object `bowerloomModules` holds in the page. */
 export interface ModulesBridge {
   listModulePlaces(moduleId: string): Promise<ModulePlaces>;
@@ -61,6 +64,8 @@ export interface ModulesBridge {
   revokeModulePlace(moduleId: string, placeId: string): Promise<ModulePlaces>;
   /** Reads one text file at a relative path inside an approved place of this module. */
   readModuleFile(moduleId: string, placeId: string, path: string): Promise<ModuleFile>;
+  /** Lists the markdown files of an approved place of this module, by relative path. It opens no file. Added for the Memory explorer: it has its own golden file, `module-list-calls.json`. */
+  listModuleFiles(moduleId: string, placeId: string): Promise<ModuleFileList>;
 }
 
 /** The longest relative path a read takes, in characters. The package holds the same limit (packages/module-scope). */
