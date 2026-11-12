@@ -34,3 +34,7 @@ The last two entries are side channels to main that no engine call carries. A ne
 ## Related checks that were already there
 
 `tests/real-static.test.ts` holds the whole page graph to the rules of a page. `tests/api-call-layer.test.ts` holds the call list and the one reader of the window. `tests/harness-boundary.test.ts` holds the preview folders. The new check adds the engine imports, the channel names, the type-only imports and the side channels.
+
+## Extension screens
+
+The screen of a stock extension is a file under `apps/desktop/renderer/`, so this check reads it with no extra work. The template extension is held to the rules with no allowance. `docs/v0.9/extension-api.md` describes the extension API and the kit that makes a new extension.

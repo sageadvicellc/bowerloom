@@ -39,7 +39,8 @@ import { RunsProvider } from './runs-real/runs-session.js';
 import type { LocalBridge } from '../../shared/local-models/types.js';
 import { LocalProvider, SkippedProvider, useLocal } from './local-models/local.js';
 import { LocalModelsPending } from './local-models/LocalModels.js';
-import { localRouteState, useBundledExtensions } from './bundled-extensions.js';
+import { extensionRouteState, localRouteState, useBundledExtensions } from './bundled-extensions.js';
+import { ExtensionAbsent, ExtensionPending } from './extensions/ExtensionPending.js';
 import type { EngineBridge } from '../../shared/engine/types.js';
 
 function Overlays(): ReactElement {
@@ -69,10 +70,13 @@ function Routes({ bridge, realMode, registry }: { bridge: RealBridge | null; rea
   const at = route.name === 'local-models' ? localRouteState(bundled, localBridge !== null) : 'screen';
   // When the extension is absent, only the skipped entries of that extension are listed: another extension's skip is not this screen's.
   const own = bundled.skipped.filter(x => x.name === 'local-models');
+  // The address of any other stock extension waits the same way: until the list has answered, its route is not "not found".
+  // When the list answered and the route still has no owner, it can say why: a skipped folder with its code, a refusal with its code, or a manifest with no screen in this build.
+  const ext = route.name === 'extension' ? extensionRouteState(bundled, registry, route.route) : null;
   return (
     <Shell route={route} overlays={<Overlays />} extensions={bundled.extensions}>
       <SkippedProvider skipped={bundled.skipped}>
-        {at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /> : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
+        {ext?.kind === 'wait' ? <ExtensionPending problem={bundled.problem} /> : ext?.kind === 'absent' ? <ExtensionAbsent absence={ext.absence} /> : at === 'screen' ? <RouteScreen route={route} bridge={bridge} realMode={realMode} registry={registry} /> : <LocalModelsPending problem={bundled.problem} skipped={at === 'absent' ? own : []} loading={at === 'wait'} />}
       </SkippedProvider>
     </Shell>
   );

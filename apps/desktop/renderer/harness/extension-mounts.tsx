@@ -31,6 +31,8 @@ import { Interfaces } from './screens/Interfaces.js';
 import { History } from './screens/History.js';
 import { Help } from './screens/Help.js';
 import { LocalModels } from './local-models/LocalModels.js';
+import { ExtensionTemplate } from './extensions/ExtensionTemplate.js';
+import { DEFAULT_IDS } from '../../shared/extensions/defaults.js';
 import type { ExtensionManifest } from '../../shared/extensions/types.js';
 import { registerLoaded } from '../../shared/extensions/register.js';
 
@@ -49,7 +51,7 @@ export function RouteNotFound({ route }: { route: string }): ReactElement {
 }
 
 /** A route that reached a mount which does not own it. The registry never does this; the state keeps the switch total. */
-const stray = (route: Route): ReactElement => <RouteNotFound route={route.name} />;
+const stray = (route: Route): ReactElement => <RouteNotFound route={route.name === 'extension' ? route.route : route.name} />;
 
 function firstRun({ route, bridge, realMode }: MountProps): ReactElement {
   switch (route.name) {
@@ -117,13 +119,20 @@ export function createScreenRegistry(): Registry<ScreenMount> {
 
 /** The screen a route names: the mount of the extension that owns the route, or the named not-found state. */
 export function RouteScreen({ registry, ...props }: MountProps & { registry: Registry<ScreenMount> }): ReactElement {
-  const found = registry.resolve(props.route.name);
-  return found.found ? found.mount(props) : <RouteNotFound route={found.route} />;
+  const { route } = props;
+  // A stock extension without its own route name is reached at #app/extension/<route>. The route in the address names the route to resolve. A default extension is never reached this way:
+  // its routes have their own addresses, so the generic address shows the named not-found state for them.
+  const name = route.name === 'extension' ? route.route : route.name;
+  const found = registry.resolve(name);
+  if (!found.found) return <RouteNotFound route={found.route} />;
+  if (route.name === 'extension' && (DEFAULT_IDS as readonly string[]).includes(found.id)) return <RouteNotFound route={name} />;
+  return found.mount(props);
 }
 
 /** The screens of bundled extensions, by extension id. An extension in the bundle that has no screen here is not registered: a manifest carries no code. */
 const BUNDLED_MOUNTS: Readonly<Record<string, ScreenMount>> = Object.freeze({
   'local-models': ({ route }) => (route.name === 'local-models' ? <LocalModels /> : stray(route)),
+  'extension-template': ({ route }) => (route.name === 'extension' && route.route === 'extension-template' ? <ExtensionTemplate /> : stray(route)),
 });
 
 /** The ids of the bundled extensions this build has a screen for. */
@@ -134,10 +143,24 @@ export const BUNDLED_IDS: readonly string[] = Object.freeze(Object.keys(BUNDLED_
  * (RESERVED, ROUTE_TAKEN), is left out. Calling it again with the same list changes nothing.
  */
 export function registerBundled(registry: Registry<ScreenMount>, manifests: readonly ExtensionManifest[]): readonly ExtensionManifest[] {
+  return registerBundledDetailed(registry, manifests).registered;
+}
+
+/** One listed manifest the registry refused, with the id, the routes and the code (RESERVED, ROUTE_TAKEN, EXTENSION_EXISTS, MOUNT_FAILED or BAD_MANIFEST). */
+export interface RefusedBundled { readonly id: string; readonly routes: readonly string[]; readonly code: string }
+
+/**
+ * The same as registerBundled, and it says what it left out. `registered`: the manifests that are registered. `noMount`: manifests this build has no screen for. `refused`: manifests that have a screen
+ * and that the registry refused, each with its code. The two lists are never mixed: a refusal is not a missing screen.
+ */
+export function registerBundledDetailed(registry: Registry<ScreenMount>, manifests: readonly ExtensionManifest[]): { readonly registered: readonly ExtensionManifest[]; readonly noMount: readonly ExtensionManifest[]; readonly refused: readonly RefusedBundled[] } {
   const known = manifests.filter(m => Object.hasOwn(BUNDLED_MOUNTS, m.id));
+  const noMount = manifests.filter(m => !Object.hasOwn(BUNDLED_MOUNTS, m.id));
   const have = new Set(registry.list().map(m => m.id));
   const fresh = known.filter(m => !have.has(m.id));
-  registerLoaded(registry, fresh, m => BUNDLED_MOUNTS[m.id]!);
+  const answers = registerLoaded(registry, fresh, m => BUNDLED_MOUNTS[m.id]!);
+  const refused: RefusedBundled[] = [];
+  answers.forEach((answer, i) => { if (!answer.ok) refused.push({ id: fresh[i]!.id, routes: fresh[i]!.routes, code: answer.refusal.code }); });
   const now = new Set(registry.list().map(m => m.id));
-  return Object.freeze(known.filter(m => now.has(m.id)));
+  return Object.freeze({ registered: Object.freeze(known.filter(m => now.has(m.id))), noMount: Object.freeze(noMount), refused: Object.freeze(refused) });
 }

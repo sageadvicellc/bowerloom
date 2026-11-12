@@ -18,7 +18,9 @@ export const MANIFEST_MAX_BYTES = 64 * 1024;
 /** A folder name in a report is cut to this many characters. */
 const NAME_SHOWN = 64;
 
-export type SkipCode = 'BAD_NAME' | 'OUTSIDE_ROOT' | 'UNREADABLE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_JSON' | 'BAD_MANIFEST' | 'DUPLICATE';
+/** The codes of a skipped folder. The extension API page lists each one (docs/v0.9/extension-api.md), and tools/lib/extension-kit.mjs repeats them. */
+export const SKIP_CODES = Object.freeze(['BAD_NAME', 'OUTSIDE_ROOT', 'UNREADABLE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_JSON', 'BAD_MANIFEST', 'DUPLICATE'] as const);
+export type SkipCode = (typeof SKIP_CODES)[number];
 export interface Skipped { readonly name: string; readonly code: SkipCode; readonly message: string }
 export interface LoadResult { readonly manifests: readonly ExtensionManifest[]; readonly skipped: readonly Skipped[] }
 
@@ -26,9 +28,9 @@ export interface LoadResult { readonly manifests: readonly ExtensionManifest[]; 
 const inside = (root: string, child: string): boolean => child === root || child.startsWith(root.endsWith(sep) ? root : root + sep);
 const fail = (code: SkipCode, message: string): { readonly ok: false; readonly refusal: Refusal } => refuse(code, message);
 
-/** A name is one plain path part. */
+/** A name is one plain path part, and does not start with a dot. A folder that starts with a dot is a hidden or a leftover folder (the kit renames a folder to .removing-<hex> while it removes it), so it is never loaded. */
 function plainName(name: unknown): name is string {
-  return typeof name === 'string' && name !== '' && name !== '.' && name !== '..' && !name.includes('..') && !/[\\/\0]/.test(name) && !isAbsolute(name);
+  return typeof name === 'string' && name !== '' && !name.startsWith('.') && !name.includes('..') && !/[\\/\0]/.test(name) && !isAbsolute(name);
 }
 
 /**

@@ -186,7 +186,8 @@ test('the manifest is bundled, not protected, owns the route local-models, and t
   const manifest = JSON.parse(readFileSync(join(DESKTOP, 'extensions/local-models/manifest.json'), 'utf8')) as unknown;
   assert.deepEqual(manifest, { id: 'local-models', title: 'Local models', kind: 'ui', routes: ['local-models'], protected: false });
   assert.deepEqual(manifest, JSON.parse(JSON.stringify(LOCAL_MODELS_MANIFEST)));
-  assert.deepEqual([...BUNDLED_IDS], ['local-models']);
+  // The template extension has a screen in the app too. Its manifest is not in extensions/, so it ships only when a person installs it (tests/extension-template.test.ts).
+  assert.deepEqual([...BUNDLED_IDS], ['local-models', 'extension-template']);
 });
 
 test('registerBundled registers the screen of a listed extension once, leaves out one with no screen, and the route then resolves', () => {
@@ -245,7 +246,7 @@ test('stopping while a retry is waiting cancels it, and a late answer after stop
 });
 
 test('the route local-models is an extension route: it parses, formats and belongs to the navigation item of its own name, and is not one of the 15 base routes', () => {
-  assert.deepEqual([...EXTENSION_ROUTES], ['local-models']);
+  assert.deepEqual([...EXTENSION_ROUTES], ['local-models', 'extension']);
   assert.equal(BASE_ROUTES.length, 15); assert.equal((BASE_ROUTES as readonly string[]).includes('local-models'), false);
   assert.deepEqual(parseRoute('#sample/local-models'), { name: 'local-models' }); assert.deepEqual(parseRoute('#app/local-models'), { name: 'local-models' });
   assert.equal(formatRoute({ name: 'local-models' }), '#sample/local-models'); assert.equal(formatRoute({ name: 'local-models' }, '#app'), '#app/local-models');
