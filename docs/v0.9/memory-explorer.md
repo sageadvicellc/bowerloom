@@ -31,21 +31,24 @@ Remove stops the reads. It deletes no file.
 
 The explorer uses two calls of the `bowerloomModules` bridge:
 
-- `listModuleFiles(moduleId, placeId)`. Main lists the markdown files of the approved folder. It reads names only. It never follows a link, and it leaves out a hidden part and a name with a control or bidirectional character. It stops at 5,000 files, 6 folders deep and 50,000 names, and then it says the list was cut.
+- `listModuleFiles(moduleId, placeId)`. Main lists the visible, non-hidden, non-link markdown files of the approved folder. It reads names only, one entry at a time, and counts each entry as it reads it. It never follows a link. It leaves out a hidden part and a name with a control or bidirectional character. It skips a folder on another device. It stops at 5,000 files, 50,000 names or 5 seconds, and then it says the list was cut. It leaves out a folder more than 6 deep, says the list was cut, and goes on. The answer also holds `skipped`: the count of folders it could not list and entries it could not look at. After the walk, main checks the place again. A place that moved gives `PLACE_CHANGED` and no list.
 - `readModuleFile(moduleId, placeId, path)`. Lane 2's call. It reads one text file of an approved folder. Every refusal of lane 2 holds: `BAD_PATH`, `OUTSIDE_PLACE`, `NOT_A_FILE`, `TOO_LARGE` (over 256 KiB), `NOT_TEXT`, `PLACE_CHANGED`, `NOT_APPROVED`.
 
-The list is the one new call. No existing call lists the files of a place, and the Context page keeps no file path for a page. The call has its own golden file, `packages/engine-api/golden/module-list-calls.json`. The golden file of lane 2 and the base golden file are unchanged. The decision is in `packages/module-scope` (`listPlaceFiles`), behind the same gate as a read.
+The list is the one new call. No existing call lists the files of a place, and the Context page keeps no file path for a page. The call has its own golden file, `packages/engine-api/golden/module-list-calls.json`. The golden file of lane 2 and the base golden file are unchanged. `moduleCallSpec` finds the call. The decision is in `packages/module-scope` (`listPlaceFiles`), behind the same gate as a read.
 
 The explorer reads no folder that the person did not approve for it. A folder linked on the Context tab shows in the harness context column. To see its links and tags, the person approves the same folder here. The Context page has no path for a page, so the explorer cannot read a linked folder without that approval.
 
-## The caps
+## The caps and partial counts
 
 The caps of the Context page still hold (`docs/v0.9/context-items.md`).
 
 - At most `pagesPerPlace` (2,000) notes are read for one folder. The rest are listed and not shown. The page says how many.
-- The list holds at most `filesPerPlace` (5,000) files. When main cuts the list, the page says so.
-- A note that cannot be read still counts as a note. The page says how many could not be read, with the code of the refusal.
-- Reads run 16 at a time.
+- The count of notes and the index of links use every listed note, also those past the cap. A link to a note that was listed and not read is not a missing link.
+- A count is a lower bound when part of the folder is not in it. The screen draws it with a plus sign and `data-partial`. Notes is partial when the list was cut or a folder or entry was skipped. Links, tags and missing links are also partial when a note was not shown, could not be read, or a total cap on distinct tags (5,000) or distinct missing targets (5,000) was reached. Notes in all folders is partial when any folder failed or was cut.
+- A note that cannot be read still counts as a note. The page says how many could not be read, with the code. A failure of the parser has its own code, `PARSE_FAILED`.
+- A refusal about the whole folder (`NOT_APPROVED`, `PLACE_CHANGED`, `RECORD_DAMAGED`, `RECORD_BLOCKED`, `HOME_UNREADABLE`) stops the read. The folder shows as failed with that code.
+- Reads run 16 at a time. Refresh reads the folders again.
+- The harness context column says when the folders were not read yet, and does not show zeros. It marks counts partial when the reader stopped early. A set whose pages are not known shows `n/a`.
 
 ## The four layers
 
@@ -61,10 +64,13 @@ What does not count:
 - A link inside a code block or an inline code span. A `#tag` there is no tag either.
 - A web address, a mail address, a link to a heading of the same note, and a link to a file that is not a note, such as a picture or a PDF.
 - A number such as `#123` is no tag.
+- A markdown link to a file with any ending but `.md` or `.markdown`. A wiki link stays permissive: `[[v1.2]]` is a note.
 
 How a link finds its note. It follows Obsidian. A wiki link names a note by its file name, or by a path that ends the path of the note, in any letter case. A markdown link is a path from the folder of the note. When two notes share a name, the link goes to the first path in order.
 
-A wiki link target keeps its text up to the first `|` or `#`. A target with another ending than a note, for example `v1.2`, is a note target. A known file ending (a picture, a PDF) is not.
+A wiki link target keeps its text up to the first `|` or `#`. A backslash before the bar, as in a table (`[[Note\\|alias]]`), is cut. A target with another ending than a note, for example `v1.2`, is a note target. A known file ending (a picture, a PDF) is not.
+
+A missing target with a control or bidirectional character is counted and not listed. The listed ones are drawn in `<bdi>`.
 
 Not built, because the spec names no other layer: orphans, backlinks, word counts, dates, a graph, a search, and any layer that needs a model.
 
@@ -77,7 +83,7 @@ Each number on the screen is in a `data-value` attribute beside the words. The t
 - `packages/module-scope/test/list.test.mjs`: the list, its gate, its limits, links, hidden names.
 - `packages/engine-api/test/module-list-calls.test.mjs`: the call and its golden file.
 - `apps/desktop/tests/memory-analytics.test.ts`: tags, links, resolution, the four layers, and hostile text.
-- `apps/desktop/tests/memory-read.test.ts`: the read through the real main, the parity of counts, the caps, refusals, and that the read changes no file.
+- `apps/desktop/tests/memory-read.test.ts`: the read through the real main, the parity of counts (also for a duplicate name, a hidden name, an odd name, a link, a long path and a note past the cap), the caps, refusals, and that the read changes no file.
 - `apps/desktop/tests/memory-screen.test.ts`: the markup of each state, the harness context, the registration, and the rules of the page.
 - `apps/desktop/tests/modules-bridge.test.ts`: the table of five calls held equal to the two golden files.
 

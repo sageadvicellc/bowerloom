@@ -96,7 +96,7 @@ export const MODULE_LIST_CALLS: readonly CallSpec[] = Object.freeze([moduleCall(
 
 /** The spec of a modules call, or undefined for a name the list does not hold. Own names only. */
 export function moduleCallSpec(name: string): CallSpec | undefined {
-  return MODULE_CALLS.find(c => c.name === name);
+  return MODULE_CALLS.find(c => c.name === name) ?? MODULE_LIST_CALLS.find(c => c.name === name);
 }
 
 /** The spec of a call on either side, or undefined for a name the contract does not hold. Own names only: `constructor` and `__proto__` are not calls. */

@@ -18,12 +18,12 @@ function rig(t) {
   return { base, home, state, notes, put };
 }
 const approve = (r, moduleId = 'memory-explorer', picked = r.notes) => approvePlace({ stateRoot: r.state, home: r.home, moduleId, picked, now: () => '2026-11-12T10:00:00.000Z' });
-const list = (r, placeId, moduleId = 'memory-explorer') => listPlaceFiles({ stateRoot: r.state, home: r.home, moduleId, placeId });
+const list = (r, placeId, moduleId = 'memory-explorer', hooks = undefined) => listPlaceFiles({ stateRoot: r.state, home: r.home, moduleId, placeId, ...(hooks === undefined ? {} : { hooks }) });
 
 test('the list holds the markdown files of the place, sorted, with relative paths, and nothing hidden, nothing else, and no full path', t => {
   const r = rig(t), kept = approve(r);
   const got = list(r, kept.place.id);
-  assert.deepEqual(got, { ok: true, files: ['A.md', 'b.md', 'sub/c.markdown', 'sub/deeper/d.MD'], truncated: false });
+  assert.deepEqual(got, { ok: true, files: ['A.md', 'b.md', 'sub/c.markdown', 'sub/deeper/d.MD'], truncated: false, skipped: { folders: 0, entries: 0 } });
   assert.doesNotMatch(JSON.stringify(got), new RegExp(r.base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
@@ -93,7 +93,7 @@ test('an empty place gives an empty list', t => {
   const r = rig(t);
   const empty = path.join(r.home, 'Documents', 'empty'); fs.mkdirSync(empty);
   const kept = approve(r, 'memory-explorer', empty);
-  assert.deepEqual(list(r, kept.place.id), { ok: true, files: [], truncated: false });
+  assert.deepEqual(list(r, kept.place.id), { ok: true, files: [], truncated: false, skipped: { folders: 0, entries: 0 } });
 });
 
 test('a path of a listing reads back through the same gate, and the list opens no file', t => {
@@ -101,4 +101,88 @@ test('a path of a listing reads back through the same gate, and the list opens n
   const got = list(r, kept.place.id);
   assert.equal(got.files.length, 4);
   assert.ok(Object.isFrozen(got.files));
+});
+
+// ---- the walk reads entry by entry, and says what it could not do
+
+test('S3: a folder with many entries stops at the entry cap without reading past it, and says truncated', t => {
+  const r = rig(t), kept = approve(r);
+  const dir = path.join(r.notes, 'flood'); fs.mkdirSync(dir);
+  for (let i = 0; i < 200; i += 1) fs.writeFileSync(path.join(dir, `f${i}.md`), '');
+  let reads = 0;
+  const opendir = p => { const d = fs.opendirSync(p); const read = d.readSync.bind(d); d.readSync = () => { reads += 1; return read(); }; return d; };
+  const got = list(r, kept.place.id, 'memory-explorer', { opendir, limits: { entries: 25 } });
+  assert.equal(got.ok, true);
+  assert.equal(got.truncated, true);
+  assert.ok(reads <= 25 + 8, `${reads} entries read for a cap of 25 (a few more for the folders above it)`);
+  assert.ok(got.files.length <= 25);
+});
+
+test('S3: the time budget stops the walk and sets truncated', t => {
+  const r = rig(t), kept = approve(r);
+  let tick = 0;
+  const got = list(r, kept.place.id, 'memory-explorer', { now: () => { tick += 1000; return tick; }, limits: { ms: 3500 } });
+  assert.equal(got.ok, true);
+  assert.equal(got.truncated, true);
+  assert.ok(got.files.length < 4);
+});
+
+test('S3: a folder on another device is skipped and counted, and its files are not listed', t => {
+  const r = rig(t), kept = approve(r);
+  const got = list(r, kept.place.id, 'memory-explorer', { dev: (abs, info) => (abs.endsWith(`${path.sep}sub`) ? info.dev + 1 : info.dev) });
+  assert.deepEqual(got.files, ['A.md', 'b.md']);
+  assert.deepEqual(got.skipped, { folders: 1, entries: 0 });
+});
+
+test('C2: a folder that cannot be opened is counted as skipped, and the walk goes on', t => {
+  const r = rig(t), kept = approve(r);
+  const opendir = p => { if (p.endsWith(`${path.sep}deeper`)) throw Object.assign(new Error('denied'), { code: 'EACCES' }); return fs.opendirSync(p); };
+  const got = list(r, kept.place.id, 'memory-explorer', { opendir });
+  assert.deepEqual(got.files, ['A.md', 'b.md', 'sub/c.markdown']);
+  assert.deepEqual(got.skipped, { folders: 1, entries: 0 });
+  assert.doesNotMatch(JSON.stringify(got), /EACCES|denied/);
+});
+
+test('C2: an entry that cannot be looked at is counted as skipped', t => {
+  const r = rig(t), kept = approve(r);
+  const lstat = (p, ...rest) => { if (p.endsWith('b.md')) throw Object.assign(new Error('gone'), { code: 'ENOENT' }); return fs.lstatSync(p, ...rest); };
+  const got = list(r, kept.place.id, 'memory-explorer', { lstat });
+  assert.ok(!got.files.includes('b.md'));
+  assert.equal(got.skipped.entries, 1);
+});
+
+test('L1: a folder past the depth limit sets truncated and does not end the walk: files listed after it are kept', t => {
+  const r = rig(t), kept = approve(r);
+  let deep = path.join(r.notes, 'aaa');
+  for (let i = 0; i <= SCOPE_LIMITS.listDepth + 1; i += 1) { fs.mkdirSync(deep, { recursive: true }); deep = path.join(deep, `d${i}`); }
+  fs.mkdirSync(deep, { recursive: true }); fs.writeFileSync(path.join(deep, 'x.md'), '');
+  fs.writeFileSync(path.join(r.notes, 'zzz.md'), '');
+  const got = list(r, kept.place.id);
+  assert.equal(got.truncated, true);
+  assert.ok(got.files.includes('zzz.md'), 'a file after the deep folder is listed');
+  assert.ok(got.files.includes('sub/c.markdown'));
+});
+
+test('L2: a folder replaced while it is read is dropped and counted', t => {
+  const r = rig(t), kept = approve(r);
+  const opendir = p => {
+    const d = fs.opendirSync(p);
+    if (p.endsWith(`${path.sep}sub`)) { fs.renameSync(p, `${p}-old`); fs.mkdirSync(p); fs.writeFileSync(path.join(p, 'new.md'), ''); }
+    return d;
+  };
+  const got = list(r, kept.place.id, 'memory-explorer', { opendir });
+  assert.ok(!got.files.some(f => f.startsWith('sub/')), got.files.join(','));
+  assert.ok(got.skipped.folders >= 1);
+});
+
+test('L2: a place that is swapped during the walk gives PLACE_CHANGED, not a list', t => {
+  const r = rig(t), kept = approve(r);
+  const other = path.join(r.home, 'Documents', 'other');
+  let swapped = false;
+  const opendir = p => {
+    const d = fs.opendirSync(p);
+    if (!swapped && p.endsWith(`${path.sep}sub`)) { swapped = true; fs.renameSync(r.notes, `${r.notes}-old`); fs.symlinkSync(other, r.notes); }
+    return d;
+  };
+  assert.deepEqual(list(r, kept.place.id, 'memory-explorer', { opendir }), { ok: false, code: 'PLACE_CHANGED' });
 });

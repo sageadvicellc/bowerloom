@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENGINE_API_CALLS, LOCAL_CALLS, MODULE_CALLS, MODULE_CALL_REFUSAL_CODES, MODULE_LIST_CALLS, READER_API_CALLS, RUN_CALLS, callSpec } from '../../../dist/packages/engine-api/src/index.js';
+import { ENGINE_API_CALLS, LOCAL_CALLS, MODULE_CALLS, MODULE_CALL_REFUSAL_CODES, MODULE_LIST_CALLS, READER_API_CALLS, RUN_CALLS, callSpec, moduleCallSpec } from '../../../dist/packages/engine-api/src/index.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = name => JSON.parse(fs.readFileSync(path.join(here, '..', 'golden', name), 'utf8'));
@@ -47,4 +47,10 @@ test('a drifted golden file fails the comparison for every field', () => {
     const drifted = JSON.parse(JSON.stringify(golden)); drifted.moduleListCalls[0][field] = change;
     assert.equal(same(drifted), false, field);
   }
+});
+
+test('L6: moduleCallSpec finds the list call too, and callSpec still does not', () => {
+  assert.equal(moduleCallSpec('listModuleFiles')?.channel, 'bowerloom-modules:listModuleFiles');
+  assert.equal(moduleCallSpec('readModuleFile')?.channel, 'bowerloom-modules:readModuleFile');
+  assert.equal(callSpec('listModuleFiles'), undefined);
 });

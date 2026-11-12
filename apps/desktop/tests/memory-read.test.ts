@@ -7,6 +7,7 @@ import type { TestContext } from 'node:test';
 import { createHash } from 'node:crypto';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import * as fs from 'node:fs';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODULE_CHANNELS } from '../shared/api/modules.js';
@@ -50,13 +51,13 @@ async function approved(r: Rig, folder: string, vault: Readonly<Record<string, s
   assert.equal(done.status, 'kept');
   return (done as { place: ModulePlace }).place;
 }
-/** A count of notes made without the code under test: every file below the folder whose name ends .md or .markdown, with no hidden part. */
-function directCount(dir: string): number {
+/** A count of notes made without the code under test: the visible, non-hidden, non-link markdown files. A name with a control, format or bidirectional character, a path over 512 characters and a folder over 6 deep are not counted: main leaves them out. */
+function directCount(dir: string, rel: string[] = []): number {
   let n = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
-    if (entry.isDirectory()) n += directCount(join(dir, entry.name));
-    else if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name)) n += 1;
+    if (entry.name.startsWith('.') || /[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/u.test(entry.name) || entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) { if (rel.length < 6) n += directCount(join(dir, entry.name), [...rel, entry.name]); }
+    else if (entry.isFile() && /\.(?:md|markdown)$/i.test(entry.name) && [...rel, entry.name].join('/').length <= 512) n += 1;
   }
   return n;
 }
@@ -91,7 +92,7 @@ test('parity: the count of notes on the screen is the count of files in the fold
   const places: ModulePlace[] = [];
   for (const [name, vault] of Object.entries(vaults)) places.push(await approved(r, `Documents/${name}`, vault));
   const results = await readAllMemory(r.bridge, MEMORY_MODULE_ID, places);
-  const html = renderToStaticMarkup(createElement(MemoryView, { ...viewProps(), memory: { status: 'ready', places: results } }));
+  const html = renderToStaticMarkup(createElement(MemoryView, { ...viewProps(), memory: { status: 'ready', places: results, code: null } }));
   for (const [i, name] of Object.keys(vaults).entries()) {
     const direct = directCount(join(r.home, 'Documents', name));
     assert.deepEqual(attr(html, 'notes', places[i]!.id), [String(direct)], `${name}: on screen`);
@@ -102,7 +103,7 @@ test('parity: the count of notes on the screen is the count of files in the fold
 
 test('parity: the links, tags and missing links on the screen are the numbers worked out by hand', async t => {
   const r = rig(t), place = await approved(r, 'Documents/vault', BASIC);
-  const html = renderToStaticMarkup(createElement(MemoryView, { ...viewProps(), memory: { status: 'ready', places: await readAllMemory(r.bridge, MEMORY_MODULE_ID, [place]) } }));
+  const html = renderToStaticMarkup(createElement(MemoryView, { ...viewProps(), memory: { status: 'ready', places: await readAllMemory(r.bridge, MEMORY_MODULE_ID, [place]), code: null } }));
   assert.deepEqual(attr(html, 'links'), [String(BASIC_FACTS.links)]);
   assert.deepEqual(attr(html, 'tags'), [String(BASIC_FACTS.tags)]);
   assert.deepEqual(attr(html, 'missing-links'), [String(BASIC_FACTS.missingLinks)]);
@@ -133,24 +134,25 @@ test('a note that cannot be read still counts as a note and is told with its cod
 test('the pages cap of a place holds: at most pagesPerPlace notes are read, and the rest is told as not shown', async () => {
   const files = Array.from({ length: REAL_LIMITS.pagesPerPlace + 600 }, (_, i) => `n${String(i).padStart(5, '0')}.md`);
   let reads = 0;
-  const bridge = fake({ listModuleFiles: async () => ({ files, truncated: false }), readModuleFile: async () => { reads += 1; return { text: '[[n00000]] #t' }; } });
+  const bridge = fake({ listModuleFiles: async () => listing(files), readModuleFile: async () => { reads += 1; return { text: '[[n00000]] #t' }; } });
   const got = await readPlaceMemory(bridge, MEMORY_MODULE_ID, PLACE);
   assert.equal(REAL_LIMITS.pagesPerPlace, 2000);
   assert.equal(reads, REAL_LIMITS.pagesPerPlace);
   assert.equal(got.listed, files.length);
   assert.equal(got.notShown, 600);
-  assert.equal(got.analytics.notes, REAL_LIMITS.pagesPerPlace);
+  assert.equal(got.analytics.notes, files.length, 'the notes are every listed note, not only those read');
+  assert.equal(got.read, REAL_LIMITS.pagesPerPlace);
 });
 
 test('a smaller cap of the test holds the same way, and a list that main cut is told as cut', async () => {
-  const bridge = fake({ listModuleFiles: async () => ({ files: ['a.md', 'b.md', 'c.md', 'd.md'], truncated: true }) });
+  const bridge = fake({ listModuleFiles: async () => listing(['a.md', 'b.md', 'c.md', 'd.md'], true) });
   const got = await readPlaceMemory(bridge, MEMORY_MODULE_ID, PLACE, { cap: 3 });
   assert.equal(got.read, 3); assert.equal(got.notShown, 1); assert.equal(got.truncated, true);
 });
 
 test('no more than the number of reads in flight at once are asked of main', async () => {
   let live = 0, peak = 0;
-  const bridge = fake({ listModuleFiles: async () => ({ files: Array.from({ length: 100 }, (_, i) => `n${i}.md`), truncated: false }), readModuleFile: async () => { live += 1; peak = Math.max(peak, live); await new Promise(resolve => setImmediate(resolve)); live -= 1; return { text: 'x' }; } });
+  const bridge = fake({ listModuleFiles: async () => listing(Array.from({ length: 100 }, (_, i) => `n${i}.md`)), readModuleFile: async () => { live += 1; peak = Math.max(peak, live); await new Promise(resolve => setImmediate(resolve)); live -= 1; return { text: 'x' }; } });
   await readPlaceMemory(bridge, MEMORY_MODULE_ID, PLACE, { parallel: 8 });
   assert.ok(peak > 1 && peak <= 8, `peak ${peak}`);
 });
@@ -165,15 +167,76 @@ test('a refusal of the list is a failed place with its code, and every code of t
   assert.equal((await readPlaceMemory(throwsAtOnce, MEMORY_MODULE_ID, PLACE)).code, 'FAILED');
 });
 
-test('a place that is removed while it is read gives notes that could not be read, never a thrown error', async t => {
+test('M2: a place removed while it is read is a failed place with the code of the refusal, and the workers stop', async t => {
   const r = rig(t), place = await approved(r, 'Documents/vault', BASIC);
   const first = r.bridge.readModuleFile;
   let n = 0;
   const bridge: ModulesBridge = { ...r.bridge, readModuleFile: async (...args) => { n += 1; if (n === 2) await r.bridge.revokeModulePlace(MEMORY_MODULE_ID, place.id); return first(...args); } };
   const got = await readPlaceMemory(bridge, MEMORY_MODULE_ID, place, { parallel: 1 });
+  assert.equal(got.status, 'failed');
+  assert.equal(got.code, 'NOT_APPROVED');
+  assert.ok(n <= 3, `reads went on after the refusal: ${n}`);
+});
+
+test('M2: every place-level code stops the read the same way', async () => {
+  for (const code of ['NOT_APPROVED', 'PLACE_CHANGED', 'RECORD_DAMAGED', 'RECORD_BLOCKED', 'HOME_UNREADABLE']) {
+    let reads = 0;
+    const bridge = fake({ listModuleFiles: async () => listing(Array.from({ length: 50 }, (_, i) => `n${i}.md`)), readModuleFile: async () => { reads += 1; throw new Error(`Error: ${code}`); } });
+    const got = await readPlaceMemory(bridge, MEMORY_MODULE_ID, PLACE, { parallel: 2 });
+    assert.equal(got.status, 'failed', code); assert.equal(got.code, code);
+    assert.ok(reads <= 4, `${code}: ${reads} reads`);
+  }
+});
+
+test('M3: a failure of the parser is its own code and is not told as a refusal', async () => {
+  const bridge = fake({ listModuleFiles: async () => listing(['a.md', 'b.md']), readModuleFile: async () => ({ text: 'x' }) });
+  const got = await readPlaceMemory(bridge, MEMORY_MODULE_ID, PLACE, { parse: () => { throw new Error('bug'); } });
   assert.equal(got.status, 'ok');
-  assert.equal(got.read, 1);
-  assert.deepEqual(got.unreadable, [{ code: 'NOT_APPROVED', count: BASIC_FACTS.notes - 1 }]);
+  assert.deepEqual(got.unreadable, [{ code: 'PARSE_FAILED', count: 2 }]);
+  assert.equal(got.read, 0);
+});
+
+test('C3: an answer of the wrong shape, or a throw outside the calls, is a failed place and never a read that does not end', async () => {
+  for (const list of [{}, null, { files: 'no' }, { files: [1, 2] }, undefined] as unknown[]) {
+    const got = await readPlaceMemory(fake({ listModuleFiles: async () => list as ModuleFileList }), MEMORY_MODULE_ID, PLACE);
+    assert.equal(got.status, 'failed', JSON.stringify(list)); assert.equal(got.code, 'FAILED');
+  }
+  const noText = await readPlaceMemory(fake({ listModuleFiles: async () => listing(['a.md']), readModuleFile: async () => ({}) as never }), MEMORY_MODULE_ID, PLACE);
+  assert.deepEqual(noText.unreadable, [{ code: 'FAILED', count: 1 }]);
+});
+
+test('C1: 2,500 notes with a link to a note past the cap: no missing link, and the notes are the file count', async () => {
+  const files = Array.from({ length: 2500 }, (_, i) => `n${String(i).padStart(4, '0')}.md`);
+  const bridge = fake({ listModuleFiles: async () => listing(files), readModuleFile: async (_i, _p, path) => ({ text: path === 'n0000.md' ? '[[n2400]]' : '' }) });
+  const got = await readPlaceMemory(bridge, MEMORY_MODULE_ID, PLACE);
+  assert.equal(got.analytics.notes, 2500);
+  assert.equal(got.analytics.missingLinks, 0);
+  assert.equal(got.notShown, 500);
+  assert.equal(got.read, 2000);
+});
+
+test('C2: the folders and entries main could not list are carried to the result', async () => {
+  const got = await readPlaceMemory(fake({ listModuleFiles: async () => listing(['a.md'], false, 2, 3) }), MEMORY_MODULE_ID, PLACE);
+  assert.deepEqual(got.skipped, { folders: 2, entries: 3 });
+});
+
+test('M6: parity through the screen for a duplicate-named pair, a hidden name, an odd-character name, a link, a long path and a note past the cap', async t => {
+  const r = rig(t);
+  const long = 'l'.repeat(120);
+  const vault: Record<string, string> = {
+    'a/Same.md': '[[Same]]', 'b/Same.md': 'x', '.hidden/h.md': 'x', '.dot.md': 'x', 'bad\u202ename.md': 'x', 'tab\tname.md': 'x', 'plain.md': 'x', 'UP.MARKDOWN': 'x',
+    [`${long}/${long}/${long}/${long}/${long}/${long}.md`]: 'x', 'short/deep.md': 'x',
+    ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`past/p${String(i).padStart(2, '0')}.md`, `#t${i}`])),
+  };
+  const place = await approved(r, 'Documents/odd', vault);
+  fs.symlinkSync(join(r.home, 'Documents/odd/plain.md'), join(r.home, 'Documents/odd/link.md'));
+  const results = await readAllMemory(r.bridge, MEMORY_MODULE_ID, [place], { cap: 5 });
+  const direct = directCount(join(r.home, 'Documents', 'odd'));
+  assert.equal(results[0]!.analytics.notes, direct, 'Notes equals the file count, though only 5 are read');
+  assert.equal(results[0]!.notShown, direct - 5);
+  const html = renderToStaticMarkup(createElement(MemoryView, { ...viewProps(), memory: { status: 'ready', places: results, code: null } }));
+  assert.deepEqual(attr(html, 'notes', place.id), [String(direct)]);
+  assert.equal(direct, 17, 'Same twice, plain, UP, deep and the 12 past notes: the hidden, odd-name, link and long-path files are not counted');
 });
 
 // ---- the limits of the scope still hold, through main
@@ -208,21 +271,22 @@ test('the explorer is a stock extension main loads from the app folder, not prot
 // ---- the words
 
 test('the rows of the view name each layer once, in the order notes, links, tags, missing links', () => {
-  assert.deepEqual(memoryRows({ notes: 1, links: 2, tags: 3, tagUses: 4, missingLinks: 5, missingTargets: 5, topTags: [], missing: [] }).map(r => [r.key, r.value]), [['notes', 1], ['links', 2], ['tags', 3], ['missing-links', 5]]);
+  assert.deepEqual(memoryRows({ notes: 1, links: 2, tags: 3, tagUses: 4, missingLinks: 5, missingTargets: 5, capped: false, topTags: [], missing: [] }).map(r => [r.key, r.value]), [['notes', 1], ['links', 2], ['tags', 3], ['missing-links', 5]]);
 });
 
 // ---- helpers
 
+const listing = (files: string[], truncated = false, folders = 0, entries = 0): ModuleFileList => ({ files, truncated, skipped: { folders, entries } });
 const PLACE: ModulePlace = { id: 'place-0123456789ab', label: '~/Documents/vault', approvedAt: '2026-11-12T10:00:00.000Z' };
 function fake(over: Partial<ModulesBridge>): ModulesBridge {
   return {
     listModulePlaces: async () => ({ places: [PLACE] }), approveModulePlace: async () => ({ status: 'cancelled' }), revokeModulePlace: async () => ({ places: [] }),
-    readModuleFile: async () => ({ text: '' }), listModuleFiles: async () => ({ files: [], truncated: false }), ...over,
+    readModuleFile: async () => ({ text: '' }), listModuleFiles: async () => listing([]), ...over,
   };
 }
 function viewProps(): Parameters<typeof MemoryView>[0] {
   return {
-    hasBridge: true, sample: false, missing: false, places: { status: 'ready', places: [], code: null, busy: false, notice: null }, memory: { status: 'idle', places: [] },
-    context: { agents: 0, skills: 0, tools: 0, sets: [] }, onApprove: () => undefined, onRemove: () => undefined,
+    hasBridge: true, sample: false, missing: false, places: { status: 'ready', places: [], code: null, busy: false, notice: null }, memory: { status: 'idle', places: [], code: null },
+    context: { status: 'ok', agents: 0, skills: 0, tools: 0, sets: [] }, onApprove: () => undefined, onRemove: () => undefined, onRefresh: () => undefined,
   };
 }

@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const SCOPE_LIMITS = Object.freeze({ placesPerModule: 16, modules: 64, recordBytes: 128 * 1024, readBytes: 256 * 1024, pathChars: 512, listFiles: 5000, listDepth: 6, listEntries: 50000 });
+export const SCOPE_LIMITS = Object.freeze({ placesPerModule: 16, modules: 64, recordBytes: 128 * 1024, readBytes: 256 * 1024, pathChars: 512, listFiles: 5000, listDepth: 6, listEntries: 50000, listMs: 5000 });
 const VERSION = 1;
 /** A module id: the same name rule as an extension id (apps/desktop/shared/extensions/manifest.ts). */
 const MODULE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -280,47 +280,80 @@ export function readPlaceFile(o: { readonly stateRoot: string; readonly home: st
 }
 
 export type ListCode = 'NOT_APPROVED' | 'PLACE_CHANGED' | 'HOME_UNREADABLE' | 'RECORD_DAMAGED' | 'RECORD_BLOCKED' | 'UNREADABLE';
-/** `files`: the relative paths of the markdown files, sorted, with `/` between parts. `truncated`: the walk stopped at a limit, so more files may exist. */
-export type ListAnswer = { readonly ok: true; readonly files: readonly string[]; readonly truncated: boolean } | { readonly ok: false; readonly code: ListCode };
+/**
+ * `files`: the relative paths of the markdown files, sorted, with `/` between parts. `truncated`: the walk stopped at a limit (files, entries, time) or left out a folder that is too deep, so more files may exist.
+ * `skipped`: the folders that could not be listed (they could not be opened, sit on another device, or were replaced while they were read) and the entries that could not be looked at. Both are counts, never names.
+ */
+export type ListAnswer = { readonly ok: true; readonly files: readonly string[]; readonly truncated: boolean; readonly skipped: { readonly folders: number; readonly entries: number } } | { readonly ok: false; readonly code: ListCode };
 const MARKDOWN = /\.(?:md|markdown)$/i;
 
+/** What a test may swap. Main never passes any of it. */
+export interface ListHooks {
+  readonly opendir?: (dir: string) => fs.Dir;
+  readonly lstat?: (path: string) => fs.Stats;
+  readonly now?: () => number;
+  readonly dev?: (abs: string, info: fs.Stats) => number;
+  readonly limits?: Partial<{ files: number; depth: number; entries: number; ms: number }>;
+}
+
 /**
- * Lists the markdown files of an approved place of a module. The gate is the one of `readPlaceFile`. The walk reads names only and opens no file. It never follows a link: a link to a file or a folder is left out,
- * so a link cannot lead out of the place or to a hidden file. A hidden part, or a part with a control, bidirectional or lone surrogate character, is left out with all that is below it. The walk goes at most
- * `listDepth` folders deep and looks at most at `listEntries` names; it keeps at most `listFiles` files and says `truncated` when it stopped at a limit. The answer holds relative paths only, never a full path.
+ * Lists the markdown files of an approved place of a module. The gate is the one of `readPlaceFile`. The walk reads names only and opens no file. It reads each folder entry by entry and counts every entry as it reads it,
+ * so a folder of a million names is never loaded whole. It never follows a link: a link to a file or a folder is left out, so a link cannot lead out of the place or to a hidden file. A hidden part, or a part with a
+ * control, bidirectional or lone surrogate character, is left out with all that is below it. A folder on another device than the place is skipped. A folder that is replaced while it is read is dropped. The walk keeps
+ * at most `listFiles` files, looks at most at `listEntries` names and runs at most `listMs` milliseconds; a folder deeper than `listDepth` is left out and the walk goes on. After the walk the place is checked again, so a
+ * place that was swapped meanwhile gives PLACE_CHANGED and no list. The answer holds relative paths only, never a full path.
  */
-export function listPlaceFiles(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly placeId: unknown }): ListAnswer {
+export function listPlaceFiles(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly placeId: unknown; readonly hooks?: ListHooks }): ListAnswer {
   const gate = openPlace(o);
   if (!gate.ok) return { ok: false, code: gate.code === 'NOT_APPROVED' || gate.code === 'PLACE_CHANGED' || gate.code === 'HOME_UNREADABLE' || gate.code === 'RECORD_DAMAGED' || gate.code === 'RECORD_BLOCKED' ? gate.code : 'UNREADABLE' };
+  const h = o.hooks ?? {};
+  const opendir = h.opendir ?? ((dir: string) => fs.opendirSync(dir)), lstat = h.lstat ?? ((p: string) => fs.lstatSync(p)), now = h.now ?? Date.now, devOf = h.dev ?? ((_abs: string, info: fs.Stats) => info.dev);
+  const maxFiles = h.limits?.files ?? SCOPE_LIMITS.listFiles, maxDepth = h.limits?.depth ?? SCOPE_LIMITS.listDepth, maxEntries = h.limits?.entries ?? SCOPE_LIMITS.listEntries, maxMs = h.limits?.ms ?? SCOPE_LIMITS.listMs;
   const found: string[] = [];
-  let looked = 0, truncated = false, failed = false;
-  const walk = (dirReal: string, rel: string[], depth: number): void => {
-    if (truncated) return;
-    let names: string[];
-    try { names = fs.readdirSync(dirReal); } catch { if (depth === 0) failed = true; return; }
-    names.sort();
-    for (const name of names) {
-      if (truncated) return;
-      looked += 1;
-      if (looked > SCOPE_LIMITS.listEntries) { truncated = true; return; }
-      if (!plainPart(name)) continue;
-      const abs = path.join(dirReal, name);
-      let info: fs.Stats;
-      try { info = fs.lstatSync(abs); } catch { continue; }
-      if (info.isSymbolicLink()) continue;
-      if (info.isDirectory()) {
-        if (depth + 1 > SCOPE_LIMITS.listDepth) { truncated = true; continue; }
-        walk(abs, [...rel, name], depth + 1);
-      } else if (info.isFile() && MARKDOWN.test(name)) {
-        const joined = [...rel, name].join('/');
-        if (joined.length > SCOPE_LIMITS.pathChars) continue;
-        if (found.length >= SCOPE_LIMITS.listFiles) { truncated = true; return; }
-        found.push(joined);
+  const started = now();
+  let looked = 0, stopped = false, deepCut = false, rootFailed = false, skippedFolders = 0, skippedEntries = 0;
+  let placeInfo: fs.Stats;
+  try { placeInfo = lstat(gate.placeReal); } catch { return { ok: false, code: 'UNREADABLE' }; }
+  const placeDev = devOf(gate.placeReal, placeInfo);
+  const walk = (dirReal: string, dirInfo: fs.Stats, rel: string[], depth: number): void => {
+    const mark = found.length;
+    let dir: fs.Dir;
+    try { dir = opendir(dirReal); } catch { if (depth === 0) rootFailed = true; skippedFolders += 1; return; }
+    try {
+      for (;;) {
+        if (stopped) break;
+        let entry: fs.Dirent | null;
+        try { entry = dir.readSync(); } catch { skippedFolders += 1; found.length = mark; return; }
+        if (entry === null) break;
+        looked += 1;
+        if (looked > maxEntries || now() - started > maxMs) { stopped = true; break; }
+        const name = entry.name;
+        if (!plainPart(name)) continue;
+        const abs = path.join(dirReal, name);
+        let info: fs.Stats;
+        try { info = lstat(abs); } catch { skippedEntries += 1; continue; }
+        if (info.isSymbolicLink()) continue;
+        if (info.isDirectory()) {
+          if (depth + 1 > maxDepth) { deepCut = true; continue; }
+          if (devOf(abs, info) !== placeDev) { skippedFolders += 1; continue; }
+          walk(abs, info, [...rel, name], depth + 1);
+        } else if (info.isFile() && MARKDOWN.test(name)) {
+          const joined = [...rel, name].join('/');
+          if (joined.length > SCOPE_LIMITS.pathChars) continue;
+          if (found.length >= maxFiles) { stopped = true; break; }
+          found.push(joined);
+        }
       }
-    }
+    } finally { try { dir.closeSync(); } catch { /* nothing more to do */ } }
+    // The folder must still be the one that was looked at: a swap while it was read drops what it gave.
+    let after: fs.Stats | null = null;
+    try { after = lstat(dirReal); } catch { /* gone */ }
+    if (after === null || after.ino !== dirInfo.ino || after.dev !== dirInfo.dev) { found.length = mark; skippedFolders += 1; }
   };
-  walk(gate.placeReal, [], 0);
-  if (failed) return { ok: false, code: 'UNREADABLE' };
+  walk(gate.placeReal, placeInfo, [], 0);
+  if (rootFailed) return { ok: false, code: 'UNREADABLE' };
+  const again = openPlace(o);
+  if (!again.ok || again.placeReal !== gate.placeReal) return { ok: false, code: 'PLACE_CHANGED' };
   found.sort();
-  return { ok: true, files: Object.freeze(found), truncated };
+  return { ok: true, files: Object.freeze(found), truncated: stopped || deepCut, skipped: { folders: skippedFolders, entries: skippedEntries } };
 }

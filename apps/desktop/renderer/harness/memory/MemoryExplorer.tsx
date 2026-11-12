@@ -13,25 +13,25 @@ import { useModules } from '../modules/modules-context.js';
 import { useModulePlaces } from '../modules/useModulePlaces.js';
 import { approvedDay, callWords } from '../../../shared/modules/view-model.js';
 import type { PlacesView } from '../../../shared/modules/places-flow.js';
-import { MEMORY_WORDS, contextPages, contextSummary, failedWords, memoryRows, notShownWords, truncatedWords, unreadableWords } from '../../../shared/memory/view-model.js';
+import { MEMORY_WORDS, contextPages, contextPagesPartial, contextSummary, failedWords, memoryRows, notShownWords, skippedEntriesWords, skippedFoldersWords, truncatedWords, unreadableWords } from '../../../shared/memory/view-model.js';
 import type { ContextSummary } from '../../../shared/memory/view-model.js';
-import { MEMORY_MODULE_ID, totalNotes } from '../../../shared/memory/read-flow.js';
+import { MEMORY_MODULE_ID, layersArePartial, notesArePartial, totalIsPartial, totalNotes } from '../../../shared/memory/read-flow.js';
 import type { MemoryState, PlaceMemory } from '../../../shared/memory/read-flow.js';
 import { useMemoryRead } from './useMemoryRead.js';
 import './memory.css';
 
-/** One count. The number is drawn, and the same number is in `data-value`, so a test reads the screen's count and not its words. */
-function Count({ name, label, value, place }: { name: string; label: string; value: number; place?: string }): ReactElement {
+/** One count. The number is drawn, and the same number is in `data-value`, so a test reads the screen's count and not its words. A partial count is a lower bound: it is drawn with a plus sign and carries `data-partial`. */
+function Count({ name, label, value, place, partial = false }: { name: string; label: string; value: number; place?: string; partial?: boolean }): ReactElement {
   return (
     <div className="hxmem-count">
       <dt>{label}</dt>
-      <dd data-count={name} data-value={value} data-place={place}>{value}</dd>
+      <dd data-count={name} data-value={value} data-place={place} data-partial={partial ? '' : undefined} title={partial ? MEMORY_WORDS.partialTitle : undefined}>{value}{partial ? '+' : ''}</dd>
     </div>
   );
 }
 
 function PlaceBlock({ memory, onRemove, busy }: { memory: PlaceMemory; onRemove: (id: string) => void; busy: boolean }): ReactElement {
-  const a = memory.analytics;
+  const a = memory.analytics, layers = layersArePartial(memory), notes = notesArePartial(memory);
   return (
     <li className="hxmem-place" data-place={memory.placeId}>
       <div className="hxmem-place-head">
@@ -42,8 +42,10 @@ function PlaceBlock({ memory, onRemove, busy }: { memory: PlaceMemory; onRemove:
         <p className="hx-text" role="alert" data-memory-code={memory.code ?? 'FAILED'}>{failedWords(memory.code ?? 'FAILED')}</p>
       ) : (
         <>
-          <dl className="hxmem-counts">{memoryRows(a).map(row => <Count key={row.key} name={row.key} label={row.label} value={row.value} place={memory.placeId} />)}</dl>
+          <dl className="hxmem-counts">{memoryRows(a).map(row => <Count key={row.key} name={row.key} label={row.label} value={row.value} place={memory.placeId} partial={row.key === 'notes' ? notes : layers} />)}</dl>
           {memory.unreadable.map(u => <p key={u.code} className="hx-text hx-muted" data-note="unreadable">{unreadableWords(u.count, u.code)}</p>)}
+          {memory.skipped.folders > 0 ? <p className="hx-text hx-muted" data-note="skipped-folders">{skippedFoldersWords(memory.skipped.folders)}</p> : null}
+          {memory.skipped.entries > 0 ? <p className="hx-text hx-muted" data-note="skipped-entries">{skippedEntriesWords(memory.skipped.entries)}</p> : null}
           {memory.notShown > 0 ? <p className="hx-text hx-muted" data-note="not-shown">{notShownWords(memory.notShown)}</p> : null}
           {memory.truncated ? <p className="hx-text hx-muted" data-note="truncated">{truncatedWords}</p> : null}
           <h4 className="hxmem-sub">{MEMORY_WORDS.topTags}</h4>
@@ -52,7 +54,7 @@ function PlaceBlock({ memory, onRemove, busy }: { memory: PlaceMemory; onRemove:
           )}
           <h4 className="hxmem-sub">{MEMORY_WORDS.missingList}</h4>
           {a.missing.length === 0 ? <p className="hx-text hx-muted">{MEMORY_WORDS.noMissing}</p> : (
-            <ul className="hxmem-list">{a.missing.map(m => <li key={m.target} data-missing={m.target.toLowerCase()} data-links={m.count}><span>{m.target}</span><span className="hx-row-meta">{m.count}</span></li>)}</ul>
+            <ul className="hxmem-list">{a.missing.map(m => <li key={m.target} data-missing={m.target.toLowerCase()} data-links={m.count}><span><bdi>{m.target}</bdi></span><span className="hx-row-meta">{m.count}</span></li>)}</ul>
           )}
         </>
       )}
@@ -70,10 +72,12 @@ export interface MemoryViewProps {
   readonly context: ContextSummary;
   readonly onApprove: () => void;
   readonly onRemove: (placeId: string) => void;
+  readonly onRefresh: () => void;
 }
 
 /** The whole screen body, drawn from plain data. */
-export function MemoryView({ hasBridge, sample, missing, places, memory, context, onApprove, onRemove }: MemoryViewProps): ReactElement {
+export function MemoryView({ hasBridge, sample, missing, places, memory, context, onApprove, onRemove, onRefresh }: MemoryViewProps): ReactElement {
+  const part = context.status === 'partial';
   const noContext = context.agents + context.skills + context.tools + context.sets.length === 0;
   return (
     <div className="hxmem-body" data-memory-explorer="">
@@ -89,17 +93,21 @@ export function MemoryView({ hasBridge, sample, missing, places, memory, context
               {places.status === 'loading' ? <p className="kit-hint hx-hint" role="status">{MEMORY_WORDS.loading}</p> : null}
               {places.status === 'failed' ? <p className="hx-text" role="alert" data-memory-code={places.code ?? 'FAILED'}>{callWords(places.code)} Code: {places.code ?? 'FAILED'}.</p> : null}
               {places.status === 'ready' && places.places.length === 0 ? <p className="hx-text" data-memory-state="empty">{MEMORY_WORDS.noFolders}</p> : null}
+              {memory.status === 'failed' ? <p className="hx-text" role="alert" data-memory-code={memory.code ?? 'FAILED'}>{failedWords(memory.code ?? 'FAILED')}</p> : null}
               {memory.status === 'loading' ? <p className="kit-hint hx-hint" role="status" data-memory-state="reading">{MEMORY_WORDS.reading}</p> : null}
               {memory.places.length === 0 ? null : (
                 <>
-                  <dl className="hxmem-counts"><Count name="total-notes" label={MEMORY_WORDS.totalNotes} value={totalNotes(memory.places)} /></dl>
+                  <dl className="hxmem-counts"><Count name="total-notes" label={MEMORY_WORDS.totalNotes} value={totalNotes(memory.places)} partial={totalIsPartial(memory.places)} /></dl>
                   <ul className="hxmem-places" aria-label={MEMORY_WORDS.memory}>{memory.places.map(p => <PlaceBlock key={p.placeId} memory={p} onRemove={onRemove} busy={places.busy} />)}</ul>
                 </>
               )}
               {places.places.length > 0 && memory.places.length === 0 ? (
                 <ul className="hxmem-places">{places.places.map(p => <li key={p.id} className="hxmem-place" data-place={p.id}><span className="hxmem-place-label">{p.label}</span><span className="hx-row-meta">Approved {approvedDay(p)}</span></li>)}</ul>
               ) : null}
-              <div className="hxmem-actions"><HButton icon="folder" disabled={places.busy} onClick={onApprove}>{MEMORY_WORDS.approve}</HButton></div>
+              <div className="hxmem-actions">
+                <HButton icon="folder" disabled={places.busy} onClick={onApprove}>{MEMORY_WORDS.approve}</HButton>
+                {places.places.length > 0 ? <HButton disabled={places.busy || memory.status === 'loading'} onClick={onRefresh}>{MEMORY_WORDS.refresh}</HButton> : null}
+              </div>
               <p className="hxm-notice" role="status" data-module-notice="">{places.notice ?? ''}</p>
               <p className="kit-hint hx-hint">{MEMORY_WORDS.linkedNote}</p>
             </>
@@ -107,16 +115,21 @@ export function MemoryView({ hasBridge, sample, missing, places, memory, context
         </section>
         <section className="hxmem-column" data-column="context" aria-label={MEMORY_WORDS.context}>
           <h2 className="hxmem-title">{MEMORY_WORDS.context}</h2>
-          <dl className="hxmem-counts">
-            <Count name="agents" label={MEMORY_WORDS.agents} value={context.agents} />
-            <Count name="skills" label={MEMORY_WORDS.skills} value={context.skills} />
-            <Count name="tools" label={MEMORY_WORDS.tools} value={context.tools} />
-            <Count name="context-sets" label={MEMORY_WORDS.contextSets} value={context.sets.length} />
-            <Count name="context-pages" label={MEMORY_WORDS.contextPages} value={contextPages(context)} />
-          </dl>
-          {noContext ? <p className="hx-text hx-muted">{MEMORY_WORDS.noContext}</p> : null}
-          {context.sets.length === 0 ? null : (
-            <ul className="hxmem-list">{context.sets.map(s => <li key={s.id} data-context-set={s.id}><span>{s.name}</span><span className="hx-row-meta">{s.pages === null ? '' : s.pages}</span></li>)}</ul>
+          {context.status === 'not-loaded' ? <p className="hx-text" role="status" data-context-state="not-loaded">{MEMORY_WORDS.contextNotLoaded}</p> : (
+            <>
+              {context.status === 'partial' ? <p className="hx-text hx-muted" data-context-state="partial">{MEMORY_WORDS.contextPartial}</p> : null}
+              <dl className="hxmem-counts">
+                <Count name="agents" label={MEMORY_WORDS.agents} value={context.agents} partial={part} />
+                <Count name="skills" label={MEMORY_WORDS.skills} value={context.skills} partial={part} />
+                <Count name="tools" label={MEMORY_WORDS.tools} value={context.tools} partial={part} />
+                <Count name="context-sets" label={MEMORY_WORDS.contextSets} value={context.sets.length} partial={part} />
+                <Count name="context-pages" label={MEMORY_WORDS.contextPages} value={contextPages(context)} partial={part || contextPagesPartial(context)} />
+              </dl>
+              {noContext ? <p className="hx-text hx-muted">{MEMORY_WORDS.noContext}</p> : null}
+              {context.sets.length === 0 ? null : (
+                <ul className="hxmem-list">{context.sets.map(s => <li key={s.id} data-context-set={s.id}><span>{s.name}</span><span className="hx-row-meta">{s.pages === null ? MEMORY_WORDS.notAvailable : s.pages}</span></li>)}</ul>
+              )}
+            </>
           )}
         </section>
       </div>
@@ -130,10 +143,12 @@ export function MemoryExplorer(): ReactElement {
   const state = useHarnessState();
   const places = useModulePlaces(bridge, MEMORY_MODULE_ID);
   const memory = useMemoryRead(bridge, places.places, places.status === 'ready');
-  const context = useMemo(() => contextSummary(state.parts), [state.parts]);
+  // Real launch: until the reader has run, the world holds nothing, and zeros would be false. A read that stopped early or could not read something makes the counts lower bounds.
+  const status = real && state.real === undefined ? 'not-loaded' : state.real !== undefined && (state.real.stoppedEarly || state.real.couldNotRead > 0) ? 'partial' : 'ok';
+  const context = useMemo(() => contextSummary(state.parts, status), [state.parts, status]);
   return (
     <Screen slot="memory" title={MEMORY_WORDS.title}>
-      <MemoryView hasBridge={bridge !== null} sample={sample} missing={real && bridge === null} places={places} memory={memory} context={context} onApprove={places.approve} onRemove={places.remove} />
+      <MemoryView hasBridge={bridge !== null} sample={sample} missing={real && bridge === null} places={places} memory={memory} context={context} onApprove={places.approve} onRemove={places.remove} onRefresh={memory.refresh} />
     </Screen>
   );
 }

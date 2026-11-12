@@ -16,7 +16,7 @@ function fake(over: Partial<ModulesBridge> = {}): ModulesBridge & { asked: strin
     approveModulePlace: async id => { asked.push(`approve ${id}`); return { status: 'kept', place: B }; },
     revokeModulePlace: async (id, place) => { asked.push(`revoke ${id} ${place}`); return { places: [B] }; },
     readModuleFile: async () => ({ text: '' }),
-    listModuleFiles: async () => ({ files: [], truncated: false }),
+    listModuleFiles: async () => ({ files: [], truncated: false, skipped: { folders: 0, entries: 0 } }),
     ...over,
   };
 }

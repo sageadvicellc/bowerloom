@@ -52,8 +52,8 @@ export type ModuleApproval =
 /** The answer of `readModuleFile`. */
 export interface ModuleFile { readonly text: string }
 
-/** The answer of `listModuleFiles`: the relative paths of the markdown files of a place, sorted, and whether the walk stopped at a limit. Never a full path. */
-export interface ModuleFileList { readonly files: readonly string[]; readonly truncated: boolean }
+/** The answer of `listModuleFiles`: the relative paths of the markdown files of a place, sorted, whether the walk stopped at a limit, and what it skipped. Never a full path. */
+export interface ModuleFileList { readonly files: readonly string[]; readonly truncated: boolean; /** The folders that could not be listed and the entries that could not be looked at, as counts. */ readonly skipped: { readonly folders: number; readonly entries: number } }
 
 /** The object `bowerloomModules` holds in the page. */
 export interface ModulesBridge {

@@ -33,6 +33,11 @@ export const MEMORY_WORDS = Object.freeze({
   sample: 'Sample launch. Approvals are kept only in the app on your own folders.',
   bridgeMissing: 'The window did not give Memory its folder calls. Folders cannot be approved or read.',
   loading: 'Reading the approved folders.',
+  refresh: 'Refresh',
+  partialTitle: 'At least this many. Some notes were not read or not listed.',
+  contextNotLoaded: 'The harness context is not read yet. Choose your folders first, then come back.',
+  contextPartial: 'The harness context was only partly read, so these counts can be higher.',
+  notAvailable: 'n/a',
   linkedNote: 'A notes folder linked on the Context tab shows in the harness context. Approve the same folder here to read its links and tags.',
 });
 
@@ -49,10 +54,12 @@ export function memoryRows(a: MemoryAnalytics): readonly MemoryRow[] {
 }
 
 export interface ContextSet { readonly id: string; readonly name: string; /** The pages of the set, or null when its summary does not say. */ readonly pages: number | null }
-export interface ContextSummary { readonly agents: number; readonly skills: number; readonly tools: number; readonly sets: readonly ContextSet[] }
+/** `ok`: the reader finished. `partial`: it stopped early or could not read something, so the counts are lower bounds. `not-loaded`: the folders were not read yet, so there is nothing to count. */
+export type ContextStatus = 'ok' | 'partial' | 'not-loaded';
+export interface ContextSummary { readonly status: ContextStatus; readonly agents: number; readonly skills: number; readonly tools: number; readonly sets: readonly ContextSet[] }
 
 /** What the Context tab holds, counted from the parts of the world. A set's page count is read from its summary ("12 pages."), which the reader wrote from the pages it found. */
-export function contextSummary(parts: readonly Part[]): ContextSummary {
+export function contextSummary(parts: readonly Part[], status: ContextStatus = 'ok'): ContextSummary {
   let agents = 0, skills = 0, tools = 0;
   const sets: ContextSet[] = [];
   for (const part of parts) {
@@ -64,10 +71,12 @@ export function contextSummary(parts: readonly Part[]): ContextSummary {
       sets.push({ id: part.id, name: part.name, pages: pages === null ? null : Number(pages[1]) });
     }
   }
-  return { agents, skills, tools, sets };
+  return { status, agents, skills, tools, sets };
 }
 
 /** The pages of all sets, counting only the sets that say how many. */
+/** True when a set did not say its pages, so the total of pages is a lower bound. */
+export const contextPagesPartial = (summary: ContextSummary): boolean => summary.sets.some(s => s.pages === null);
 export const contextPages = (summary: ContextSummary): number => summary.sets.reduce((sum, s) => sum + (s.pages ?? 0), 0);
 
 /** The words for a note count that could not be read: "3 notes could not be read (TOO_LARGE)." */
@@ -75,3 +84,5 @@ export const unreadableWords = (count: number, code: string): string => `${count
 export const notShownWords = (count: number): string => `${count} more ${count === 1 ? 'note is' : 'notes are'} not shown.`;
 export const truncatedWords = 'The folder holds more notes than were listed.';
 export const failedWords = (code: string): string => `This folder could not be read. Code: ${code}.`;
+export const skippedFoldersWords = (count: number): string => `${count} ${count === 1 ? 'folder' : 'folders'} could not be listed.`;
+export const skippedEntriesWords = (count: number): string => `${count} ${count === 1 ? 'file' : 'files'} could not be looked at.`;

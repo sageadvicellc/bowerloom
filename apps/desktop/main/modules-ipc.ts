@@ -92,7 +92,7 @@ export function registerModulesIpc(deps: ModulesIpcDeps): void {
       const moduleId = moduleOf(id);
       if (!isPlaceId(placeId)) return refuse('BAD_ARGUMENT');
       const listed = listPlaceFiles({ stateRoot: deps.stateRoot, home: deps.home, moduleId, placeId });
-      return listed.ok ? { files: [...listed.files], truncated: listed.truncated } : refuse(listed.code);
+      return listed.ok ? { files: [...listed.files], truncated: listed.truncated, skipped: { folders: listed.skipped.folders, entries: listed.skipped.entries } } : refuse(listed.code);
     },
   };
 

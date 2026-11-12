@@ -8,7 +8,7 @@
  */
 
 /** The limits that keep one hostile note from costing much. They are per note. The caps of a place (pages read, files listed) are in shared/memory/read-flow.ts and packages/module-scope. */
-export const MEMORY_LIMITS = Object.freeze({ linksPerNote: 500, tagsPerNote: 200, tagChars: 100, targetChars: 300, lineChars: 20000 });
+export const MEMORY_LIMITS = Object.freeze({ linksPerNote: 500, tagsPerNote: 200, tagChars: 100, targetChars: 300, lineChars: 20000, tagsTotal: 5000, missingTotal: 5000 });
 
 /** How many tags and how many missing targets the analytics list. The counts above the lists are never cut. */
 export const ANALYTICS_LIST_MAX = 10;
@@ -27,6 +27,8 @@ export interface MemoryAnalytics {
   /** Links whose target is no note of the folder, and how many different targets those are. */
   readonly missingLinks: number;
   readonly missingTargets: number;
+  /** True when the distinct tags or the distinct missing targets reached their total cap. Then `tags` and `missingTargets` are lower bounds. The other counts are exact. */
+  readonly capped: boolean;
   /** The most used tags, by the number of notes that hold them, then by name. At most ANALYTICS_LIST_MAX. */
   readonly topTags: readonly { readonly tag: string; readonly notes: number }[];
   /** The missing targets that most links point at, then by name. At most ANALYTICS_LIST_MAX. */
@@ -37,10 +39,20 @@ const NOTE_EXTENSION = /\.(?:md|markdown)$/i;
 /** The files a link can name that are not notes. A target with another ending, such as `v1.2`, is a note. */
 const OTHER_FILE = /\.(?:png|jpe?g|gif|svg|webp|bmp|avif|heic|tiff?|mp3|wav|m4a|ogg|flac|mp4|webm|mov|mkv|pdf|docx?|xlsx?|pptx?|csv|txt|zip|canvas|base|json)$/i;
 const TAG_BODY = /^[\p{L}\p{N}_/-]+$/u;
+/** A name with a control, format or bidirectional character is not listed: it could reorder the words around it. */
+const ODD_CHARACTER = /[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/u;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 const tagOf = (raw: string): string | null => {
-  const cleaned = raw.trim().replace(/^["']+|["']+$/g, '').replace(/^#+/, '').toLowerCase();
+  // A string far longer than a tag is no tag. This check comes before any other work, so a run of a quarter of a million quotes costs nothing.
+  if (raw.length > MEMORY_LIMITS.tagChars + 8) return null;
+  let start = 0, end = raw.length;
+  while (start < end && /\s/.test(raw[start]!)) start += 1;
+  while (end > start && /\s/.test(raw[end - 1]!)) end -= 1;
+  while (start < end && (raw[start] === '"' || raw[start] === "'")) start += 1;
+  while (end > start && (raw[end - 1] === '"' || raw[end - 1] === "'")) end -= 1;
+  while (start < end && raw[start] === '#') start += 1;
+  const cleaned = raw.slice(start, end).toLowerCase();
   return cleaned.length > 0 && cleaned.length <= MEMORY_LIMITS.tagChars && TAG_BODY.test(cleaned) && !/^\d+$/.test(cleaned) ? cleaned : null;
 };
 
@@ -55,24 +67,27 @@ function split(text: string): { readonly front: string[]; readonly body: string[
   return { front: [], body: lines };
 }
 
-/** The tags of the front matter: `tags: [a, b]`, `tags: a, b` and a block list under `tags:` (also `tag:`). */
+/** The tags of the front matter: `tags: [a, b]`, `tags: a, b` and a block list under `tags:` (also `tag:`). It stops at the per-note cap. */
 function frontTags(front: readonly string[]): string[] {
   const found: string[] = [];
+  const take = (raw: string): boolean => { const tag = tagOf(raw); if (tag !== null) found.push(tag); return found.length >= MEMORY_LIMITS.tagsPerNote; };
   for (let i = 0; i < front.length; i += 1) {
     const key = /^(?:tags?)\s*:\s*(.*)$/i.exec(front[i]!);
     if (key === null) continue;
-    const value = key[1]!.trim();
+    let value = key[1]!.trim();
     if (value === '') {
       for (let j = i + 1; j < front.length; j += 1) {
         const item = /^\s*-\s+(.+)$/.exec(front[j]!);
         if (item === null) break;
-        found.push(item[1]!);
+        if (take(item[1]!)) return found;
       }
     } else {
-      found.push(...value.replace(/^\[|\]\s*$/g, '').split(/[\s,]+/));
+      if (value.startsWith('[')) value = value.slice(1);
+      if (value.endsWith(']')) value = value.slice(0, -1);
+      for (const raw of value.split(/[\s,]+/)) if (take(raw)) return found;
     }
   }
-  return found.flatMap(raw => { const tag = tagOf(raw); return tag === null ? [] : [tag]; });
+  return found;
 }
 
 /** The body lines that are not code: a fenced block is dropped, and an inline code span is cut out of its line. */
@@ -93,7 +108,7 @@ const decode = (text: string): string => { try { return decodeURIComponent(text)
 
 /** The note a wiki link names, as written, without its alias, its heading or its block, or null when it names no note. */
 function wikiTarget(inner: string): string | null {
-  const target = inner.split('|', 1)[0]!.split('#', 1)[0]!.trim();
+  const target = inner.split('|', 1)[0]!.replace(/\\+$/, '').split('#', 1)[0]!.trim();
   return target === '' || target.length > MEMORY_LIMITS.targetChars || OTHER_FILE.test(target) ? null : target;
 }
 
@@ -102,7 +117,9 @@ function markdownTarget(raw: string): string | null {
   const inner = raw.startsWith('<') ? raw.slice(1, -1) : raw;
   if (inner === '' || inner.startsWith('#') || URL_SCHEME.test(inner)) return null;
   const target = decode(inner.split('#', 1)[0]!.split('?', 1)[0]!).trim();
-  return target === '' || target.length > MEMORY_LIMITS.targetChars || OTHER_FILE.test(target) ? null : target;
+  // A markdown link names a note only with the ending of a note, or with none. Any other ending is another kind of file.
+  const otherEnding = /\.[A-Za-z0-9]{1,8}$/.test(target) && !NOTE_EXTENSION.test(target);
+  return target === '' || target.length > MEMORY_LIMITS.targetChars || otherEnding ? null : target;
 }
 
 /** Reads one note: its tags and its links. Never throws. The path is kept as given. */
@@ -180,9 +197,14 @@ export function analyse(paths: readonly string[], parsed: readonly ParsedNote[])
   const index = indexNotes(paths), known = new Set(paths);
   let links = 0, tagUses = 0, missingLinks = 0;
   const tags = new Map<string, number>(), missing = new Map<string, { target: string; count: number }>();
+  let capped = false;
   for (const note of parsed) {
     if (!known.has(note.path)) continue;
-    for (const tag of note.tags) { tags.set(tag, (tags.get(tag) ?? 0) + 1); tagUses += 1; }
+    for (const tag of note.tags) {
+      tagUses += 1;
+      const have = tags.get(tag);
+      if (have !== undefined) tags.set(tag, have + 1); else if (tags.size < MEMORY_LIMITS.tagsTotal) tags.set(tag, 1); else capped = true;
+    }
     // One link for each note and each target: a note that links one target by a wiki link and by a markdown link has one link.
     const seen = new Set<string>();
     for (const link of note.links) {
@@ -194,13 +216,13 @@ export function analyse(paths: readonly string[], parsed: readonly ParsedNote[])
       if (to === null) {
         missingLinks += 1;
         const name = withoutEnding(link.target), have = missing.get(name);
-        if (have === undefined) missing.set(name, { target: link.target.replace(NOTE_EXTENSION, ''), count: 1 }); else have.count += 1;
+        if (have !== undefined) have.count += 1; else if (missing.size < MEMORY_LIMITS.missingTotal) missing.set(name, { target: link.target.replace(NOTE_EXTENSION, ''), count: 1 }); else capped = true;
       }
     }
   }
   return Object.freeze({
-    notes: paths.length, links, tags: tags.size, tagUses, missingLinks, missingTargets: missing.size,
+    notes: paths.length, links, tags: tags.size, tagUses, missingLinks, missingTargets: missing.size, capped,
     topTags: Object.freeze([...tags].map(([tag, notes]) => ({ tag, notes, count: notes, name: tag })).sort(byCountThenName).slice(0, ANALYTICS_LIST_MAX).map(({ tag, notes }) => Object.freeze({ tag, notes }))),
-    missing: Object.freeze([...missing].map(([key, m]) => ({ target: m.target, count: m.count, name: key })).sort(byCountThenName).slice(0, ANALYTICS_LIST_MAX).map(({ target, count }) => Object.freeze({ target, count }))),
+    missing: Object.freeze([...missing].filter(([, m]) => !ODD_CHARACTER.test(m.target)).map(([key, m]) => ({ target: m.target, count: m.count, name: key })).sort(byCountThenName).slice(0, ANALYTICS_LIST_MAX).map(({ target, count }) => Object.freeze({ target, count }))),
   });
 }

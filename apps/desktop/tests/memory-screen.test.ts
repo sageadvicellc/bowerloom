@@ -24,19 +24,19 @@ const render = (el: ReactElement): string => renderToStaticMarkup(el);
 const MANIFEST = { id: 'memory-explorer', title: 'Memory', kind: 'ui' as const, routes: ['memory-explorer'], protected: false };
 const part = (kind: Part['kind'], name: string, summary = ''): Part => ({ id: `${kind}-${name}`, kind, name, summary, description: '', path: '', source: '', origin: 's' } as Part);
 const base = (over: Partial<MemoryViewProps> = {}): MemoryViewProps => ({
-  hasBridge: true, sample: false, missing: false, places: { status: 'ready', places: [], code: null, busy: false, notice: null }, memory: { status: 'idle', places: [] },
-  context: { agents: 0, skills: 0, tools: 0, sets: [] }, onApprove: noop, onRemove: noop, ...over,
+  hasBridge: true, sample: false, missing: false, places: { status: 'ready', places: [], code: null, busy: false, notice: null }, memory: { status: 'idle', places: [], code: null },
+  context: { status: 'ok', agents: 0, skills: 0, tools: 0, sets: [] }, onApprove: noop, onRemove: noop, onRefresh: noop, ...over,
 });
 const placeMemory = (over: Partial<PlaceMemory> = {}): PlaceMemory => {
   const paths = ['a.md', 'b.md'], parsed = [parseNote('a.md', '[[b]] [[gone]] #x'), parseNote('b.md', '#x #y')];
-  return { placeId: 'place-aaaaaaaaaaaa', label: '~/Documents/vault', status: 'ok', code: null, listed: 2, read: 2, notShown: 0, truncated: false, unreadable: [], analytics: analyse(paths, parsed), ...over };
+  return { placeId: 'place-aaaaaaaaaaaa', label: '~/Documents/vault', status: 'ok', code: null, listed: 2, read: 2, notShown: 0, truncated: false, skipped: { folders: 0, entries: 0 }, unreadable: [], analytics: analyse(paths, parsed), ...over };
 };
 const PLACE = { id: 'place-aaaaaaaaaaaa', label: '~/Documents/vault', approvedAt: '2026-11-12T10:00:00.000Z' };
 
 // ---- the states
 
 test('with no folder approved the screen says so, offers the one button to approve, and still shows the harness context', () => {
-  const html = render(createElement(MemoryView, base({ context: { agents: 1, skills: 2, tools: 3, sets: [{ id: 'c1', name: 'Wiki', pages: 12 }] } })));
+  const html = render(createElement(MemoryView, base({ context: { status: 'ok', agents: 1, skills: 2, tools: 3, sets: [{ id: 'c1', name: 'Wiki', pages: 12 }] } })));
   assert.match(html, /data-memory-explorer/);
   assert.ok(html.includes(MEMORY_WORDS.noFolders));
   assert.match(html, />Approve a folder</);
@@ -47,7 +47,7 @@ test('with no folder approved the screen says so, offers the one button to appro
 });
 
 test('an approved folder shows its four layers with the numbers, the top tags and the links that point at a missing note', () => {
-  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory()] } })));
+  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory()], code: null } })));
   assert.match(html, /~\/Documents\/vault/);
   for (const [name, n] of [['notes', 2], ['links', 2], ['tags', 2], ['missing-links', 1]] as const) assert.match(html, new RegExp(`data-count="${name}"[^>]*data-value="${n}"`), name);
   assert.match(html, /data-count="total-notes"[^>]*data-value="2"/);
@@ -57,15 +57,15 @@ test('an approved folder shows its four layers with the numbers, the top tags an
 });
 
 test('a place that failed shows its code and no numbers; a read in progress says so', () => {
-  const failed = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory({ status: 'failed', code: 'PLACE_CHANGED', listed: 0, read: 0 })] } })));
+  const failed = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory({ status: 'failed', code: 'PLACE_CHANGED', listed: 0, read: 0 })], code: null } })));
   assert.match(failed, /data-memory-code="PLACE_CHANGED"/);
   assert.doesNotMatch(failed, /data-count="notes"/);
-  const loading = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'loading', places: [] } })));
+  const loading = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'loading', places: [], code: null } })));
   assert.ok(loading.includes(MEMORY_WORDS.reading));
 });
 
 test('notes that could not be read, notes not shown and a cut list are each told in words, with the count', () => {
-  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory({ listed: 2600, notShown: 600, truncated: true, unreadable: [{ code: 'TOO_LARGE', count: 3 }] })] } })));
+  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory({ listed: 2600, notShown: 600, truncated: true, unreadable: [{ code: 'TOO_LARGE', count: 3 }] })], code: null } })));
   assert.match(html, /data-note="unreadable"[^>]*>[^<]*3[^<]*TOO_LARGE/);
   assert.match(html, /data-note="not-shown"[^>]*>[^<]*600/);
   assert.match(html, /data-note="truncated"/);
@@ -86,18 +86,18 @@ test('a failed list of folders and a failed approval show the code and the words
   assert.match(html, /data-column="context"/);
 });
 
-test('the screen only reads: it has no button but Approve a folder and Remove, and no write call', () => {
-  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory()] } })));
+test('the screen only reads: it has no button but Approve a folder, Refresh and Remove, and no write call', () => {
+  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [placeMemory()], code: null } })));
   const buttons = [...html.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map(m => m[1]!.replace(/<[^>]*>/g, '').trim());
-  assert.deepEqual(buttons.sort(), ['Approve a folder', 'Remove']);
+  assert.deepEqual(buttons.sort(), ['Approve a folder', 'Refresh', 'Remove']);
 });
 
 // ---- the harness context
 
 test('the context summary counts the parts by kind, and reads the pages of a set of notes from its summary', () => {
   const parts = [part('agent', 'a'), part('skill', 's1'), part('skill', 's2'), part('tool', 't'), part('context', 'Wiki', '12 pages.'), part('context', 'One', '1 page.'), part('context', 'Odd', 'something else')];
-  assert.deepEqual(contextSummary(parts), { agents: 1, skills: 2, tools: 1, sets: [{ id: 'context-Wiki', name: 'Wiki', pages: 12 }, { id: 'context-One', name: 'One', pages: 1 }, { id: 'context-Odd', name: 'Odd', pages: null }] });
-  assert.deepEqual(contextSummary([]), { agents: 0, skills: 0, tools: 0, sets: [] });
+  assert.deepEqual(contextSummary(parts), { status: 'ok', agents: 1, skills: 2, tools: 1, sets: [{ id: 'context-Wiki', name: 'Wiki', pages: 12 }, { id: 'context-One', name: 'One', pages: 1 }, { id: 'context-Odd', name: 'Odd', pages: null }] });
+  assert.deepEqual(contextSummary([]), { status: 'ok', agents: 0, skills: 0, tools: 0, sets: [] });
 });
 
 test('the sample world gives a harness context to put beside the memory', () => {
@@ -146,4 +146,62 @@ test('the only calls of the explorer are the list, the read and the approval cal
   const calls = new Set<string>();
   for (const file of files) for (const m of readFileSync(join(DESKTOP, file), 'utf8').matchAll(/\bbridge\.(\w+)\(/g)) calls.add(m[1]!);
   assert.deepEqual([...calls].sort(), ['listModuleFiles', 'readModuleFile']);
+});
+
+// ---- the fix round
+
+const withPlace = (memory: PlaceMemory, over: Partial<MemoryViewProps> = {}): string => render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'ready', places: [memory], code: null }, ...over })));
+const tagOf = (html: string, name: string): string => new RegExp(`<[^>]*data-count="${name}"[^>]*>`).exec(html)?.[0] ?? '';
+
+test('M1: when a note was unreadable, cut or not shown, links, tags and missing links are marked partial, and notes are not', () => {
+  const html = withPlace(placeMemory({ unreadable: [{ code: 'TOO_LARGE', count: 1 }] }));
+  for (const name of ['links', 'tags', 'missing-links']) assert.match(tagOf(html, name), /data-partial/, name);
+  assert.doesNotMatch(tagOf(html, 'notes'), /data-partial/);
+  assert.match(html, /data-count="links"[^>]*>2\+</);
+  for (const memory of [placeMemory({ notShown: 5 }), placeMemory({ truncated: true }), placeMemory({ skipped: { folders: 1, entries: 0 } })]) assert.match(tagOf(withPlace(memory), 'links'), /data-partial/);
+  assert.match(tagOf(withPlace(placeMemory({ truncated: true })), 'notes'), /data-partial/, 'a cut list makes the notes a lower bound too');
+  assert.doesNotMatch(tagOf(withPlace(placeMemory()), 'links'), /data-partial/);
+});
+
+test('C1: Notes in all folders is a lower bound when a folder was cut or failed', () => {
+  assert.match(tagOf(withPlace(placeMemory({ truncated: true })), 'total-notes'), /data-partial/);
+  assert.match(tagOf(withPlace(placeMemory({ status: 'failed', code: 'PLACE_CHANGED' })), 'total-notes'), /data-partial/);
+  assert.doesNotMatch(tagOf(withPlace(placeMemory()), 'total-notes'), /data-partial/);
+});
+
+test('C2: folders and entries that could not be listed are told with their counts', () => {
+  const html = withPlace(placeMemory({ skipped: { folders: 2, entries: 1 } }));
+  assert.match(html, /data-note="skipped-folders"[^>]*>[^<]*2 folders could not be listed/);
+  assert.match(html, /data-note="skipped-entries"[^>]*>[^<]*1 file could not be looked at/);
+});
+
+test('C3: a read that failed as a whole shows its code and not "Reading"', () => {
+  const html = render(createElement(MemoryView, base({ places: { status: 'ready', places: [PLACE], code: null, busy: false, notice: null }, memory: { status: 'failed', places: [], code: 'FAILED' } })));
+  assert.match(html, /data-memory-code="FAILED"/);
+  assert.ok(!html.includes(MEMORY_WORDS.reading));
+});
+
+test('M4: a harness context that is not loaded is told in words and shows no zeros; a set with no page count shows n/a and a partial total', () => {
+  const html = render(createElement(MemoryView, base({ context: { status: 'not-loaded', agents: 0, skills: 0, tools: 0, sets: [] } })));
+  assert.match(html, /data-context-state="not-loaded"/);
+  assert.doesNotMatch(html, /data-count="agents"/);
+  const part2 = render(createElement(MemoryView, base({ context: { status: 'ok', agents: 0, skills: 0, tools: 0, sets: [{ id: 'a', name: 'A', pages: 3 }, { id: 'b', name: 'B', pages: null }] } })));
+  assert.match(part2, /data-context-set="b"[\s\S]*?n\/a/);
+  assert.match(tagOf(part2, 'context-pages'), /data-partial/);
+  const partial = render(createElement(MemoryView, base({ context: { status: 'partial', agents: 1, skills: 0, tools: 0, sets: [] } })));
+  assert.match(partial, /data-context-state="partial"/);
+  assert.match(tagOf(partial, 'agents'), /data-partial/);
+  assert.deepEqual(contextSummary([part('agent', 'a')], 'not-loaded').status, 'not-loaded');
+});
+
+test('L3: a missing target is drawn inside bdi', () => {
+  assert.match(withPlace(placeMemory()), /<bdi>gone<\/bdi>/);
+});
+
+test('L4: Refresh is there when a folder is approved, calls the read again, and is not there with no folder', () => {
+  let n = 0;
+  const html = withPlace(placeMemory(), { onRefresh: () => { n += 1; } });
+  assert.match(html, />Refresh</);
+  assert.doesNotMatch(render(createElement(MemoryView, base())), />Refresh</);
+  void n;
 });

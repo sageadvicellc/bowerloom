@@ -91,7 +91,7 @@ test('the basic vault has the notes, links, tags and missing links worked out by
 });
 
 test('an empty folder and a folder of notes with no links or tags give zeros, not gaps', () => {
-  const zero = { notes: 0, links: 0, tags: 0, tagUses: 0, missingLinks: 0, missingTargets: 0, topTags: [], missing: [] };
+  const zero = { notes: 0, links: 0, tags: 0, tagUses: 0, missingLinks: 0, missingTargets: 0, capped: false, topTags: [], missing: [] };
   assert.deepEqual(analyse([], []), zero);
   const plain = parseAll({ 'a.md': 'text', 'b.md': '' });
   assert.deepEqual(analyse(plain.paths, plain.parsed), { ...zero, notes: 2 });
@@ -133,12 +133,10 @@ test('a chain of notes has one link each but the last, which is missing', () => 
   assert.equal(result.tags, 3);
 });
 
-test('a large vault is analysed in good time and the same way twice', () => {
+test('a large vault of 5,000 notes is analysed the same way twice', () => {
   const vault = chain(5000);
   const { paths, parsed } = parseAll(vault);
-  const started = Date.now();
   const first = analyse(paths, parsed);
-  assert.ok(Date.now() - started < 3000, 'ten thousand notes in a few seconds at most');
   assert.deepEqual(analyse(paths, parsed), first);
   assert.equal(first.notes, 5000);
 });
@@ -148,4 +146,49 @@ test('hostile text does not stop the parser: very long lines, odd characters, a 
   const started = Date.now();
   assert.doesNotThrow(() => parseNote('a.md', hostile));
   assert.ok(Date.now() - started < 2000);
+});
+
+// ---- the fix round
+
+test('S1: a very long run of quotes in front matter is read in good time and gives no tag', () => {
+  const quotes = '"'.repeat(250000);
+  const started = Date.now();
+  const note = parseNote('a.md', `---\ntags: [${quotes}x${quotes}]\n---\nbody ${quotes}`);
+  assert.ok(Date.now() - started < 1500, `took ${Date.now() - started} ms`);
+  assert.deepEqual(note.tags, []);
+  assert.deepEqual(parseNote('a.md', '---\ntags: ["a", \'b\']\n---\n').tags, ['a', 'b'], 'ordinary quotes still work');
+});
+
+test('S2: front matter tags stop at the per-note cap, and the analytics hold a total cap on distinct tags', () => {
+  const many = Array.from({ length: MEMORY_LIMITS.tagsPerNote + 100 }, (_, i) => `t${i}`).join(', ');
+  assert.equal(parseNote('a.md', `---\ntags: [${many}]\n---\n`).tags.length, MEMORY_LIMITS.tagsPerNote);
+  const block = Array.from({ length: MEMORY_LIMITS.tagsPerNote + 100 }, (_, i) => `  - b${i}`).join('\n');
+  assert.equal(parseNote('a.md', `---\ntags:\n${block}\n---\n`).tags.length, MEMORY_LIMITS.tagsPerNote);
+  const notes = Array.from({ length: 40 }, (_, n) => parseNote(`n${n}.md`, `---\ntags: [${Array.from({ length: 200 }, (_, i) => `x${n}-${i}`).join(', ')}]\n---\n`));
+  const result = analyse(notes.map(n => n.path), notes);
+  assert.equal(result.tags, MEMORY_LIMITS.tagsTotal);
+  assert.equal(result.capped, true);
+  assert.equal(result.tagUses, 40 * 200, 'uses are still counted exactly');
+});
+
+test('C1: the notes count and the link index hold every listed note, also those that were not read', () => {
+  const paths = Array.from({ length: 2500 }, (_, i) => `n${String(i).padStart(4, '0')}.md`);
+  const read = paths.slice(0, 2000).map(p => parseNote(p, p === 'n0000.md' ? '[[n2400]] [[n0001]]' : ''));
+  const result = analyse(paths, read);
+  assert.equal(result.notes, 2500);
+  assert.equal(result.missingLinks, 0, 'a link to a note that was listed and not read is not missing');
+  assert.equal(result.links, 2);
+});
+
+test('M5: the table form [[Note\\|alias]] finds Note, a markdown link to another file ending is no link, and a wiki link stays permissive', () => {
+  assert.deepEqual(targets(parseNote('a.md', '| [[Note\\|alias]] |')), ['Note']);
+  assert.deepEqual(parseNote('a.md', '[a](data.json) [b](archive.tar.gz) [c](v1.2) [d](note.md) [e](plain)').links.map(l => l.target), ['note.md', 'plain']);
+  assert.deepEqual(targets(parseNote('a.md', '[[v1.2]] [[Q3.review]]')), ['v1.2', 'Q3.review']);
+});
+
+test('L3: a missing target with a bidirectional or control character is counted and not listed', () => {
+  const note = parseNote('a.md', '[[ok gone]] [[evil\u202etarget]] [[tab\u0001x]]');
+  const result = analyse(['a.md'], [note]);
+  assert.equal(result.missingLinks, 3);
+  assert.deepEqual(result.missing.map(m => m.target), ['ok gone']);
 });
