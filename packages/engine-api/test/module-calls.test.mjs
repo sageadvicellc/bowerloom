@@ -50,8 +50,8 @@ test('moduleCallSpec finds a module call and says nothing for any other name', (
   for (const name of ['folders', 'localModels', 'listRuns', 'constructor', '__proto__', '']) assert.equal(moduleCallSpec(name), undefined, name);
 });
 
-test('the module refusal codes have the format of a code, are the thirteen a call can return, and none is an engine code twice', () => {
-  assert.deepEqual([...MODULE_CALL_REFUSAL_CODES], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED']);
+test('the module refusal codes have the format of a code, are the fourteen a call can return, and none is an engine code twice', () => {
+  assert.deepEqual([...MODULE_CALL_REFUSAL_CODES], ['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'HOME_UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED']);
   for (const code of MODULE_CALL_REFUSAL_CODES) assert.match(code, ENGINE_CODE_FORMAT);
   assert.equal(new Set(MODULE_CALL_REFUSAL_CODES).size, MODULE_CALL_REFUSAL_CODES.length);
 });

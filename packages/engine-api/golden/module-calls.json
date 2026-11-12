@@ -9,5 +9,5 @@
     { "name": "revokeModulePlace", "arity": 2, "optionalArgs": 0, "channel": "bowerloom-modules:revokeModulePlace", "returns": "plain" },
     { "name": "readModuleFile", "arity": 3, "optionalArgs": 0, "channel": "bowerloom-modules:readModuleFile", "returns": "plain" }
   ],
-  "moduleCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_MODULE", "NOT_APPROVED", "PLACE_CHANGED", "BAD_PATH", "OUTSIDE_PLACE", "NOT_A_FILE", "TOO_LARGE", "NOT_TEXT", "UNREADABLE", "RECORD_DAMAGED", "RECORD_BLOCKED"]
+  "moduleCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_MODULE", "NOT_APPROVED", "PLACE_CHANGED", "BAD_PATH", "OUTSIDE_PLACE", "NOT_A_FILE", "TOO_LARGE", "NOT_TEXT", "UNREADABLE", "HOME_UNREADABLE", "RECORD_DAMAGED", "RECORD_BLOCKED"]
 }

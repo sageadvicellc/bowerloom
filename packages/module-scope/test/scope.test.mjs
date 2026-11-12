@@ -305,3 +305,34 @@ test('a place path over the limit is refused PATH_TOO_LONG, not FAILED', t => {
   fs.mkdirSync(deep, { recursive: true });
   assert.deepEqual(approve(r, 'memory', deep), { status: 'refused', code: 'PATH_TOO_LONG' });
 });
+
+// ---- fix round 2
+
+test('a home folder that cannot be read on a read is HOME_UNREADABLE, not UNREADABLE', t => {
+  const r = rig(t);
+  const { place } = approve(r, 'memory', r.notes);
+  assert.deepEqual(readPlaceFile({ stateRoot: r.state, home: path.join(r.base, 'no-home'), moduleId: 'memory', placeId: place.id, path: 'a.md' }), { ok: false, code: 'HOME_UNREADABLE' });
+});
+
+test('a lone surrogate in a read path is refused BAD_PATH', t => {
+  const r = rig(t);
+  const { place } = approve(r, 'memory', r.notes);
+  for (const p of ['a\ud800.md', '\udc00a.md', 'sub/x\ud83d.md']) assert.deepEqual(read(r, 'memory', place.id, p), { ok: false, code: 'BAD_PATH' }, JSON.stringify(p));
+  assert.equal(read(r, 'memory', place.id, 'a.md').ok, true);
+});
+
+test('a file that is another file by the time the path is worked out again is refused: the second look must be the file that was opened', t => {
+  const r = rig(t);
+  const { place } = approve(r, 'memory', r.notes);
+  const real = fs.realpathSync.native(path.join(r.notes, 'a.md'));
+  const original = fs.lstatSync;
+  let seen = 0;
+  fs.lstatSync = (p, ...rest) => {
+    const stat = original(p, ...rest);
+    if (typeof p === 'string' && p === real) { seen += 1; if (seen === 2) return Object.create(stat, { ino: { value: stat.ino + 1 } }); }
+    return stat;
+  };
+  try { assert.deepEqual(read(r, 'memory', place.id, 'a.md'), { ok: false, code: 'UNREADABLE' }); } finally { fs.lstatSync = original; }
+  assert.equal(seen, 2, 'the file was looked at before the open and again after the second real path');
+  assert.equal(read(r, 'memory', place.id, 'a.md').ok, true, 'unchanged files still read');
+});

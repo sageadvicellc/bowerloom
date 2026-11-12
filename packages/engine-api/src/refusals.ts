@@ -70,7 +70,7 @@ export const RUN_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALL
  * (PLACE_CHANGED), a path that is not plain (BAD_PATH), a link that leads out of the place (OUTSIDE_PLACE), and the file refusals (NOT_A_FILE, TOO_LARGE, NOT_TEXT, UNREADABLE). RECORD_DAMAGED and RECORD_BLOCKED are the
  * states of the saved record of approvals. A pick that main's chooser refuses is an answer with a status, not a refusal. FAILED (an unexpected failure) is not named, as for the other bridges.
  */
-export const MODULE_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED']);
+export const MODULE_CALL_REFUSAL_CODES: readonly string[] = Object.freeze(['NOT_ALLOWED', 'BAD_ARGUMENT', 'UNKNOWN_MODULE', 'NOT_APPROVED', 'PLACE_CHANGED', 'BAD_PATH', 'OUTSIDE_PLACE', 'NOT_A_FILE', 'TOO_LARGE', 'NOT_TEXT', 'UNREADABLE', 'HOME_UNREADABLE', 'RECORD_DAMAGED', 'RECORD_BLOCKED']);
 
 /** Every code the engine side returns that the contract names. */
 export function engineRefusalCodes(): ReadonlySet<string> {

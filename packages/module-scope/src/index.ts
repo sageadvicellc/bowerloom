@@ -19,7 +19,7 @@ const PLACE_ID = /^place-[0-9a-f]{12}$/;
 const KEY = /^[0-9a-f]{32}$/;
 const REL_PART = /^[^./\\\0][^/\\\0]{0,254}$/;
 /** Control characters and format characters (zero-width and bidirectional marks), and the two line separators: none may be in the name of a place or of a path inside it. The rule of notes-source's plainName, with the format class added. */
-const ODD_CHARACTER = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+const ODD_CHARACTER = /[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/u;
 /** One plain part of a path: not hidden, no separator, no NUL, no control or bidirectional character, at most 255 characters. */
 const plainPart = (part: string): boolean => REL_PART.test(part) && !ODD_CHARACTER.test(part);
 
@@ -204,7 +204,7 @@ export function revokePlace(o: { readonly stateRoot: string; readonly moduleId: 
   try { (o.write ?? writeRecord)(o.stateRoot, modules); return { status: 'revoked' }; } catch (error) { return { status: 'failed', cause: causeOf(error) }; }
 }
 
-export type ReadCode = 'NOT_APPROVED' | 'PLACE_CHANGED' | 'BAD_PATH' | 'OUTSIDE_PLACE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_TEXT' | 'UNREADABLE' | 'RECORD_DAMAGED' | 'RECORD_BLOCKED';
+export type ReadCode = 'NOT_APPROVED' | 'PLACE_CHANGED' | 'BAD_PATH' | 'OUTSIDE_PLACE' | 'NOT_A_FILE' | 'TOO_LARGE' | 'NOT_TEXT' | 'UNREADABLE' | 'HOME_UNREADABLE' | 'RECORD_DAMAGED' | 'RECORD_BLOCKED';
 export type ReadAnswer = { readonly ok: true; readonly text: string } | { readonly ok: false; readonly code: ReadCode };
 const no = (code: ReadCode): ReadAnswer => ({ ok: false, code });
 
@@ -229,7 +229,7 @@ export function readPlaceFile(o: { readonly stateRoot: string; readonly home: st
   const stored = (record.modules[o.moduleId] ?? []).find(s => s.id === o.placeId);
   if (stored === undefined) return no('NOT_APPROVED');
   let home: string, placeReal: string;
-  try { home = fs.realpathSync.native(o.home); } catch { return no('UNREADABLE'); }
+  try { home = fs.realpathSync.native(o.home); } catch { return no('HOME_UNREADABLE'); }
   try { placeReal = fs.realpathSync.native(path.join(home, ...stored.rel.split('/'))); } catch { return no('PLACE_CHANGED'); }
   if (keyOf(placeReal) !== stored.key) return no('PLACE_CHANGED');
   if (placeProblem(home, placeReal, o.stateRoot) !== null) return no('NOT_APPROVED');
@@ -250,6 +250,9 @@ export function readPlaceFile(o: { readonly stateRoot: string; readonly home: st
     // The path is worked out again: a link that was moved while the file was opened must still lead to this file, inside the place.
     const again = walk();
     if (again !== fileReal || !inside(placeReal, again)) return no('OUTSIDE_PLACE');
+    // And the file at that path must still be the file that is open.
+    const after = fs.lstatSync(again);
+    if (!after.isFile() || after.dev !== info.dev || after.ino !== info.ino) return no('UNREADABLE');
     if (info.size > SCOPE_LIMITS.readBytes) return no('TOO_LARGE');
     const buffer = Buffer.alloc(SCOPE_LIMITS.readBytes + 1);
     let length = 0;
