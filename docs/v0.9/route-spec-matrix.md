@@ -1,6 +1,6 @@
 # Route-to-spec matrix
 
-Status: written for the v0.9 parity item ("What working means", item 1, of `carry-over-scope.md`). Base: `release/0.8.0-beta.2` at `5ca6df04`.
+Status: written for the v0.9 parity item ("What working means", item 1, of `carry-over-scope.md`). Base: `release/0.9.0-beta.1` (then named `release/0.8.0-beta.2`) at `5ca6df04`.
 
 The data lives in `route-spec-matrix.json`. This page is the reading copy. A test (`apps/desktop/tests/route-spec-matrix.test.ts`) compares the data with `BASE_ROUTES` in `apps/desktop/shared/extensions/defaults.ts`, so a route cannot go missing.
 

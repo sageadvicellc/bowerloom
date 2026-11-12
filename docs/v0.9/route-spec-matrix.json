@@ -1,5 +1,5 @@
 {
-  "base": "release/0.8.0-beta.2",
+  "base": "release/0.9.0-beta.1",
   "baseCommit": "5ca6df04",
   "note": "Route-to-spec matrix of the v0.9 parity item. Paths are relative to the repository root. e2e lists the specs that visit or assert the row, by the mode of the spec; it does not say that every assertion of the row is covered. newSpec names the spec written for a route that had none. extensionRoutes lists the routes of bundled extensions apart from rows, so the 15 base routes stay exact.",
   "modes": [

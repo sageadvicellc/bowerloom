@@ -10,7 +10,7 @@ import * as tar from 'tar';
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const scriptPath = path.join(repoRoot, 'scripts/release.mjs');
 export const VERSION = '0.8.0-beta.2';
-export const BRANCH = 'release/0.8.0-beta.2';
+export const BRANCH = 'release/0.9.0-beta.1';
 
 const FAKE_NPM = `#!/usr/bin/env node
 import fs from 'node:fs';

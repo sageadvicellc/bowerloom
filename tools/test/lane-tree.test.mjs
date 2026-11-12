@@ -77,8 +77,8 @@ test('validateSlug accepts lower-case slugs and refuses the rest', () => {
 });
 
 test('baseBranchOf strips origin/ and refs/heads/, and returns null for a commit id', () => {
-  assert.equal(baseBranchOf('release/0.8.0-beta.2'), 'release/0.8.0-beta.2');
-  assert.equal(baseBranchOf('origin/release/0.8.0-beta.2'), 'release/0.8.0-beta.2');
+  assert.equal(baseBranchOf('release/0.9.0-beta.1'), 'release/0.9.0-beta.1');
+  assert.equal(baseBranchOf('origin/release/0.9.0-beta.1'), 'release/0.9.0-beta.1');
   assert.equal(baseBranchOf('refs/heads/main'), 'main');
   assert.equal(baseBranchOf('refs/remotes/origin/main'), 'main');
   assert.equal(baseBranchOf('a'.repeat(40)), null);

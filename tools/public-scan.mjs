@@ -40,7 +40,7 @@ import { runChild } from './lib/run-child.mjs';
 import { splitFlag, jsonWanted, boolValueRefusal, flagLikeValueRefusal, reportUsage, guarded, entryState, mismatchMessage } from './lib/cli.mjs';
 import { installInterruptHandlers } from './lib/interrupt.mjs';
 
-export const DEFAULT_BASE = 'origin/release/0.8.0-beta.2';
+export const DEFAULT_BASE = 'origin/release/0.9.0-beta.1';
 export const MAX_WORDS = 300;
 const MAX_FINDINGS = 200;
 const MAX_SHOWN = 20;

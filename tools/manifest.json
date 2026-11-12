@@ -87,7 +87,7 @@
         {
           "name": "--base REF",
           "required": true,
-          "description": "create: the base branch (origin/ and refs/heads/ prefixes allowed) or a 40-character commit id, such as origin/release/0.8.0-beta.2. HEAD is not allowed."
+          "description": "create: the base branch (origin/ and refs/heads/ prefixes allowed) or a 40-character commit id, such as origin/release/0.9.0-beta.1. HEAD is not allowed."
         },
         {
           "name": "--dest ABS_PATH",
@@ -152,7 +152,7 @@
         },
         "note": "Each subcommand puts only the keys marked for it in the result. When --modules-from copies nothing, ok stays true and modulesCopied is false with a modulesNote. A usage error or crash prints {ok:false, exit:2, error} instead."
       },
-      "example": "node tools/lane-tree.mjs create --name my-lane --base origin/release/0.8.0-beta.2 --dest /abs/path/my-lane --json"
+      "example": "node tools/lane-tree.mjs create --name my-lane --base origin/release/0.9.0-beta.1 --dest /abs/path/my-lane --json"
     },
     {
       "name": "public-scan",
@@ -166,7 +166,7 @@
         {
           "name": "--base REF",
           "required": false,
-          "description": "The base to diff against (default origin/release/0.8.0-beta.2)."
+          "description": "The base to diff against (default origin/release/0.9.0-beta.1)."
         },
         {
           "name": "--pr-body FILE",
