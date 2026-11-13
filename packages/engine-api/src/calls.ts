@@ -87,9 +87,16 @@ export const MODULE_CALLS: readonly CallSpec[] = Object.freeze([
   moduleCall('listModulePlaces', 1), moduleCall('approveModulePlace', 1), moduleCall('revokeModulePlace', 2), moduleCall('readModuleFile', 3),
 ]);
 
+/**
+ * The one call added to the bowerloomModules bridge by the Memory explorer (lane 4 of v0.9): `listModuleFiles` lists the markdown files of an approved place, by relative path, so a module can read them one by one
+ * with `readModuleFile`. It is a separate list with its own golden file (`golden/module-list-calls.json`) and is not part of `MODULE_CALLS`, whose golden file stays as lane 2 wrote it. The bridge holds both lists.
+ * It answers plain data and is refused with the codes of the modules calls.
+ */
+export const MODULE_LIST_CALLS: readonly CallSpec[] = Object.freeze([moduleCall('listModuleFiles', 2)]);
+
 /** The spec of a modules call, or undefined for a name the list does not hold. Own names only. */
 export function moduleCallSpec(name: string): CallSpec | undefined {
-  return MODULE_CALLS.find(c => c.name === name);
+  return MODULE_CALLS.find(c => c.name === name) ?? MODULE_LIST_CALLS.find(c => c.name === name);
 }
 
 /** The spec of a call on either side, or undefined for a name the contract does not hold. Own names only: `constructor` and `__proto__` are not calls. */

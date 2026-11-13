@@ -1,0 +1,21 @@
+/*
+ * Memory explorer. Every rule starts at [data-home] and uses the tokens of the app: no colour, font or motion of its own. Two columns, the notes and the harness context, side by side;
+ * on a narrow window they stack.
+ */
+[data-home] .hxmem-body { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxmem-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--hm-space-4, 1.5rem); align-items: start; }
+@media (max-width: 720px) { [data-home] .hxmem-columns { grid-template-columns: minmax(0, 1fr); } }
+[data-home] .hxmem-column { display: flex; flex-direction: column; gap: var(--hm-space-2); min-width: 0; }
+[data-home] .hxmem-title { margin: 0; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; }
+[data-home] .hxmem-sub { margin: var(--hm-space-2) 0 0; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.3; }
+[data-home] .hxmem-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: var(--hm-space-2); margin: 0; }
+[data-home] .hxmem-count { display: flex; flex-direction: column; gap: 0.125rem; }
+[data-home] .hxmem-count dt { font-size: var(--hm-text-base); color: var(--text-muted); }
+[data-home] .hxmem-count dd { margin: 0; font-size: var(--hm-text-name); font-weight: 600; font-variant-numeric: tabular-nums; }
+[data-home] .hxmem-places { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxmem-place { display: flex; flex-direction: column; gap: var(--hm-space-2); min-width: 0; }
+[data-home] .hxmem-place-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--hm-space-2) var(--hm-space-3); }
+[data-home] .hxmem-place-label { margin: 0; font-size: var(--hm-text-base); font-weight: 600; overflow-wrap: anywhere; }
+[data-home] .hxmem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: var(--hm-text-base); }
+[data-home] .hxmem-list li { display: flex; justify-content: space-between; gap: var(--hm-space-2); overflow-wrap: anywhere; }
+[data-home] .hxmem-actions { display: flex; gap: var(--hm-space-2); }

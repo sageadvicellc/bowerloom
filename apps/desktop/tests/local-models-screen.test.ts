@@ -187,7 +187,7 @@ test('the manifest is bundled, not protected, owns the route local-models, and t
   assert.deepEqual(manifest, { id: 'local-models', title: 'Local models', kind: 'ui', routes: ['local-models'], protected: false });
   assert.deepEqual(manifest, JSON.parse(JSON.stringify(LOCAL_MODELS_MANIFEST)));
   // The template extension has a screen in the app too. Its manifest is not in extensions/, so it ships only when a person installs it (tests/extension-template.test.ts).
-  assert.deepEqual([...BUNDLED_IDS], ['local-models', 'modules', 'extension-template']);
+  assert.deepEqual([...BUNDLED_IDS], ['local-models', 'modules', 'memory-explorer', 'extension-template']);
 });
 
 test('registerBundled registers the screen of a listed extension once, leaves out one with no screen, and the route then resolves', () => {

@@ -307,7 +307,7 @@ test('M2: if apps/desktop/extensions holds anything, package.json extraResources
 
 test('E3: the app\'s own bundle loads the first bundled extension, Local models, with nothing skipped or refused, and it is not protected', () => {
   const host = startExtensions(extensionsBundleRoot({ packaged: false, resourcesPath: '/nowhere', appRoot: join(DESKTOP, 'dist') }));
-  assert.deepEqual(host.registry.list().map(m => m.id), [...DEFAULT_IDS, 'local-models', 'modules']);
+  assert.deepEqual(host.registry.list().map(m => m.id), [...DEFAULT_IDS, 'local-models', 'memory-explorer', 'modules']);
   assert.deepEqual(host.skipped, []); assert.deepEqual(host.refused, []);
   const found = host.registry.list().find(m => m.id === 'local-models');
   assert.deepEqual(found, { id: 'local-models', title: 'Local models', kind: 'ui', routes: ['local-models'], protected: false });
