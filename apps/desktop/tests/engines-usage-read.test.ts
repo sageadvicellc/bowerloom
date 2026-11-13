@@ -2,7 +2,7 @@
 // and it turns a failure into a state with a short code. It never calls a call that writes, and it adds no call to any bridge.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextSource, readUsage } from '../shared/engines-usage/read.js';
+import { nextSource, readUsage, settleRead } from '../shared/engines-usage/read.js';
 import type { UsageSource } from '../shared/engines-usage/model.js';
 import { USAGE_RUN_CAP } from '../shared/engines-usage/model.js';
 import { RUN_CALLS } from '../shared/api/runs.js';
@@ -127,7 +127,7 @@ test('a run with a bad shape makes the list "failed": the list cannot be trusted
 
 test('figures with a bad shape are that run\'s refused read with the code FAILED, and good figures are kept', async () => {
   const bads: unknown[] = [null, 'found', 7, [], { state: 'weird' }, { ...fakeFigures(), state: undefined }, { ...fakeFigures(), reason: 'nope' }, { ...fakeFigures(), inputTokens: '12' }, { ...fakeFigures(), outputTokens: Number.NaN },
-    { ...fakeFigures(), inputTokens: -1 }, { ...fakeFigures(), durationMs: Infinity }, { ...fakeFigures(), model: 5 }, { ...fakeFigures(), outcome: 'maybe' }, { ...fakeFigures(), inputTokens: undefined }];
+    { ...fakeFigures(), inputTokens: -1 }, { ...fakeFigures(), inputTokens: 1.5 }, { ...fakeFigures(), outputTokens: 0.25 }, { ...fakeFigures(), durationMs: Infinity }, { ...fakeFigures(), model: 5 }, { ...fakeFigures(), outcome: 'maybe' }, { ...fakeFigures(), inputTokens: undefined }];
   const runs = [...bads.map((_, i) => fakeRun(`run-${i + 1}`, 'claude-code', `2026-11-11T10:${String(i).padStart(2, '0')}:00.000Z`)), fakeRun('run-99', 'codex', '2026-11-10T10:00:00.000Z')];
   const index = new Map(runs.map((r, i) => [r.id, i]));
   const spy = spyBridge(runs, id => (id === 'run-99' ? fakeFigures() : (bads[index.get(id)!] as RunFigures)));
@@ -157,4 +157,30 @@ test('a failed read after a good one keeps the good one and notes the code; a go
   assert.equal(nextSource(kept, { kind: 'stopped' }), kept);
   assert.deepEqual(nextSource({ kind: 'loading' }, { kind: 'failed', code: 'FAILED' }), { kind: 'failed', code: 'FAILED' });
   assert.deepEqual(nextSource({ kind: 'failed', code: 'FAILED' }, READY), READY);
+});
+
+// ---- fix round 2
+
+test('a token count must be a whole number, and a duration may be fractional', async () => {
+  const spy = spyBridge([fakeRun('run-1', 'codex', '2026-11-11T10:00:00.000Z')], () => fakeFigures({ durationMs: 1500.5, inputTokens: 10, outputTokens: 3 }));
+  const source = await readUsage(spy.bridge, alive);
+  if (source.kind !== 'ready') return assert.fail('ready');
+  assert.equal(source.reads.get('run-1')!.kind, 'figures');
+});
+
+test('the end of a read: a rejected promise clears the busy mark and becomes a failed state, and a late answer of a screen that is gone does nothing', async () => {
+  let busy = true, state: UsageSource = { kind: 'loading' };
+  const set = (update: (before: UsageSource) => UsageSource): void => { state = update(state); };
+  await settleRead(Promise.reject(new Error('boom')), () => true, set, () => { busy = false; });
+  assert.equal(busy, false); assert.deepEqual(state, { kind: 'failed', code: 'FAILED' });
+  busy = true; state = READY;
+  await settleRead(Promise.reject(new Error('boom')), () => true, set, () => { busy = false; });
+  assert.deepEqual(state, { ...READY, lastReadFailed: 'FAILED' }, 'a failed re-read keeps the good figures');
+  busy = true; state = { kind: 'loading' };
+  await settleRead(Promise.reject(new Error('late')), () => false, set, () => { busy = false; });
+  assert.equal(busy, true); assert.deepEqual(state, { kind: 'loading' });
+  await settleRead(Promise.resolve<Awaited<ReturnType<typeof readUsage>>>({ kind: 'stopped' }), () => true, set, () => { busy = false; });
+  assert.deepEqual(state, { kind: 'loading' }, 'a stopped read changes nothing');
+  await settleRead(Promise.resolve<Awaited<ReturnType<typeof readUsage>>>(READY), () => true, set, () => { busy = false; });
+  assert.deepEqual(state, READY);
 });

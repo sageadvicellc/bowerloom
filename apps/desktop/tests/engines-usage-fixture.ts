@@ -10,7 +10,7 @@ export const NOW = { daysAgo: 0, time: '10:00' };
 /** A made-up key in the shape the scrub patterns know. If it shows anywhere on the screen, a view kept a value it should have hidden. */
 export const FAKE_KEY = 'sk-FAKEFAKEFAKE1234567890abcd';
 
-export interface PartOptions { readonly toolKind?: 'mcp' | 'prompt' | 'hook'; readonly hasSecret?: boolean; readonly summary?: string; readonly description?: string }
+export interface PartOptions { readonly toolKind?: 'mcp' | 'prompt' | 'hook'; readonly hasSecret?: boolean; readonly secretUnchecked?: boolean; readonly fromHarness?: string; readonly summary?: string; readonly description?: string }
 
 export function fakePart(id: string, kind: PartKind, name: string, origin: string, options: PartOptions = {}): Part {
   return {
@@ -18,6 +18,8 @@ export function fakePart(id: string, kind: PartKind, name: string, origin: strin
     cannotUse: [], inLibrary: true,
     ...(kind === 'tool' && options.toolKind !== undefined ? { toolKind: options.toolKind } : {}),
     ...(options.hasSecret === true ? { hasSecret: true } : {}),
+    ...(options.secretUnchecked === true ? { secretUnchecked: true } : {}),
+    ...(options.fromHarness !== undefined ? { fromHarness: options.fromHarness } : {}),
   };
 }
 

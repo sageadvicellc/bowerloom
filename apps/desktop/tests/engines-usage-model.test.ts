@@ -307,8 +307,8 @@ test('a figure from a log that was capped, still written or read in part is mark
   });
   const rows = enginesView(setupState(), source).rows;
   const claude = rowOf(rows, 'claude-code'), codex = rowOf(rows, 'codex');
-  assert.equal(valueOf(claude, 'usage', 'input'), '1,500 (may be low)');
-  assert.equal(valueOf(claude, 'usage', 'time'), '2 minutes (may be low)');
+  assert.equal(valueOf(claude, 'usage', 'input'), '1,500 (may be wrong)', 'a capped log may not be the right one');
+  assert.equal(valueOf(claude, 'usage', 'time'), '2 minutes (may be wrong)');
   assert.equal(valueOf(codex, 'usage', 'input'), '10 (may be low, may change)');
   assert.ok(claude.usageNotes.some(n => n.includes(figuresStateWords('found', 'capped', null)!)), 'the reason is told too');
   const clean = enginesView(setupState(), ready(runs.slice(0, 1), { 'run-1': read(fakeFigures({ inputTokens: 1000 })) }));
@@ -320,7 +320,7 @@ test('a figure from a log that was capped, still written or read in part is mark
 test('a mark and a partial count join in one pair of brackets', () => {
   const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'claude-code', '2026-11-11T09:00:00.000Z')];
   const source = ready(runs, { 'run-1': read(fakeFigures({ reason: 'capped', inputTokens: 5 })), 'run-2': read(NO_FIGURES('not-found')) });
-  assert.equal(valueOf(rowOf(enginesView(setupState(), source).rows, 'claude-code'), 'usage', 'input'), '5 (from 1 of 2 runs, may be low)');
+  assert.equal(valueOf(rowOf(enginesView(setupState(), source).rows, 'claude-code'), 'usage', 'input'), '5 (from 1 of 2 runs, may be wrong)');
 });
 
 test('"Logs read" is x of all the runs of the engine, and an engine whose runs were all left out by the cap says so and not "0 of 0"', () => {
@@ -383,4 +383,27 @@ test('when the last read failed after a good one, the view keeps the good figure
   assert.equal(valueOf(rowOf(view.rows, 'claude-code'), 'usage', 'input'), '42');
   assert.ok(view.notes.includes(ENGINES_WORDS.lastReadFailed(runsRefusalWords('STORE_DAMAGED'))));
   assert.ok(!enginesView(setupState(), good).notes.some(n => n.includes('last read failed')));
+});
+
+// ---- fix round 2
+
+test('parts a harness folder holds (a place id as origin, and fromHarness set) are not orphans, and a part with neither is', () => {
+  const state = setupState();
+  const harnessParts = [fakePart('harness-ab12-agent-1', 'agent', 'wiki-keeper', 'harness-ab12', { fromHarness: 'proj' }), fakePart('harness-ab12-ctx-1', 'context', 'journal', 'harness-ab12', { fromHarness: 'proj' })];
+  const clean = enginesView({ ...state, parts: [...state.parts, ...harnessParts] }, none);
+  assert.ok(!clean.notes.some(n => n === ENGINES_WORDS.orphans(1) || n === ENGINES_WORDS.orphans(2)), 'no false note');
+  const mixed = enginesView({ ...state, parts: [...state.parts, ...harnessParts, fakePart('lost-9', 'skill', 'Lost', 'src-missing')] }, none);
+  assert.ok(mixed.notes.includes(ENGINES_WORDS.orphans(1)), 'only the part with no folder and no harness counts');
+});
+
+test('a connection whose secret check could not be made says "not checked" even after a whole read', () => {
+  const state = { ...setupState(), parts: [...setupState().parts, fakePart('cc-conn-9', 'tool', 'cutoff', 'src-cc-home', { toolKind: 'mcp', secretUnchecked: true })] };
+  const claude = rowOf(enginesView(state, none).rows, 'claude-code');
+  const cut = claude.connections.find(c => c.name === 'cutoff')!;
+  assert.deepEqual([cut.secretSet, cut.secretNotChecked], [false, true]);
+  const docs = claude.connections.find(c => c.name === 'docs')!;
+  assert.deepEqual([docs.secretSet, docs.secretNotChecked], [false, false]);
+  const both = { ...state, parts: state.parts.map(p => (p.id === 'cc-conn-9' ? { ...p, hasSecret: true } : p)) };
+  const flagged = rowOf(enginesView(both, none).rows, 'claude-code').connections.find(c => c.name === 'cutoff')!;
+  assert.deepEqual([flagged.secretSet, flagged.secretNotChecked], [true, false], 'a flag wins over "not checked"');
 });
