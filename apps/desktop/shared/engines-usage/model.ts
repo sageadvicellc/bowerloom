@@ -61,7 +61,7 @@ export type UsageSource =
 
 /** One line of a row: a label and a value. `reported` is false for a gap ("Not read"), so the screen can show it quietly. */
 export interface Fact { readonly key: string; readonly label: string; readonly value: string; readonly reported: boolean }
-/** `secretSet`: the reader found a secret in the config. `secretNotChecked`: the read was partial and found none, which does not prove there is none. Both false: the whole read found none. */
+/** `secretSet`: the reader found a secret in the config. `secretNotChecked`: the read was partial, or the summary of the connection could not be read, and none was found, which does not prove there is none. Both false: the whole read found none. */
 export interface ConnectionView { readonly name: string; readonly summary: string; readonly secretSet: boolean; readonly secretNotChecked: boolean }
 export interface EngineRowView {
   readonly id: string;
@@ -100,7 +100,8 @@ function tallyParts(parts: readonly Part[], sources: readonly ScanSource[]): { r
   let orphans = 0;
   for (const part of parts) {
     const source = sourceById.get(part.origin);
-    if (source === undefined) { orphans += 1; continue; }
+    // A part of a Bowerloom harness folder (an agent or a notes folder the harness names) has a place id as origin and `fromHarness` set, and no source. It is no orphan.
+    if (source === undefined) { if (part.fromHarness === undefined) orphans += 1; continue; }
     let tally = tallies.get(source.interfaceName);
     if (tally === undefined) { tally = emptyTally(); tallies.set(source.interfaceName, tally); }
     if (part.kind === 'skill') tally.skills += 1;
@@ -127,27 +128,28 @@ function foldersOf(sources: readonly ScanSource[]): Map<string, string[]> {
   return new Map([...found].map(([name, set]) => [name, [...set]]));
 }
 
-const connectionOf = (part: Part, partial: boolean): ConnectionView => ({ name: plain(part.name, 80), summary: plain(part.description === '' ? part.summary : part.description, 120), secretSet: part.hasSecret === true, secretNotChecked: partial && part.hasSecret !== true });
+const connectionOf = (part: Part, partial: boolean): ConnectionView => ({ name: plain(part.name, 80), summary: plain(part.description === '' ? part.summary : part.description, 120), secretSet: part.hasSecret === true, secretNotChecked: (partial || part.secretUnchecked === true) && part.hasSecret !== true });
 
 // ---- usage
 
 interface Usage { readonly facts: readonly Fact[]; readonly notes: readonly string[] }
 
 /**
- * "1,500 (from 2 of 3 runs, may be low)". The number is the sum of the numbers that the logs held. The words inside the brackets say what is not whole: some runs gave none, a log was capped or read in part (the sum can be
- * low), or a log may still be written (the sum can change). A clean sum has no brackets. When no run gave the figure, it is a gap.
+ * "1,500 (from 2 of 3 runs, may be low)". The number is the sum of the numbers that the logs held. The words inside the brackets say what is not whole: some runs gave none, a log was read in part (the sum can be
+ * low), a log was found among too many (it may not be the right one: may be wrong), or a log may still be written (the sum can change). A clean sum has no brackets. When no run gave the figure, it is a gap.
  */
 function figureFact(key: string, label: string, found: readonly RunFigures[], pick: (f: RunFigures) => number | null, format: (n: number) => string, read: number): Fact {
-  let sum = 0, from = 0, low = false, change = false;
+  let sum = 0, from = 0, low = false, wrong = false, change = false;
   for (const f of found) {
     const value = pick(f);
     if (value === null) continue;
     sum += value; from += 1;
-    if (f.reason === 'capped' || f.reason === 'partial') low = true;
+    if (f.reason === 'partial') low = true;
+    if (f.reason === 'capped') wrong = true;
     if (f.reason === 'still-writing') change = true;
   }
   if (from === 0) return fact(key, label, GAP, false);
-  const marks = [...(from < read ? [`from ${from} of ${read} runs`] : []), ...(low ? ['may be low'] : []), ...(change ? ['may change'] : [])];
+  const marks = [...(from < read ? [`from ${from} of ${read} runs`] : []), ...(low ? ['may be low'] : []), ...(wrong ? ['may be wrong'] : []), ...(change ? ['may change'] : [])];
   return fact(key, label, marks.length === 0 ? format(sum) : `${format(sum)} (${marks.join(', ')})`);
 }
 

@@ -29,11 +29,22 @@ export function nextSource(before: UsageSource, read: UsageRead): UsageSource {
   return read;
 }
 
+/**
+ * Ends a read. `pending` is the read; `live` says whether the screen is still there; `set` takes a function from the source before to the source after; `done` clears the busy mark. Any outcome ends the wait: a read that
+ * rejects (it never does, but a screen must not depend on that) is a failed state with the code FAILED, and a screen that is gone is left alone. The component calls this with its own setters, so a test drives the same code.
+ */
+export function settleRead(pending: Promise<UsageRead>, live: () => boolean, set: (update: (before: UsageSource) => UsageSource) => void, done: () => void): Promise<void> {
+  const end = (read: UsageRead): void => { if (!live()) return; done(); set(before => nextSource(before, read)); };
+  return pending.then(end, () => end({ kind: 'failed', code: 'FAILED' }));
+}
+
 /** Runs a call that may throw at once or reject, as one promise. */
 const call = <T>(make: () => Promise<T>): Promise<T> => new Promise<T>(resolve => resolve(make()));
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const numberOrNull = (value: unknown): boolean => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
+/** A count of tokens is a whole number. A duration may be fractional. */
+const countOrNull = (value: unknown): boolean => value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0);
 const textOrNull = (value: unknown): boolean => value === null || typeof value === 'string';
 const OUTCOMES: readonly unknown[] = ['finished', 'stopped', 'unknown'];
 
@@ -41,7 +52,7 @@ const OUTCOMES: readonly unknown[] = ['finished', 'stopped', 'unknown'];
 export function validFigures(value: unknown): value is RunFigures {
   if (!isObject(value)) return false;
   return (FIGURES_STATES as readonly unknown[]).includes(value.state) && (value.reason === null || (FIGURES_REASONS as readonly unknown[]).includes(value.reason))
-    && numberOrNull(value.durationMs) && numberOrNull(value.inputTokens) && numberOrNull(value.outputTokens) && textOrNull(value.model) && textOrNull(value.startedAt) && textOrNull(value.endedAt) && OUTCOMES.includes(value.outcome);
+    && numberOrNull(value.durationMs) && countOrNull(value.inputTokens) && countOrNull(value.outputTokens) && textOrNull(value.model) && textOrNull(value.startedAt) && textOrNull(value.endedAt) && OUTCOMES.includes(value.outcome);
 }
 
 /** True when the value can be a run of the list: an object with a text id, a text engine and a text start. */

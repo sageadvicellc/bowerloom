@@ -163,18 +163,36 @@ function pageTitlesBySlice(world: World, places: readonly RealPlace[]): Map<stri
   return out;
 }
 
-/** Names that point at a secret and that the reader's own check (`looksSecretName`) does not know: a token written `PAT`, and an address or connection string written `..._URL`. */
-const EXTRA_SECRET_NAME = /(^|[_\-.])pat([_\-.]|$)|[_\-.]url$/i;
 /**
- * True when the summary of a connection (the text the reader kept: names of variables and headers, never their values) lists a name from `EXTRA_SECRET_NAME`. The reader's files are not changed for this, because
- * they are held by the engine API golden file. A secret in the command, its arguments or the address is not seen here: the reader drops those before this part is made.
+ * Names that point at a secret and that the reader's own check (`looksSecretName`) does not know: a token written `PAT`, and the connection strings of databases and stores (`DATABASE_URL`, `REDIS_URL`, `MONGODB_URL`,
+ * `POSTGRES_URL`) and any `*_CONNECTION_STRING`. `*_DSN` is already known to the reader. A plain `BASE_URL`, `API_URL` or `JIRA_URL` is an address and not a secret, so it is not here.
  */
-function namesExtraSecret(text: string): boolean {
-  if (text === '' || text.length > 20000) return false;
-  try {
-    const summary = JSON.parse(text) as { env?: unknown; headers?: unknown } | null;
-    return summary !== null && typeof summary === 'object' && [summary.env, summary.headers].some(list => Array.isArray(list) && list.some(n => typeof n === 'string' && EXTRA_SECRET_NAME.test(n)));
-  } catch { return false; }
+const EXTRA_SECRET_NAME = /(^|[_\-.])pat([_\-.]|$)|(^|[_\-.])(database|db|redis|mongo|mongodb|postgres|postgresql|mysql)[_\-.]?url$|[_\-.]connection[_\-.]?string$/i;
+
+/**
+ * Looks at the summary of a connection (the text the reader kept: names of variables and headers, never their values), once for each place the connection was found. `yes`: a name from `EXTRA_SECRET_NAME`.
+ * `unknown`: a summary that is empty, too long to trust, or does not parse (it was cut), so the check could not be made. `no`: every summary parsed and none names a secret. The reader's files are not changed for this,
+ * because the engine API golden file holds them. A secret in the command, its arguments or the address is not seen here: the reader drops those before this part is made.
+ */
+function extraSecretCheck(texts: readonly string[]): 'yes' | 'unknown' | 'no' {
+  let unknown = texts.length === 0;
+  for (const text of texts) {
+    if (text === '' || text.length > 20000) { unknown = true; continue; }
+    try {
+      const summary = JSON.parse(text) as { env?: unknown; headers?: unknown } | null;
+      if (summary === null || typeof summary !== 'object') { unknown = true; continue; }
+      if ([summary.env, summary.headers].some(list => Array.isArray(list) && list.some(n => typeof n === 'string' && EXTRA_SECRET_NAME.test(n)))) return 'yes';
+    } catch { unknown = true; }
+  }
+  return unknown ? 'unknown' : 'no';
+}
+
+/** The secret flags of a connection: `hasSecret` when the reader found one or a name above does, and `secretUnchecked` when the check could not be made and found none. Nothing else of a secret is kept. */
+function secretOf(item: HarnessItem): { hasSecret?: true; secretUnchecked?: true } {
+  if (item.kind !== 'tool' || item.toolKind !== 'mcp') return {};
+  if (item.secret !== null) return { hasSecret: true };
+  const extra = extraSecretCheck(item.foundAt.map(f => f.text));
+  return extra === 'yes' ? { hasSecret: true } : extra === 'unknown' ? { secretUnchecked: true } : {};
 }
 
 /**
@@ -209,7 +227,7 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     // The Overview reads these two. `contentHash` is the hash of the whole text of the file the reader read for the part (a skill's SKILL.md), and is absent when the file had no readable text, so two places with equal text read as one shared skill.
     ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
     // A connection whose config holds a secret (a variable or a header that carries a key) says so with one flag. This part keeps only the flag. The world item still holds the name of the variable (map-world.ts), as it did before; the Engines and usage module never shows that name, only "Secret: set".
-    ...(item.kind === 'tool' && item.toolKind === 'mcp' && (item.secret !== null || namesExtraSecret(first?.text ?? '')) ? { hasSecret: true } : {}),
+    ...(secretOf(item)),
     ...(first === undefined || item.kind === 'context-slice' || first.contentHash === '' ? {} : { contentHash: first.contentHash }),
   };
 }

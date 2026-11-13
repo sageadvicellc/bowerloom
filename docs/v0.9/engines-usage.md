@@ -41,7 +41,7 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 - Each number on screen is a sum of numbers that a log held. Nothing is estimated, averaged or rounded up.
 - A figure that no log held reads "Not read". A zero that a log held reads "0".
 - When some runs gave a figure and others did not, the value says so: "1,500 (from 2 of 3 runs)".
-- A log that was capped or read in part can give a low sum. The value carries a low mark in its brackets. A log that is still being written can change. The value carries a change mark. The marks join: "5 (from 1 of 2 runs, may be low)".
+- A log that was read in part can give a low sum. The value carries the mark "may be low". A log found among too many may not be the right one. The value carries the mark "may be wrong". A log that is still being written can change. The value carries a change mark. The marks join: "5 (from 1 of 2 runs, may be low)".
 - "Logs read" is x of all the runs of that engine. When the cap left out every run of an engine, the card says so.
 - The module checks every answer of the two calls. A list that is no list, a run with a bad shape, or figures with a bad shape never reach the screen. A bad list is a failed read with the code FAILED. Bad figures are that run's refused read.
 - The read always ends in a state. If a read fails after a good one, the card keeps the good figures and says that the last read failed.
@@ -57,7 +57,7 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 ## Config rules
 
 - A count of 0 for a found engine is a count that the reader made: it looked and found none. After a partial read, or when the config of the engine has a problem, each count carries the low mark. A 0 is never bare.
-- A part whose folder is not in the list is counted in one note. It is never dropped without a word.
+- A part whose folder is not in the list is counted in one note. It is never dropped without a word. A part of a Bowerloom harness folder has no source of its own, and it is not counted as lost.
 - A health word the app does not know shows as a problem.
 - A part found in two engines is one part with one source, so it counts once, under the first engine. The view says so in one line.
 - A list of connections shows the first 12. A list of folders shows the first 6. The count is always the whole count. The rest reads "and N more".
@@ -67,7 +67,8 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 A config view never shows a secret.
 
 - The reader keeps the name of a key and never its value. This module goes further: it shows neither.
-- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. The part also gets the flag when a name in its summary ends in `_URL` or holds `PAT` as a word (`DATABASE_URL`, `GITHUB_PAT`). The `dsn` name was already known.
+- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. The part also gets the flag when a name in its summary holds `PAT` as a word, or is a connection string: `DATABASE_URL`, `REDIS_URL`, `MONGODB_URL`, `POSTGRES_URL` or `*_CONNECTION_STRING`. The `dsn` name was already known. A plain `BASE_URL` or `API_URL` is an address, and it gets no flag.
+- When the summary of a connection is cut, empty or damaged, the check could not be made. The connection says "Secret: not checked".
 - A secret in the command, its arguments or the address is not seen. The reader drops those three before this module sees the part. Fixing that means editing `shared/real/adapters.ts` and `map-world.ts`. The engine API golden file holds their hashes, and that file is frozen, so this lane leaves them alone.
 - After a partial read, a connection with no flag says "Secret: not checked". It never implies that there is no secret.
 - The world item that the reader builds still holds the name of the variable (`secret.name` in `map-world.ts`). That is older than this lane. This module never shows it. The module shows "Secret: set" and nothing more about it. It shows no name of a variable or header and no value.

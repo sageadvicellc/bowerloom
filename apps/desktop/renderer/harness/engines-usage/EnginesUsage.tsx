@@ -14,7 +14,7 @@ import { useHarnessState } from '../session.js';
 import { useRuns } from '../runs-real/runs-session.js';
 import { ENGINES_WORDS, enginesView } from '../../../shared/engines-usage/model.js';
 import type { ConnectionView, EngineRowView, EnginesView, Fact, UsageSource } from '../../../shared/engines-usage/model.js';
-import { initialSource, nextSource, readUsage } from '../../../shared/engines-usage/read.js';
+import { initialSource, readUsage, settleRead } from '../../../shared/engines-usage/read.js';
 import type { Tone } from '../../../shared/harness/status.js';
 import './engines-usage.css';
 
@@ -116,9 +116,7 @@ function useEnginesUsage() {
     if (sample || runs === null) { setSource(initialSource(sample, runs)); setBusy(false); return undefined; }
     let live = true;
     setBusy(true);
-    // A read never rejects, but a screen that waits on a promise ends the wait on any outcome: a failure clears the busy mark and is a state, never a screen stuck on "Reading".
-    const end = (read: Awaited<ReturnType<typeof readUsage>>): void => { if (!live) return; setBusy(false); setSource(before => nextSource(before, read)); };
-    readUsage(runs, () => live).then(end, () => end({ kind: 'failed', code: 'FAILED' }));
+    void settleRead(readUsage(runs, () => live), () => live, setSource, () => setBusy(false));
     return () => { live = false; };
   }, [sample, runs, round]);
   const view = useMemo(() => enginesView(state, source), [state, source]);
