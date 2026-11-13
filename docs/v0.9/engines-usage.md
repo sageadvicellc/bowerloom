@@ -34,7 +34,7 @@ No new call was needed. Every fact comes from something that already exists.
 - Config comes from the state the page already holds. The reader of the person's folders built it (`apps/desktop/shared/harness/real-map.ts`). The module counts the parts by the engine their source was read for.
 - Usage comes from two calls of the `bowerloomRuns` bridge (PR 183): `listRuns` and `readRunFigures`. The module reads the logs of the 50 newest runs, one at a time. It calls no other call of that bridge.
 
-The module adds one field to the state: `Part.hasSecret`. It is a flag on a connection. Section "Secrets" says what it means.
+The module adds two optional fields to the state: `Part.hasSecret` and `Part.secretUnchecked`. Both are flags on a connection. The check function is `extraSecretCheck` in `apps/desktop/shared/harness/real-map.ts`. Section "Secrets" says what they mean.
 
 ## Usage rules
 
@@ -67,7 +67,7 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 A config view never shows a secret.
 
 - The reader keeps the name of a key and never its value. This module goes further: it shows neither.
-- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. The part also gets the flag when a name in its summary holds `PAT` as a word, or is a connection string: `DATABASE_URL`, `REDIS_URL`, `MONGODB_URL`, `POSTGRES_URL` or `*_CONNECTION_STRING`. The `dsn` name was already known. A plain `BASE_URL` or `API_URL` is an address, and it gets no flag.
+- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. The part also gets the flag when a name in its summary holds `PAT` as a word, or is a connection string. The flagged names are `DATABASE_URL`, `DB_URL`, `REDIS_URL`, `MONGO_URL`, `MONGODB_URL`, `POSTGRES_URL`, `POSTGRESQL_URL` and `MYSQL_URL`, the same names ending `_URI`, and `CONNECTION_STRING`, bare or after a prefix. The `dsn` name was already known. A plain `BASE_URL` or `API_URL` is an address, and it gets no flag.
 - When the summary of a connection is cut, empty or damaged, the check could not be made. The connection says "Secret: not checked".
 - A secret in the command, its arguments or the address is not seen. The reader drops those three before this module sees the part. Fixing that means editing `shared/real/adapters.ts` and `map-world.ts`. The engine API golden file holds their hashes, and that file is frozen, so this lane leaves them alone.
 - After a partial read, a connection with no flag says "Secret: not checked". It never implies that there is no secret.
@@ -89,15 +89,16 @@ A config view never shows a secret.
 - `apps/desktop/renderer/harness/extension-mounts.tsx`: one import and one line in `BUNDLED_MOUNTS`.
 - `apps/desktop/renderer/harness/modules/embeds.tsx`: one import and one line in `EMBEDS`.
 - `apps/desktop/shared/local-models/sample.ts`: the constant `ENGINES_USAGE_MANIFEST`, and its entry in the list of the sample bridge.
-- `apps/desktop/shared/harness/types.ts` and `apps/desktop/shared/harness/real-map.ts`: the optional field `Part.hasSecret`, and the line that sets it.
+- `apps/desktop/shared/harness/types.ts` and `apps/desktop/shared/harness/real-map.ts`: the optional fields `Part.hasSecret` and `Part.secretUnchecked`, and `extraSecretCheck` with the lines that set them.
 - Tests that pinned a list of modules now assert that the list includes this module: `extensions-host.test.ts`, `local-models-screen.test.ts`, `local-models-view-model.test.ts`, `extension-template.test.ts` and the e2e spec `harness-modules.spec.ts`.
 
 ## Tests
 
 - `apps/desktop/tests/engines-usage-model.test.ts`: the rows, the counts, the gaps, the sums, the cut lists, the hidden text, size and odd input, and the words.
-- `apps/desktop/tests/engines-usage-read.test.ts`: the two read calls, the order, the cap, the refusals and the stop.
+- `apps/desktop/tests/engines-usage-read.test.ts`: the two read calls, the order, the cap, the refusals, the stop, and `settleRead`: a rejected read clears the busy mark and becomes a failed state.
 - `apps/desktop/tests/engines-usage-screen.test.ts`: the markup of each state, the registration, the address, and that the lane adds no call and no golden file.
 - `apps/desktop/tests/engines-usage-secrets.test.ts`: the fake secrets.
+- `apps/desktop/tests/engines-usage-real.test.ts`: the real reader on small homes: harness parts are no orphans, which names flag a secret, and a cut summary says not checked.
 - `apps/desktop/tests/engines-usage-fixture.ts`: the fixture engine setups.
 - `apps/desktop/e2e/harness-engines-usage.spec.ts`: the sample launch.
 
@@ -119,3 +120,5 @@ No new bridge means no new golden file. The test `it adds no golden file and edi
 - No terminal app (lane 5b, D4 A).
 - No end-to-end test of the real launch. The unit tests hold the bridge reads and the secrets.
 - A part found in two engines counts under one. The state holds one source for each part, so a per-engine count of shared parts needs a new fact.
+- Only the first copy of a connection within one scope is name-checked for the extra names. `map-world.ts` keeps one file for each program in each scope, and fixing that needs that frozen file.
+- A log that is both capped and still being written reads "may change" without "may be wrong", because the log reader gives one reason for each log.

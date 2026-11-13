@@ -164,10 +164,11 @@ function pageTitlesBySlice(world: World, places: readonly RealPlace[]): Map<stri
 }
 
 /**
- * Names that point at a secret and that the reader's own check (`looksSecretName`) does not know: a token written `PAT`, and the connection strings of databases and stores (`DATABASE_URL`, `REDIS_URL`, `MONGODB_URL`,
- * `POSTGRES_URL`) and any `*_CONNECTION_STRING`. `*_DSN` is already known to the reader. A plain `BASE_URL`, `API_URL` or `JIRA_URL` is an address and not a secret, so it is not here.
+ * Names that point at a secret and that the reader's own check (`looksSecretName`) does not know. Every name that this rule flags: `PAT` as a word (`GITHUB_PAT`); `DATABASE_URL`, `DB_URL`, `REDIS_URL`, `MONGO_URL`, `MONGODB_URL`,
+ * `POSTGRES_URL`, `POSTGRESQL_URL` and `MYSQL_URL`, and the same names ending `_URI`; and `CONNECTION_STRING`, bare or after a prefix (`DB_CONNECTION_STRING`). `*_DSN` is already known to the reader. A plain `BASE_URL`, `BASE_URI`,
+ * `API_URL` or `JIRA_URL` is an address and not a secret, so it is not here.
  */
-const EXTRA_SECRET_NAME = /(^|[_\-.])pat([_\-.]|$)|(^|[_\-.])(database|db|redis|mongo|mongodb|postgres|postgresql|mysql)[_\-.]?url$|[_\-.]connection[_\-.]?string$/i;
+const EXTRA_SECRET_NAME = /(^|[_\-.])pat([_\-.]|$)|(^|[_\-.])(database|db|redis|mongo|mongodb|postgres|postgresql|mysql)[_\-.]?ur[il]$|(^|[_\-.])connection[_\-.]?string$/i;
 
 /**
  * Looks at the summary of a connection (the text the reader kept: names of variables and headers, never their values), once for each place the connection was found. `yes`: a name from `EXTRA_SECRET_NAME`.

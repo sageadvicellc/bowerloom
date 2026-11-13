@@ -82,3 +82,14 @@ test('a connection whose summary was cut or cannot be read says "not checked"', 
   assert.equal(whole.secretUnchecked, undefined, 'a summary that parses is checked');
   assert.ok(ENGINES_WORDS.secretNotChecked.length > 0);
 });
+
+test('a connection string written as an address with URI is a secret, a bare CONNECTION_STRING is too, and BASE_URI and API_URL are not', async t => {
+  const { state } = await read(t, serverHome({
+    mongouri: { command: 'a', env: { MONGODB_URI: 'mongodb://h' } }, dburi: { command: 'a', env: { DATABASE_URI: 'postgres://h' } }, redisuri: { command: 'a', env: { REDIS_URI: 'redis://h' } },
+    bare: { command: 'a', env: { CONNECTION_STRING: 'Server=h' } },
+    baseuri: { command: 'a', env: { BASE_URI: 'https://a.example.test' } }, apiurl2: { command: 'a', env: { API_URL: 'https://a.example.test' } },
+  }));
+  const flags = flagsOf(state);
+  for (const name of ['mongouri', 'dburi', 'redisuri', 'bare']) assert.equal(flags.get(name), true, name);
+  for (const name of ['baseuri', 'apiurl2']) assert.equal(flags.get(name), false, name);
+});
