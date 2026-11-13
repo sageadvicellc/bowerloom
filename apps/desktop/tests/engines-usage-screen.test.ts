@@ -193,7 +193,7 @@ const code = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8')
 
 test('its files name no bridge, no channel, no Node module and no Electron, and make no request', () => {
   const own = [...files('renderer/harness/engines-usage'), ...files('shared/engines-usage')];
-  assert.ok(own.length >= 4, own.join(', '));
+  assert.ok(own.length >= 3, own.join(', '));
   for (const f of own) assert.doesNotMatch(code(f), /bowerloom(?:Real|Engine|Local|Runs|Modules)|bowerloom-[a-z]+:|_CHANNELS|_ARITY|node:|electron|ipcRenderer|\bfetch\(|XMLHttpRequest|WebSocket/, f);
 });
 

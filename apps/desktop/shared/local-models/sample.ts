@@ -38,6 +38,6 @@ export function sampleLocalReport(sampledAt: string): LocalModelsReport {
 export function createSampleLocal(now: () => string): LocalBridge {
   return {
     localModels: async () => sampleLocalReport(now()),
-    listExtensions: async () => ({ extensions: [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST], skipped: [] }),
+    listExtensions: async () => ({ extensions: [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST, ENGINES_USAGE_MANIFEST], skipped: [] }),
   };
 }

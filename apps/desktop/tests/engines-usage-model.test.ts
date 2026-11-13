@@ -280,7 +280,8 @@ test('the words obey the rules of the preview: no banned word in any string of t
   const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'pi', '2026-11-11T09:00:00.000Z'), fakeRun('run-3', 'codex', '2026-11-11T08:00:00.000Z')];
   const source = ready(runs, { 'run-1': read(NO_FIGURES('not-found')), 'run-2': read(NO_FIGURES('not-available')), 'run-3': { kind: 'refused', code: 'FAILED' } }, 90);
   const state = { ...setupState(), real: { couldNotRead: 0, stoppedEarly: true, notes: [], textsCut: 0 } };
-  const texts = [...Object.values(ENGINES_WORDS).filter((w): w is string => typeof w === 'string'), ENGINES_WORDS.cut(50, 90)];
+  const texts: string[] = [ENGINES_WORDS.cut(50, 90)];
+  for (const word of Object.values(ENGINES_WORDS)) if (typeof word === 'string') texts.push(word);
   for (const s of [source, none, { kind: 'sample' } as UsageSource, { kind: 'no-bridge' } as UsageSource, { kind: 'loading' } as UsageSource, { kind: 'failed', code: 'FAILED' } as UsageSource]) {
     const view = enginesView(state, s);
     // Names a person gave to fixture parts are not words of the screen, so they are not held to the rule.
