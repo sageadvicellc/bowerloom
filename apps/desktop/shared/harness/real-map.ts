@@ -164,6 +164,39 @@ function pageTitlesBySlice(world: World, places: readonly RealPlace[]): Map<stri
 }
 
 /**
+ * Names that point at a secret and that the reader's own check (`looksSecretName`) does not know. Every name that this rule flags: `PAT` as a word (`GITHUB_PAT`); `DATABASE_URL`, `DB_URL`, `REDIS_URL`, `MONGO_URL`, `MONGODB_URL`,
+ * `POSTGRES_URL`, `POSTGRESQL_URL` and `MYSQL_URL`, and the same names ending `_URI`; and `CONNECTION_STRING`, bare or after a prefix (`DB_CONNECTION_STRING`). `*_DSN` is already known to the reader. A plain `BASE_URL`, `BASE_URI`,
+ * `API_URL` or `JIRA_URL` is an address and not a secret, so it is not here.
+ */
+const EXTRA_SECRET_NAME = /(^|[_\-.])pat([_\-.]|$)|(^|[_\-.])(database|db|redis|mongo|mongodb|postgres|postgresql|mysql)[_\-.]?ur[il]$|(^|[_\-.])connection[_\-.]?string$/i;
+
+/**
+ * Looks at the summary of a connection (the text the reader kept: names of variables and headers, never their values), once for each place the connection was found. `yes`: a name from `EXTRA_SECRET_NAME`.
+ * `unknown`: a summary that is empty, too long to trust, or does not parse (it was cut), so the check could not be made. `no`: every summary parsed and none names a secret. The reader's files are not changed for this,
+ * because the engine API golden file holds them. A secret in the command, its arguments or the address is not seen here: the reader drops those before this part is made.
+ */
+function extraSecretCheck(texts: readonly string[]): 'yes' | 'unknown' | 'no' {
+  let unknown = texts.length === 0;
+  for (const text of texts) {
+    if (text === '' || text.length > 20000) { unknown = true; continue; }
+    try {
+      const summary = JSON.parse(text) as { env?: unknown; headers?: unknown } | null;
+      if (summary === null || typeof summary !== 'object') { unknown = true; continue; }
+      if ([summary.env, summary.headers].some(list => Array.isArray(list) && list.some(n => typeof n === 'string' && EXTRA_SECRET_NAME.test(n)))) return 'yes';
+    } catch { unknown = true; }
+  }
+  return unknown ? 'unknown' : 'no';
+}
+
+/** The secret flags of a connection: `hasSecret` when the reader found one or a name above does, and `secretUnchecked` when the check could not be made and found none. Nothing else of a secret is kept. */
+function secretOf(item: HarnessItem): { hasSecret?: true; secretUnchecked?: true } {
+  if (item.kind !== 'tool' || item.toolKind !== 'mcp') return {};
+  if (item.secret !== null) return { hasSecret: true };
+  const extra = extraSecretCheck(item.foundAt.map(f => f.text));
+  return extra === 'yes' ? { hasSecret: true } : extra === 'unknown' ? { secretUnchecked: true } : {};
+}
+
+/**
  * One part from one item. `sourceId` is the scan source it belongs to and `sourceLabel` is the words shown beside it ("Your Claude Code folder"). A context item needs the world to list its pages
  * (`titles` has them for each set, counted for each place). The id is the item's own id.
  */
@@ -194,6 +227,8 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     ...(model === undefined || plain(model.badge) === '' ? {} : { badge: cut(plain(model.badge), 40) }),
     // The Overview reads these two. `contentHash` is the hash of the whole text of the file the reader read for the part (a skill's SKILL.md), and is absent when the file had no readable text, so two places with equal text read as one shared skill.
     ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
+    // A connection whose config holds a secret (a variable or a header that carries a key) says so with one flag. This part keeps only the flag. The world item still holds the name of the variable (map-world.ts), as it did before; the Engines and usage module never shows that name, only "Secret: set".
+    ...(secretOf(item)),
     ...(first === undefined || item.kind === 'context-slice' || first.contentHash === '' ? {} : { contentHash: first.contentHash }),
   };
 }

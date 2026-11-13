@@ -63,6 +63,10 @@ export interface Part {
    * Its file was not read (`fileText` is empty), and that harness counts as one that holds it. Absent for every other part.
    */
   readonly fromHarness?: string;
+  /** Real mode, a connection only: true when the reader found a secret set in its config (a variable or a header that holds a key). The Engines and usage module shows only this fact and never the name of the variable. The world item that the reader builds still holds that name (shared/real/map-world.ts), as it did before this field. Absent otherwise. */
+  readonly hasSecret?: boolean;
+  /** Real mode, a connection only: true when the summary of the connection could not be read (it was cut, or is empty or damaged), so the check for a secret could not be made. Absent when it was made. */
+  readonly secretUnchecked?: boolean;
 }
 
 /** An agent uses a skill, a tool or a piece of context. The link is kept in the harness manifest, never in the agent's file. */

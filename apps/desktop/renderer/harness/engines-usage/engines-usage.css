@@ -1,0 +1,24 @@
+/*
+ * Engines and usage. Every rule starts at [data-home] and uses the tokens of the app: no colour, font or motion of its own. A row is the shared row (.hx-row) with a tile, a name, a state dot and two lists of facts. Text is 14 px or more.
+ */
+[data-home] .hxu-body { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxu-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.8125rem; }
+[data-home] .hxu-row { align-items: flex-start; cursor: default; }
+[data-home] .hxu-text { gap: var(--hm-space-3); }
+[data-home] .hxu-head { display: flex; align-items: center; gap: var(--hm-space-3); justify-content: space-between; min-width: 0; }
+[data-home] .hxu-name { margin: 0; font-size: var(--hm-text-name); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+[data-home] .hxu-section { display: flex; flex-direction: column; gap: var(--hm-space-2); min-width: 0; }
+[data-home] .hxu-h3 { margin: 0; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.35; }
+[data-home] .hxu-h4 { margin: 0; font-size: var(--hm-text-base); font-weight: 600; line-height: 1.35; color: var(--text-muted); }
+[data-home] .hxu-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--hm-space-2) var(--hm-space-4); }
+[data-home] .hxu-fact { display: flex; flex-direction: column; min-width: 0; }
+[data-home] .hxu-fact dt { font-size: var(--hm-text-base); color: var(--text-muted); line-height: 1.35; }
+[data-home] .hxu-fact dd { margin: 0; font-size: var(--hm-text-base); line-height: 1.35; overflow-wrap: anywhere; }
+[data-home] .hxu-fact:not([data-reported]) dd { color: var(--text-muted); }
+[data-home] .hxu-places, [data-home] .hxu-connections { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--hm-space-1); font-size: var(--hm-text-base); line-height: 1.4; }
+[data-home] .hxu-place { overflow-wrap: anywhere; }
+[data-home] .hxu-connection { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--hm-space-3); overflow-wrap: anywhere; }
+[data-home] .hxu-connection-name { font-weight: 600; }
+[data-home] .hxu-secret { color: var(--text-muted); }
+[data-home] .hxu-embedded { display: flex; flex-direction: column; gap: var(--hm-space-3); }
+[data-home] .hxu-embedded-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--hm-space-3); }

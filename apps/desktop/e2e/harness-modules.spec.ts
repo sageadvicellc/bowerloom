@@ -22,7 +22,8 @@ test('the view lists the stock modules after the list answers, and the navigatio
   await expect(p.locator('[data-screen="modules"]')).toBeVisible();
   await expect(p.getByRole('heading', { level: 1, name: 'Modules', exact: true })).toBeVisible();
   await expect(p.locator('[data-modules-hint]')).toContainText('reads only what you pick');
-  await expect(p.locator('[data-module]')).toHaveCount(1);
+  await expect(p.locator('[data-module="local-models"]')).toHaveCount(1);
+  await expect(p.locator('[data-module="engines-usage"]')).toHaveCount(1);
   await expect(p.locator('[data-module="local-models"]')).toContainText('Local models');
   await expect(p.locator('[data-module="modules"]')).toHaveCount(0);
   const item = p.locator('nav [data-nav-key="modules"]');
@@ -65,7 +66,8 @@ test('All modules goes back to the list, and an address that names no module say
   await expect(p.locator('[data-module-open]')).toHaveCount(0);
   await fresh(p, '#sample/modules/nothing-here');
   await expect(p.locator('[data-modules-state="unknown"]')).toContainText('No module has that name.');
-  await expect(p.locator('[data-module]')).toHaveCount(1);
+  await expect(p.locator('[data-module="local-models"]')).toHaveCount(1);
+  await expect(p.locator('[data-module="engines-usage"]')).toHaveCount(1);
 });
 
 test('Local models still has its own page and its own navigation entry, as before', async () => {

@@ -4,9 +4,11 @@
  */
 import type { ReactElement } from 'react';
 import { LocalModelsEmbedded } from '../local-models/LocalModels.js';
+import { EnginesUsageEmbedded } from '../engines-usage/EnginesUsage.js';
 
 const EMBEDS: Readonly<Record<string, () => ReactElement>> = Object.freeze({
   'local-models': () => <LocalModelsEmbedded />,
+  'engines-usage': () => <EnginesUsageEmbedded />,
 });
 
 /** The page of a module inside the view, or undefined when the module has none. Own names only. */
