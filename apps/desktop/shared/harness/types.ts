@@ -63,6 +63,8 @@ export interface Part {
    * Its file was not read (`fileText` is empty), and that harness counts as one that holds it. Absent for every other part.
    */
   readonly fromHarness?: string;
+  /** Real mode, a connection only: true when the reader found a secret set in its config (a variable or a header that holds a key). Only that fact is kept: never the name or the value. Absent otherwise. */
+  readonly hasSecret?: boolean;
 }
 
 /** An agent uses a skill, a tool or a piece of context. The link is kept in the harness manifest, never in the agent's file. */

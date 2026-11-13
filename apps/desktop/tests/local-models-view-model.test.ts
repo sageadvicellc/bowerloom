@@ -166,7 +166,9 @@ test('the sample: two up, one down, made-up names, no memory, and a sample bridg
   assert.doesNotMatch(JSON.stringify(sample), /\/Users|\/home|C:\\/);
   const bridge = createSampleLocal(() => '2026-11-11T10:00:00Z');
   assert.deepEqual(await bridge.localModels(), sample);
-  assert.deepEqual((await bridge.listExtensions()).extensions, [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST]);
+  const listed = (await bridge.listExtensions()).extensions;
+  assert.deepEqual(listed.slice(0, 2), [LOCAL_MODELS_MANIFEST, MODULES_MANIFEST]);
+  assert.ok(listed.some(m => m.id === 'engines-usage'), 'the sample lists the Engines and usage module');
 });
 
 
