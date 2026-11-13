@@ -1,0 +1,7 @@
+{
+  "id": "memory-explorer",
+  "title": "Memory",
+  "kind": "ui",
+  "routes": ["memory-explorer"],
+  "protected": false
+}

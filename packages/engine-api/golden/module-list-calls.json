@@ -1,0 +1,10 @@
+{
+  "format": "bowerloom/engine-api-module-list-golden/v1",
+  "note": "The one call added to the bowerloomModules bridge by the Memory explorer (v0.9 lane 4): it lists the markdown files of an approved place, by relative path. It has its own golden file, so module-calls.json stays as lane 2 wrote it. Change this file only with MODULE_LIST_CALLS, in the same commit. Its refusal codes are the module refusal codes of module-calls.json.",
+  "bridge": "bowerloomModules",
+  "channelPrefix": "bowerloom-modules:",
+  "moduleListCalls": [
+    { "name": "listModuleFiles", "arity": 2, "optionalArgs": 0, "channel": "bowerloom-modules:listModuleFiles", "returns": "plain" }
+  ],
+  "moduleListCallRefusals": ["NOT_ALLOWED", "BAD_ARGUMENT", "UNKNOWN_MODULE", "NOT_APPROVED", "PLACE_CHANGED", "UNREADABLE", "HOME_UNREADABLE", "RECORD_DAMAGED", "RECORD_BLOCKED"]
+}

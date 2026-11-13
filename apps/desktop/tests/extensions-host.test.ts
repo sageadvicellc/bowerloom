@@ -309,7 +309,9 @@ test('E3: the app\'s own bundle loads the first bundled extension, Local models,
   const host = startExtensions(extensionsBundleRoot({ packaged: false, resourcesPath: '/nowhere', appRoot: join(DESKTOP, 'dist') }));
   const ids = host.registry.list().map(m => m.id);
   assert.deepEqual(ids.slice(0, DEFAULT_IDS.length), [...DEFAULT_IDS]);
-  for (const id of ['local-models', 'modules', 'engines-usage']) assert.ok(ids.includes(id), `${id} is loaded`);
+  const bundled = ids.slice(DEFAULT_IDS.length);
+  for (const id of ['local-models', 'modules', 'memory-explorer', 'engines-usage']) assert.ok(bundled.includes(id), `${id} is loaded`);
+  assert.equal(bundled.length, 4, `no stray extension: ${bundled.join(', ')}`);
   assert.deepEqual(host.skipped, []); assert.deepEqual(host.refused, []);
   const found = host.registry.list().find(m => m.id === 'local-models');
   assert.deepEqual(found, { id: 'local-models', title: 'Local models', kind: 'ui', routes: ['local-models'], protected: false });

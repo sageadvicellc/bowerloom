@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const SCOPE_LIMITS = Object.freeze({ placesPerModule: 16, modules: 64, recordBytes: 128 * 1024, readBytes: 256 * 1024, pathChars: 512 });
+export const SCOPE_LIMITS = Object.freeze({ placesPerModule: 16, modules: 64, recordBytes: 128 * 1024, readBytes: 256 * 1024, pathChars: 512, listFiles: 5000, listDepth: 6, listEntries: 50000, listMs: 5000 });
 const VERSION = 1;
 /** A module id: the same name rule as an extension id (apps/desktop/shared/extensions/manifest.ts). */
 const MODULE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -213,6 +213,25 @@ function cleanRelative(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= SCOPE_LIMITS.pathChars && value.split('/').every(plainPart);
 }
 
+/** The gate of a place, in order: the ids are well formed, the record can be used and holds the place for the module, and the place is still the same folder and still passes the checks of an approval. */
+type Gate = { readonly ok: true; readonly placeReal: string } | { readonly ok: false; readonly code: ReadCode };
+function openPlace(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly placeId: unknown }): Gate {
+  const refuse = (code: ReadCode): Gate => ({ ok: false, code });
+  if (typeof o.moduleId !== 'string' || !MODULE_ID.test(o.moduleId) || typeof o.placeId !== 'string' || !PLACE_ID.test(o.placeId)) return refuse('NOT_APPROVED');
+  const record = readRecord(o.stateRoot);
+  if (record.status === 'damaged') return refuse('RECORD_DAMAGED');
+  if (record.status === 'blocked') return refuse('RECORD_BLOCKED');
+  if (record.status !== 'ok') return refuse('NOT_APPROVED');
+  const stored = (record.modules[o.moduleId] ?? []).find(s => s.id === o.placeId);
+  if (stored === undefined) return refuse('NOT_APPROVED');
+  let home: string, placeReal: string;
+  try { home = fs.realpathSync.native(o.home); } catch { return refuse('HOME_UNREADABLE'); }
+  try { placeReal = fs.realpathSync.native(path.join(home, ...stored.rel.split('/'))); } catch { return refuse('PLACE_CHANGED'); }
+  if (keyOf(placeReal) !== stored.key) return refuse('PLACE_CHANGED');
+  if (placeProblem(home, placeReal, o.stateRoot) !== null) return refuse('NOT_APPROVED');
+  return { ok: true, placeReal };
+}
+
 /**
  * Reads one text file of an approved place of a module. The answer is the text or one short code, and it never holds a path. The gate, in order: the module and place id are well formed; the record can be used
  * (RECORD_DAMAGED, RECORD_BLOCKED) and holds that place for that module (NOT_APPROVED); the place is still the same folder (PLACE_CHANGED) and still passes the checks of an approval (NOT_APPROVED); the relative path
@@ -221,18 +240,9 @@ function cleanRelative(value: unknown): value is string {
  * the real path is worked out again before the read. At most `readBytes` (TOO_LARGE), valid UTF-8 text with no NUL (NOT_TEXT).
  */
 export function readPlaceFile(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly placeId: unknown; readonly path: unknown }): ReadAnswer {
-  if (typeof o.moduleId !== 'string' || !MODULE_ID.test(o.moduleId) || typeof o.placeId !== 'string' || !PLACE_ID.test(o.placeId)) return no('NOT_APPROVED');
-  const record = readRecord(o.stateRoot);
-  if (record.status === 'damaged') return no('RECORD_DAMAGED');
-  if (record.status === 'blocked') return no('RECORD_BLOCKED');
-  if (record.status !== 'ok') return no('NOT_APPROVED');
-  const stored = (record.modules[o.moduleId] ?? []).find(s => s.id === o.placeId);
-  if (stored === undefined) return no('NOT_APPROVED');
-  let home: string, placeReal: string;
-  try { home = fs.realpathSync.native(o.home); } catch { return no('HOME_UNREADABLE'); }
-  try { placeReal = fs.realpathSync.native(path.join(home, ...stored.rel.split('/'))); } catch { return no('PLACE_CHANGED'); }
-  if (keyOf(placeReal) !== stored.key) return no('PLACE_CHANGED');
-  if (placeProblem(home, placeReal, o.stateRoot) !== null) return no('NOT_APPROVED');
+  const gate = openPlace(o);
+  if (!gate.ok) return no(gate.code);
+  const placeReal = gate.placeReal;
   if (!cleanRelative(o.path)) return no('BAD_PATH');
   const walk = (): string | null => { try { return fs.realpathSync.native(path.join(placeReal, ...(o.path as string).split('/'))); } catch { return null; } };
   const fileReal = walk();
@@ -267,4 +277,85 @@ export function readPlaceFile(o: { readonly stateRoot: string; readonly home: st
   } catch { return no('UNREADABLE'); } finally {
     if (fd !== undefined) try { fs.closeSync(fd); } catch { /* nothing more to do */ }
   }
+}
+
+export type ListCode = 'NOT_APPROVED' | 'PLACE_CHANGED' | 'HOME_UNREADABLE' | 'RECORD_DAMAGED' | 'RECORD_BLOCKED' | 'UNREADABLE';
+/**
+ * `files`: the relative paths of the markdown files, sorted, with `/` between parts. `truncated`: the walk stopped at a limit (files, entries, time) or left out a folder that is too deep, so more files may exist.
+ * `skipped`: the folders that could not be listed (they could not be opened, sit on another device, or were replaced while they were read) and the entries that could not be looked at. Both are counts, never names.
+ */
+export type ListAnswer = { readonly ok: true; readonly files: readonly string[]; readonly truncated: boolean; readonly skipped: { readonly folders: number; readonly entries: number } } | { readonly ok: false; readonly code: ListCode };
+const MARKDOWN = /\.(?:md|markdown)$/i;
+
+/** What a test may swap. Main never passes any of it. */
+export interface ListHooks {
+  readonly opendir?: (dir: string) => fs.Dir;
+  readonly lstat?: (path: string) => fs.Stats;
+  readonly now?: () => number;
+  readonly dev?: (abs: string, info: fs.Stats) => number;
+  readonly limits?: Partial<{ files: number; depth: number; entries: number; ms: number }>;
+}
+
+/**
+ * Lists the markdown files of an approved place of a module. The gate is the one of `readPlaceFile`. The walk reads names only and opens no file. It reads each folder entry by entry and counts every entry as it reads it,
+ * so a folder of a million names is never loaded whole. It never follows a link: a link to a file or a folder is left out, so a link cannot lead out of the place or to a hidden file. A hidden part is left out with all that is below it, by design, and is not counted. A part with a
+ * control, bidirectional or lone surrogate character, and a note whose path is over `pathChars`, are left out and counted as skipped entries. A folder on another device than the place is skipped. A folder that is replaced while it is read is dropped. The walk keeps
+ * at most `listFiles` files, looks at most at `listEntries` names and runs at most `listMs` milliseconds; a folder deeper than `listDepth` is left out and the walk goes on. After the walk the place is checked again, so a
+ * place that was swapped meanwhile gives PLACE_CHANGED and no list. The answer holds relative paths only, never a full path.
+ */
+export function listPlaceFiles(o: { readonly stateRoot: string; readonly home: string; readonly moduleId: unknown; readonly placeId: unknown; readonly hooks?: ListHooks }): ListAnswer {
+  const gate = openPlace(o);
+  if (!gate.ok) return { ok: false, code: gate.code === 'NOT_APPROVED' || gate.code === 'PLACE_CHANGED' || gate.code === 'HOME_UNREADABLE' || gate.code === 'RECORD_DAMAGED' || gate.code === 'RECORD_BLOCKED' ? gate.code : 'UNREADABLE' };
+  const h = o.hooks ?? {};
+  const opendir = h.opendir ?? ((dir: string) => fs.opendirSync(dir)), lstat = h.lstat ?? ((p: string) => fs.lstatSync(p)), now = h.now ?? ((): number => performance.now()), devOf = h.dev ?? ((_abs: string, info: fs.Stats) => info.dev);
+  const maxFiles = h.limits?.files ?? SCOPE_LIMITS.listFiles, maxDepth = h.limits?.depth ?? SCOPE_LIMITS.listDepth, maxEntries = h.limits?.entries ?? SCOPE_LIMITS.listEntries, maxMs = h.limits?.ms ?? SCOPE_LIMITS.listMs;
+  const found: string[] = [];
+  const started = now();
+  let looked = 0, stopped = false, deepCut = false, rootFailed = false, skippedFolders = 0, skippedEntries = 0;
+  let placeInfo: fs.Stats;
+  try { placeInfo = lstat(gate.placeReal); } catch { return { ok: false, code: 'UNREADABLE' }; }
+  const placeDev = devOf(gate.placeReal, placeInfo);
+  const walk = (dirReal: string, dirInfo: fs.Stats, rel: string[], depth: number): void => {
+    const mark = found.length;
+    let dir: fs.Dir;
+    try { dir = opendir(dirReal); } catch { if (depth === 0) rootFailed = true; skippedFolders += 1; return; }
+    try {
+      for (;;) {
+        if (stopped) break;
+        let entry: fs.Dirent | null;
+        try { entry = dir.readSync(); } catch { if (depth === 0) rootFailed = true; skippedFolders += 1; found.length = mark; return; }
+        if (entry === null) break;
+        looked += 1;
+        if (looked > maxEntries || now() - started > maxMs) { stopped = true; break; }
+        const name = entry.name;
+        // A hidden name is left out by design and is not counted. A name that is not plain, for a folder or a note, is left out and counted, so the notes are a lower bound.
+        if (name.startsWith('.')) continue;
+        if (!plainPart(name)) { if (entry.isDirectory() || MARKDOWN.test(name)) skippedEntries += 1; continue; }
+        const abs = path.join(dirReal, name);
+        let info: fs.Stats;
+        try { info = lstat(abs); } catch { skippedEntries += 1; continue; }
+        if (info.isSymbolicLink()) continue;
+        if (info.isDirectory()) {
+          if (depth + 1 > maxDepth) { deepCut = true; continue; }
+          if (devOf(abs, info) !== placeDev) { skippedFolders += 1; continue; }
+          walk(abs, info, [...rel, name], depth + 1);
+        } else if (info.isFile() && MARKDOWN.test(name)) {
+          const joined = [...rel, name].join('/');
+          if (joined.length > SCOPE_LIMITS.pathChars) { skippedEntries += 1; continue; }
+          if (found.length >= maxFiles) { stopped = true; break; }
+          found.push(joined);
+        }
+      }
+    } finally { try { dir.closeSync(); } catch { /* nothing more to do */ } }
+    // The folder must still be the one that was looked at: a swap while it was read drops what it gave.
+    let after: fs.Stats | null = null;
+    try { after = lstat(dirReal); } catch { /* gone */ }
+    if (after === null || after.ino !== dirInfo.ino || after.dev !== dirInfo.dev) { found.length = mark; skippedFolders += 1; }
+  };
+  walk(gate.placeReal, placeInfo, [], 0);
+  if (rootFailed) return { ok: false, code: 'UNREADABLE' };
+  const again = openPlace(o);
+  if (!again.ok || again.placeReal !== gate.placeReal) return { ok: false, code: 'PLACE_CHANGED' };
+  found.sort();
+  return { ok: true, files: Object.freeze(found), truncated: stopped || deepCut, skipped: { folders: skippedFolders, entries: skippedEntries } };
 }

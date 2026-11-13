@@ -25,12 +25,12 @@ const fullModules = (): Record<string, unknown> => Object.fromEntries(MODULE_CAL
 
 // ---- the table
 
-test('the modules table holds four calls with their argument counts and their own channels in the bowerloom-modules namespace', () => {
-  assert.deepEqual([...MODULE_CALLS], ['listModulePlaces', 'approveModulePlace', 'revokeModulePlace', 'readModuleFile']);
+test('the modules table holds five calls with their argument counts and their own channels in the bowerloom-modules namespace', () => {
+  assert.deepEqual([...MODULE_CALLS], ['listModulePlaces', 'approveModulePlace', 'revokeModulePlace', 'readModuleFile', 'listModuleFiles']);
   assert.equal(Object.isFrozen(MODULE_CALLS), true);
-  assert.deepEqual(MODULE_ARITY, { listModulePlaces: 1, approveModulePlace: 1, revokeModulePlace: 2, readModuleFile: 3 });
+  assert.deepEqual(MODULE_ARITY, { listModulePlaces: 1, approveModulePlace: 1, revokeModulePlace: 2, readModuleFile: 3, listModuleFiles: 2 });
   for (const call of MODULE_CALLS) assert.equal(MODULE_CHANNELS[call], `bowerloom-modules:${call}`);
-  assert.equal(new Set(Object.values(MODULE_CHANNELS)).size, 4);
+  assert.equal(new Set(Object.values(MODULE_CHANNELS)).size, 5);
   assert.equal(MODULE_PATH_LIMIT, 512);
 });
 
@@ -42,10 +42,14 @@ test('the modules calls are not part of the 42 calls of the reader and the engin
   }
 });
 
-test('the table of the page equals the contract package and its golden file, call for call and code for code', () => {
+test('the table of the page equals the contract package and its two golden files, call for call and code for code', () => {
   const golden = JSON.parse(readFileSync(join(ROOT, 'packages', 'engine-api', 'golden', 'module-calls.json'), 'utf8')) as { moduleCalls: { name: string; arity: number; channel: string }[]; moduleCallRefusals: string[] };
-  assert.deepEqual(golden.moduleCalls.map(c => [c.name, c.arity, c.channel]), MODULE_CALLS.map(call => [call, MODULE_ARITY[call], MODULE_CHANNELS[call]]));
+  const listed = JSON.parse(readFileSync(join(ROOT, 'packages', 'engine-api', 'golden', 'module-list-calls.json'), 'utf8')) as { moduleListCalls: { name: string; arity: number; channel: string }[]; moduleListCallRefusals: string[] };
+  // Lane 2's four calls stay in their own golden file as they were; the fifth call, `listModuleFiles`, has its own.
+  assert.deepEqual([...golden.moduleCalls, ...listed.moduleListCalls].map(c => [c.name, c.arity, c.channel]), MODULE_CALLS.map(call => [call, MODULE_ARITY[call], MODULE_CHANNELS[call]]));
+  assert.equal(golden.moduleCalls.length, 4);
   assert.deepEqual(golden.moduleCallRefusals, MODULE_REFUSALS.filter(code => code !== 'FAILED'));
+  for (const code of listed.moduleListCallRefusals) assert.ok(golden.moduleCallRefusals.includes(code), code);
 });
 
 test('the frozen engine golden file is not changed by this bridge: still one base file, d4c8a478', () => {
@@ -130,7 +134,7 @@ test('the other four bridges are unchanged by the fifth: their names and their k
 
 // ---- the client
 
-test('the client gives the modules bridge of a window that has all four calls', () => {
+test('the client gives the modules bridge of a window that has all five calls', () => {
   const modules = fullModules();
   assert.equal(createApiClient({ reader: undefined, engine: undefined, modules }).modules, modules as never);
 });
