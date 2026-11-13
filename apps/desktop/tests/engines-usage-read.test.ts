@@ -2,7 +2,8 @@
 // and it turns a failure into a state with a short code. It never calls a call that writes, and it adds no call to any bridge.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readUsage } from '../shared/engines-usage/read.js';
+import { nextSource, readUsage } from '../shared/engines-usage/read.js';
+import type { UsageSource } from '../shared/engines-usage/model.js';
 import { USAGE_RUN_CAP } from '../shared/engines-usage/model.js';
 import { RUN_CALLS } from '../shared/api/runs.js';
 import type { RunFigures, RunView, RunsBridge } from '../shared/api/runs.js';
@@ -105,4 +106,55 @@ test('no run at all is a ready list with nothing in it and no read', async () =>
   assert.equal(source.kind, 'ready');
   if (source.kind === 'ready') { assert.equal(source.total, 0); assert.equal(source.reads.size, 0); }
   assert.deepEqual(spy.calls, ['listRuns']);
+});
+
+// ---- fix round 1
+
+test('a list that resolves to nothing, or to something that is no list, is "failed" and never a rejection that leaves the screen waiting', async () => {
+  for (const answer of [null, undefined, 'x', 7, {}, { length: 2 }]) {
+    const bridge: RunsBridge = { ...spyBridge([]).bridge, listRuns: async () => answer as never };
+    assert.deepEqual(await readUsage(bridge, alive), { kind: 'failed', code: 'FAILED' }, String(answer));
+  }
+});
+
+test('a run with a bad shape makes the list "failed": the list cannot be trusted, and no run is read', async () => {
+  for (const bad of [null, 5, 'run-1', { id: 5, engine: 'codex', startedAt: 'x' }, { id: 'run-1', engine: 7, startedAt: 'x' }, { id: 'run-1', engine: 'codex' }]) {
+    const spy = spyBridge([bad as never]);
+    assert.deepEqual(await readUsage(spy.bridge, alive), { kind: 'failed', code: 'FAILED' }, JSON.stringify(bad));
+    assert.deepEqual(spy.calls, ['listRuns']);
+  }
+});
+
+test('figures with a bad shape are that run\'s refused read with the code FAILED, and good figures are kept', async () => {
+  const bads: unknown[] = [null, 'found', 7, [], { state: 'weird' }, { ...fakeFigures(), state: undefined }, { ...fakeFigures(), reason: 'nope' }, { ...fakeFigures(), inputTokens: '12' }, { ...fakeFigures(), outputTokens: Number.NaN },
+    { ...fakeFigures(), inputTokens: -1 }, { ...fakeFigures(), durationMs: Infinity }, { ...fakeFigures(), model: 5 }, { ...fakeFigures(), outcome: 'maybe' }, { ...fakeFigures(), inputTokens: undefined }];
+  const runs = [...bads.map((_, i) => fakeRun(`run-${i + 1}`, 'claude-code', `2026-11-11T10:${String(i).padStart(2, '0')}:00.000Z`)), fakeRun('run-99', 'codex', '2026-11-10T10:00:00.000Z')];
+  const index = new Map(runs.map((r, i) => [r.id, i]));
+  const spy = spyBridge(runs, id => (id === 'run-99' ? fakeFigures() : (bads[index.get(id)!] as RunFigures)));
+  const source = await readUsage(spy.bridge, alive);
+  assert.equal(source.kind, 'ready');
+  if (source.kind !== 'ready') return;
+  for (const run of runs.slice(0, -1)) assert.deepEqual(source.reads.get(run.id), { kind: 'refused', code: 'FAILED' }, run.id);
+  assert.equal(source.reads.get('run-99')!.kind, 'figures');
+  assert.equal(source.reads.get('run-99')!.kind === 'figures' && (source.reads.get('run-99') as { figures: RunFigures }).figures.inputTokens, 1000);
+});
+
+test('a run of a name that is no engine is left out before the cap, so it takes no place from a real run', async () => {
+  const runs = [fakeRun('run-1', 'nonesuch' as never, '2026-11-12T10:00:00.000Z'), fakeRun('run-2', 'other' as never, '2026-11-12T09:00:00.000Z'), fakeRun('run-3', 'codex', '2026-11-11T10:00:00.000Z')];
+  const spy = spyBridge(runs);
+  const source = await readUsage(spy.bridge, alive);
+  assert.deepEqual(spy.calls, ['listRuns', 'readRunFigures:run-3']);
+  if (source.kind === 'ready') assert.equal(source.total, 3, 'the whole list is still handed on, so the view can count them');
+});
+
+const READY: UsageSource = { kind: 'ready', runs: [], reads: new Map(), total: 0 };
+
+test('a failed read after a good one keeps the good one and notes the code; a good read clears the note; a stopped read changes nothing', () => {
+  const kept = nextSource(READY, { kind: 'failed', code: 'STORE_DAMAGED' });
+  assert.deepEqual(kept, { ...READY, lastReadFailed: 'STORE_DAMAGED' });
+  assert.deepEqual(nextSource(kept, { kind: 'failed', code: 'FAILED' }), { ...READY, lastReadFailed: 'FAILED' });
+  assert.deepEqual(nextSource(kept, READY), READY);
+  assert.equal(nextSource(kept, { kind: 'stopped' }), kept);
+  assert.deepEqual(nextSource({ kind: 'loading' }, { kind: 'failed', code: 'FAILED' }), { kind: 'failed', code: 'FAILED' });
+  assert.deepEqual(nextSource({ kind: 'failed', code: 'FAILED' }, READY), READY);
 });

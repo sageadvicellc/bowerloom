@@ -188,6 +188,7 @@ test('the manifest is bundled, not protected, owns the route local-models, and t
   assert.deepEqual(manifest, JSON.parse(JSON.stringify(LOCAL_MODELS_MANIFEST)));
   // The template extension has a screen in the app too. Its manifest is not in extensions/, so it ships only when a person installs it (tests/extension-template.test.ts).
   for (const id of ['local-models', 'modules', 'memory-explorer', 'engines-usage', 'extension-template']) assert.ok(BUNDLED_IDS.includes(id), `${id} has a screen`);
+  assert.equal(BUNDLED_IDS.length, 5, `no stray screen: ${BUNDLED_IDS.join(', ')}`);
 });
 
 test('registerBundled registers the screen of a listed extension once, leaves out one with no screen, and the route then resolves', () => {

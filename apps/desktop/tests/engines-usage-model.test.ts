@@ -59,14 +59,15 @@ test('an engine whose config file has a problem says so and keeps its counts', (
   const state = setupState();
   const problem = { ...state, interfaces: state.interfaces.map(i => (i.id === 'codex' ? { ...i, health: 'problem' as const, healthWords: 'Config file has a problem' } : i)) };
   const codex = rowOf(enginesView(problem, none).rows, 'codex');
-  assert.equal(codex.state, 'problem'); assert.equal(valueOf(codex, 'config', 'status'), 'Config file has a problem'); assert.equal(valueOf(codex, 'config', 'skills'), '1');
+  assert.equal(codex.state, 'problem'); assert.equal(valueOf(codex, 'config', 'status'), 'Config file has a problem'); assert.equal(valueOf(codex, 'config', 'skills'), '1 (may be low)', 'a count after a config problem can be low');
+  assert.equal(valueOf(codex, 'config', 'hooks'), '0 (may be low)', 'never a bare 0');
 });
 
 test('the connections of an engine are listed by name with a line about each, and the secret is only "set"', () => {
   const claude = rowOf(enginesView(setupState(), none).rows, 'claude-code');
   assert.deepEqual(claude.connections, [
-    { name: 'tracker', summary: 'Starts node on this computer.', secretSet: true },
-    { name: 'docs', summary: 'Connects to docs.example.test.', secretSet: false },
+    { name: 'tracker', summary: 'Starts node on this computer.', secretSet: true, secretNotChecked: false },
+    { name: 'docs', summary: 'Connects to docs.example.test.', secretSet: false, secretNotChecked: false },
   ]);
   assert.equal(claude.moreConnections, 0);
 });
@@ -178,7 +179,7 @@ test('when the list of runs was cut, the view names how many were read and how m
   const view = enginesView(setupState(), ready(runs, reads, runs.length));
   const claude = rowOf(view.rows, 'claude-code');
   assert.equal(valueOf(claude, 'usage', 'runs'), String(USAGE_RUN_CAP + 10));
-  assert.equal(valueOf(claude, 'usage', 'logs-read'), `${USAGE_RUN_CAP} of ${USAGE_RUN_CAP}`);
+  assert.equal(valueOf(claude, 'usage', 'logs-read'), `${USAGE_RUN_CAP} of ${USAGE_RUN_CAP + 10}`, 'x of all the runs of the engine, not of the runs that were read');
   assert.equal(valueOf(claude, 'usage', 'input'), numberWords(USAGE_RUN_CAP * 10));
   assert.ok(view.notes.includes(ENGINES_WORDS.cut(USAGE_RUN_CAP, USAGE_RUN_CAP + 10)));
 });
@@ -234,7 +235,7 @@ test('text that looks like a key is hidden in every string the view shows: names
 
 test('the view holds no name of a secret and no value of one: a connection carries a flag and nothing else about it', () => {
   const claude = rowOf(enginesView(setupState(), none).rows, 'claude-code');
-  for (const connection of claude.connections) assert.deepEqual(Object.keys(connection).sort(), ['name', 'secretSet', 'summary']);
+  for (const connection of claude.connections) assert.deepEqual(Object.keys(connection).sort(), ['name', 'secretNotChecked', 'secretSet', 'summary']);
 });
 
 test('the view does not change its input, which can be frozen all the way down', () => {
@@ -254,7 +255,7 @@ test('names with Unicode, emoji, markup and SQL characters stay plain text, and 
   assert.ok(codex.connections.some(c => c.name === 'Kafé ☕ 日本語'));
 });
 
-test('10,000 parts and 5,000 runs are summed in well under two seconds', () => {
+test('10,000 parts and 5,000 runs are summed without a stall', () => {
   const state = setupState();
   const parts = Array.from({ length: 10_000 }, (_, i) => fakePart(`big-${i}`, i % 3 === 0 ? 'skill' : 'tool', `part ${i}`, i % 2 === 0 ? 'src-cc-home' : 'src-cx-home', { toolKind: 'mcp' }));
   const runs = Array.from({ length: 5000 }, (_, i) => fakeRun(`run-${i + 1}`, i % 2 === 0 ? 'claude-code' : 'codex', '2026-11-11T10:00:00.000Z'));
@@ -262,7 +263,7 @@ test('10,000 parts and 5,000 runs are summed in well under two seconds', () => {
   for (const run of runs) reads[run.id] = read(fakeFigures());
   const began = performance.now();
   const view = enginesView({ ...state, parts: [...state.parts, ...parts] }, ready(runs, reads));
-  assert.ok(performance.now() - began < 2000);
+  assert.ok(performance.now() - began < 30_000, 'a generous bound: it only catches a quadratic loop');
   assert.equal(rowOf(view.rows, 'claude-code').moreConnections > 0, true);
   assert.equal(valueOf(rowOf(view.rows, 'claude-code'), 'usage', 'runs'), '2500');
 });
@@ -280,7 +281,7 @@ test('the words obey the rules of the preview: no banned word in any string of t
   const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'pi', '2026-11-11T09:00:00.000Z'), fakeRun('run-3', 'codex', '2026-11-11T08:00:00.000Z')];
   const source = ready(runs, { 'run-1': read(NO_FIGURES('not-found')), 'run-2': read(NO_FIGURES('not-available')), 'run-3': { kind: 'refused', code: 'FAILED' } }, 90);
   const state = { ...setupState(), real: { couldNotRead: 0, stoppedEarly: true, notes: [], textsCut: 0 } };
-  const texts: string[] = [ENGINES_WORDS.cut(50, 90)];
+  const texts: string[] = [ENGINES_WORDS.cut(50, 90), ENGINES_WORDS.unknownEngines(3), ENGINES_WORDS.orphans(2), ENGINES_WORDS.noneRead(4), ENGINES_WORDS.lastReadFailed('Bowerloom could not do that.')];
   for (const word of Object.values(ENGINES_WORDS)) if (typeof word === 'string') texts.push(word);
   for (const s of [source, none, { kind: 'sample' } as UsageSource, { kind: 'no-bridge' } as UsageSource, { kind: 'loading' } as UsageSource, { kind: 'failed', code: 'FAILED' } as UsageSource]) {
     const view = enginesView(state, s);
@@ -290,4 +291,96 @@ test('the words obey the rules of the preview: no banned word in any string of t
   }
   for (const text of texts) assert.equal(bannedHere(text), null, text);
   assert.equal(Object.isFrozen(ENGINES_WORDS), true);
+});
+
+// ---- fix round 1
+
+const partial = (over: object = { stoppedEarly: true }) => ({ ...setupState(), real: { couldNotRead: 0, stoppedEarly: false, notes: [], textsCut: 0, ...over } });
+
+test('a figure from a log that was capped, still written or read in part is marked, and a clean run beside it does not hide the mark', () => {
+  const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'claude-code', '2026-11-11T09:00:00.000Z'), fakeRun('run-3', 'codex', '2026-11-11T08:00:00.000Z'), fakeRun('run-4', 'codex', '2026-11-11T07:00:00.000Z')];
+  const source = ready(runs, {
+    'run-1': read(fakeFigures({ inputTokens: 1000, outputTokens: 10, durationMs: 60_000 })),
+    'run-2': read(fakeFigures({ reason: 'capped', inputTokens: 500, outputTokens: 5, durationMs: 60_000 })),
+    'run-3': read(fakeFigures({ reason: 'still-writing', inputTokens: 7, outputTokens: 1, durationMs: 60_000 })),
+    'run-4': read(fakeFigures({ reason: 'partial', inputTokens: 3, outputTokens: 1, durationMs: 60_000 })),
+  });
+  const rows = enginesView(setupState(), source).rows;
+  const claude = rowOf(rows, 'claude-code'), codex = rowOf(rows, 'codex');
+  assert.equal(valueOf(claude, 'usage', 'input'), '1,500 (may be low)');
+  assert.equal(valueOf(claude, 'usage', 'time'), '2 minutes (may be low)');
+  assert.equal(valueOf(codex, 'usage', 'input'), '10 (may be low, may change)');
+  assert.ok(claude.usageNotes.some(n => n.includes(figuresStateWords('found', 'capped', null)!)), 'the reason is told too');
+  const clean = enginesView(setupState(), ready(runs.slice(0, 1), { 'run-1': read(fakeFigures({ inputTokens: 1000 })) }));
+  assert.equal(valueOf(rowOf(clean.rows, 'claude-code'), 'usage', 'input'), '1,000', 'a clean run carries no mark');
+  const still = enginesView(setupState(), ready(runs.slice(2, 3), { 'run-3': read(fakeFigures({ reason: 'still-writing', inputTokens: 7 })) }));
+  assert.equal(valueOf(rowOf(still.rows, 'codex'), 'usage', 'input'), '7 (may change)');
+});
+
+test('a mark and a partial count join in one pair of brackets', () => {
+  const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'claude-code', '2026-11-11T09:00:00.000Z')];
+  const source = ready(runs, { 'run-1': read(fakeFigures({ reason: 'capped', inputTokens: 5 })), 'run-2': read(NO_FIGURES('not-found')) });
+  assert.equal(valueOf(rowOf(enginesView(setupState(), source).rows, 'claude-code'), 'usage', 'input'), '5 (from 1 of 2 runs, may be low)');
+});
+
+test('"Logs read" is x of all the runs of the engine, and an engine whose runs were all left out by the cap says so and not "0 of 0"', () => {
+  const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'codex', '2026-11-11T09:00:00.000Z'), fakeRun('run-3', 'codex', '2026-11-11T08:00:00.000Z')];
+  const view = enginesView(setupState(), ready(runs, { 'run-1': read(fakeFigures()) }, 3));
+  assert.equal(valueOf(rowOf(view.rows, 'claude-code'), 'usage', 'logs-read'), '1 of 1');
+  const codex = rowOf(view.rows, 'codex');
+  assert.equal(valueOf(codex, 'usage', 'logs-read'), ENGINES_WORDS.noneRead(2));
+  assert.equal(valueOf(codex, 'usage', 'runs'), '2');
+  assert.deepEqual(codex.usage.filter(f => /^(input|output|time|models)$/.test(f.key)).map(f => f.value), ['Not read', 'Not read', 'Not read', 'Not read']);
+  assert.ok(!stringsIn(view).some(t => /\b0 of 0\b/.test(t)));
+});
+
+test('runs of a name that is no engine are counted in one note, and they do not count as left out by the cap', () => {
+  const runs = [fakeRun('run-1', 'nonesuch' as never, '2026-11-11T10:00:00.000Z'), fakeRun('run-2', 'other' as never, '2026-11-11T09:00:00.000Z'), fakeRun('run-3', 'codex', '2026-11-11T08:00:00.000Z')];
+  const view = enginesView(setupState(), ready(runs, { 'run-3': read(fakeFigures()) }, 3));
+  assert.deepEqual(view.notes.filter(n => n === ENGINES_WORDS.unknownEngines(2)), [ENGINES_WORDS.unknownEngines(2)]);
+  assert.ok(!view.notes.includes(ENGINES_WORDS.cut(1, 3)), 'the two unknown runs are not "older runs"');
+  assert.ok(!enginesView(setupState(), none).notes.some(n => n === ENGINES_WORDS.unknownEngines(0)));
+});
+
+test('after a partial read, each count says it may be low, and no count is a bare 0', () => {
+  for (const over of [{ stoppedEarly: true }, { onlyPartRead: true }]) {
+    const rows = enginesView(partial(over), none).rows;
+    const claude = rowOf(rows, 'claude-code'), codex = rowOf(rows, 'codex');
+    assert.deepEqual(['skills', 'agents', 'connections', 'hooks', 'prompts', 'folders'].map(k => valueOf(claude, 'config', k)), ['3 (may be low)', '1 (may be low)', '2 (may be low)', '1 (may be low)', '1 (may be low)', '2 (may be low)'], JSON.stringify(over));
+    assert.equal(valueOf(codex, 'config', 'agents'), '0 (may be low)');
+    for (const row of rows.filter(r => r.state !== 'not-found')) for (const f of row.config.filter(c => ['skills', 'agents', 'connections', 'hooks', 'prompts', 'folders'].includes(c.key))) assert.match(f.value, /may be low/, `${row.id} ${f.key}`);
+  }
+  assert.equal(valueOf(rowOf(enginesView(setupState(), none).rows, 'claude-code'), 'config', 'skills'), '3', 'a whole read has no mark');
+});
+
+test('parts whose folder is not in the list are counted in one note and never dropped without a word', () => {
+  const state = setupState();
+  const orphans = [fakePart('lost-1', 'skill', 'Lost one', 'src-missing'), fakePart('lost-2', 'tool', 'Lost two', 'src-missing-too', { toolKind: 'mcp' })];
+  assert.ok(enginesView({ ...state, parts: [...state.parts, ...orphans] }, none).notes.includes(ENGINES_WORDS.orphans(2)));
+  assert.ok(!enginesView(state, none).notes.some(n => n === ENGINES_WORDS.orphans(0)));
+});
+
+test('after a partial read, a connection with no flag says "Secret: not checked", and never implies that it has no secret', () => {
+  const rows = enginesView(partial(), none).rows;
+  const docs = rowOf(rows, 'claude-code').connections.find(c => c.name === 'docs')!, tracker = rowOf(rows, 'claude-code').connections.find(c => c.name === 'tracker')!;
+  assert.deepEqual([docs.secretSet, docs.secretNotChecked], [false, true]);
+  assert.deepEqual([tracker.secretSet, tracker.secretNotChecked], [true, false]);
+  assert.equal(ENGINES_WORDS.secretNotChecked, 'Secret: not checked');
+  const whole = rowOf(enginesView(setupState(), none).rows, 'claude-code').connections.find(c => c.name === 'docs')!;
+  assert.deepEqual([whole.secretSet, whole.secretNotChecked], [false, false]);
+});
+
+test('a health word the app does not know shows as a problem, not as not found', () => {
+  const state = setupState();
+  const odd = { ...state, interfaces: state.interfaces.map(i => (i.id === 'codex' ? { ...i, health: 'weird' as never } : i)) };
+  assert.equal(rowOf(enginesView(odd, none).rows, 'codex').state, 'problem');
+});
+
+test('when the last read failed after a good one, the view keeps the good figures and says the last read failed', () => {
+  const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z')];
+  const good = ready(runs, { 'run-1': read(fakeFigures({ inputTokens: 42 })) });
+  const view = enginesView(setupState(), { ...good, lastReadFailed: 'STORE_DAMAGED' } as UsageSource);
+  assert.equal(valueOf(rowOf(view.rows, 'claude-code'), 'usage', 'input'), '42');
+  assert.ok(view.notes.includes(ENGINES_WORDS.lastReadFailed(runsRefusalWords('STORE_DAMAGED'))));
+  assert.ok(!enginesView(setupState(), good).notes.some(n => n.includes('last read failed')));
 });

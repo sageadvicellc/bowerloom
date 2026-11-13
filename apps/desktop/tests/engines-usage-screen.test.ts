@@ -206,3 +206,32 @@ test('its files read no clock, draw no random number and make no estimate: a num
 test('its files call no call that writes: no record, no update and no reset of the run list', () => {
   for (const f of [...files('renderer/harness/engines-usage'), ...files('shared/engines-usage')]) assert.doesNotMatch(code(f), /recordRun|updateRun|startNewRunList|approveModulePlace|revokeModulePlace|\.save[A-Z]|runExport|runImport/, f);
 });
+
+// ---- fix round 1
+
+test('the Modules view lists the Memory card next to this module, from the manifests the app ships', () => {
+  const manifests = ['local-models', 'modules', 'memory-explorer', 'engines-usage'].map(id => JSON.parse(readFileSync(join(DESKTOP, 'extensions', id, 'manifest.json'), 'utf8')) as never);
+  (globalThis as G).location = { hash: '#app/modules' };
+  try {
+    const store = createHarnessStore({ initial: createSampleWorld(NOW), now: () => NOW, finishRunning: false });
+    const html = render(createElement(HarnessProvider, { store }, createElement(UiProvider, null, createElement(ModulesProvider, { bridge: null, sample: true, real: false, listed: manifests }, createElement(Shell, { route: { name: 'modules' } }, createElement(Modules, { id: null }))))));
+    assert.match(html, /data-module="memory-explorer"/); assert.match(html, /data-module="engines-usage"/); assert.match(html, /data-module="local-models"/);
+    assert.doesNotMatch(html, /data-module="modules"/);
+  } finally { delete (globalThis as G).location; }
+});
+
+test('a connection after a partial read draws "Secret: not checked", and a flagged one draws "Secret: set"', () => {
+  const state = { ...setupState(), real: { couldNotRead: 0, stoppedEarly: true, notes: [], textsCut: 0 } };
+  const html = render(createElement(EnginesUsageBody, { view: enginesView(state, none) }));
+  assert.ok(html.includes(ENGINES_WORDS.secretNotChecked)); assert.ok(html.includes(ENGINES_WORDS.secretSet));
+  assert.match(html, /data-secret="not-checked"/); assert.match(html, /data-secret="set"/);
+  const whole = render(createElement(EnginesUsageBody, { view: enginesView(setupState(), none) }));
+  assert.ok(!whole.includes(ENGINES_WORDS.secretNotChecked));
+});
+
+test('the screen keeps the last good figures and says when the last read failed', () => {
+  const runs = [fakeRun('run-1', 'claude-code', '2026-11-11T10:00:00.000Z')];
+  const source = { kind: 'ready', runs, reads: new Map([['run-1', { kind: 'figures', figures: fakeFigures({ inputTokens: 42 }) }]]), total: 1, lastReadFailed: 'FAILED' } as UsageSource;
+  const html = render(createElement(EnginesUsageBody, { view: enginesView(setupState(), source) }));
+  assert.ok(html.includes('<dd>42</dd>')); assert.ok(html.includes('The last read failed'));
+});

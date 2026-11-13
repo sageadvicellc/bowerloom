@@ -49,12 +49,13 @@ function makeHome(t: TestContext): { home: string; work: string } {
   return { home, work };
 }
 
-async function stateOf(t: TestContext): Promise<HarnessState> {
+async function stateOf(t: TestContext, extra: (home: string) => void = () => undefined): Promise<HarnessState & { readonly homePath: string }> {
   const { home, work } = makeHome(t);
+  extra(home);
   const scanner = createScanner({ home });
   const places: RealPlace[] = [...(await scanner.discover()).places, ...(await scanner.addFolder(work)).places];
   const batch = await scanner.read(places.map(p => p.id));
-  return realToHarnessState(buildRealResult(batch.reads, batch.tally, { nowMs: NOW_MS, foldExtraApps: true }), places);
+  return { ...realToHarnessState(buildRealResult(batch.reads, batch.tally, { nowMs: NOW_MS, foldExtraApps: true }), places), homePath: home };
 }
 
 const none: UsageSource = { kind: 'ready', runs: [], reads: new Map(), total: 0 };
@@ -103,4 +104,40 @@ test('a key in the text of a skill is hidden by the reader, and the view shows n
   const state = realToHarnessState(buildRealResult(batch.reads, batch.tally, { nowMs: NOW_MS, foldExtraApps: true }), places);
   const text = JSON.stringify(enginesView(state, none)) + renderToStaticMarkup(createElement(EnginesUsageBody, { view: enginesView(state, none) }));
   assert.equal(text.includes(FAKE_KEY), false); assert.equal(text.includes('FAKEFAKE'), false);
+});
+
+// ---- fix round 1: secrets the reader used to drop with the command, the arguments and the address
+
+const PAT_VALUE = 'ghp_N5FAKEPATVALUE0000000000000000000000';
+const URL_PASSWORD = 'n5urlpasswordfake';
+function moreServers(home: string): void {
+  put(join(home, 'work', 'beta', '.mcp.json'), JSON.stringify({ mcpServers: {
+    patserver: { command: 'pat-server', env: { GITHUB_PAT: PAT_VALUE } },
+    dburl: { command: 'db-server', env: { DATABASE_URL: `postgres://u:${URL_PASSWORD}@h/db` } },
+    argflag: { command: 'arg-server', args: ['--api-key', SECRET] },
+    argeq: { command: 'arg-server', args: [`--token=${SECRET}`] },
+    urlpw: { type: 'http', url: `https://u:${SECRET}@host.example.test/mcp` },
+    urlquery: { type: 'http', url: `https://host.example.test/mcp?api_key=${SECRET}` },
+    arraycmd: { command: ['node', 'x.js', '--password', SECRET] },
+    clean: { command: 'clean-server', args: ['--port', '8080'] },
+  } }));
+}
+
+test('a secret in a variable named like a token (_PAT, _URL), in an argument, in the command or in an address shows "Secret: set", and leaks neither its value nor its name', async t => {
+  const state = await stateOf(t, moreServers);
+  const view = enginesView(state, none);
+  const all = view.rows.flatMap(r => r.connections);
+  const flag = (name: string): boolean | undefined => all.find(c => c.name === name)?.secretSet;
+  for (const name of ['patserver', 'dburl', 'argflag', 'argeq', 'urlpw', 'urlquery', 'arraycmd']) assert.equal(flag(name), true, name);
+  assert.equal(flag('clean'), false, 'a connection with nothing to hide has no flag');
+  const text = JSON.stringify(view) + renderToStaticMarkup(createElement(EnginesUsageBody, { view }));
+  for (const leak of [SECRET, PAT_VALUE, URL_PASSWORD, 'GITHUB_PAT', 'DATABASE_URL', 'postgres://', 'api-key', 'api_key', '--password']) assert.equal(text.includes(leak), false, leak);
+});
+
+test('the path of the temporary home, and its folder name, appear in neither the view nor the markup', async t => {
+  const state = await stateOf(t, moreServers);
+  const view = enginesView(state, none);
+  const text = JSON.stringify(view) + renderToStaticMarkup(createElement(EnginesUsageBody, { view }));
+  assert.equal(text.includes(state.homePath), false, 'the full path');
+  assert.equal(text.includes(state.homePath.split('/').pop()!), false, 'the folder name');
 });
