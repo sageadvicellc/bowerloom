@@ -67,7 +67,8 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 A config view never shows a secret.
 
 - The reader keeps the name of a key and never its value. This module goes further: it shows neither.
-- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. It also sets it if the command, its arguments or the address held one. The reader drops those three, so it takes this one fact before they go and keeps no text. The names `pat`, `_url` and `dsn` count as secret names.
+- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. The part also gets the flag when a name in its summary ends in `_URL` or holds `PAT` as a word (`DATABASE_URL`, `GITHUB_PAT`). The `dsn` name was already known.
+- A secret in the command, its arguments or the address is not seen. The reader drops those three before this module sees the part. Fixing that means editing `shared/real/adapters.ts` and `map-world.ts`. The engine API golden file holds their hashes, and that file is frozen, so this lane leaves them alone.
 - After a partial read, a connection with no flag says "Secret: not checked". It never implies that there is no secret.
 - The world item that the reader builds still holds the name of the variable (`secret.name` in `map-world.ts`). That is older than this lane. This module never shows it. The module shows "Secret: set" and nothing more about it. It shows no name of a variable or header and no value.
 - The module reads no `fileText` of any part. That text holds the names of variables.

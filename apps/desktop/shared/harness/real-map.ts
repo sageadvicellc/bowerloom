@@ -163,6 +163,20 @@ function pageTitlesBySlice(world: World, places: readonly RealPlace[]): Map<stri
   return out;
 }
 
+/** Names that point at a secret and that the reader's own check (`looksSecretName`) does not know: a token written `PAT`, and an address or connection string written `..._URL`. */
+const EXTRA_SECRET_NAME = /(^|[_\-.])pat([_\-.]|$)|[_\-.]url$/i;
+/**
+ * True when the summary of a connection (the text the reader kept: names of variables and headers, never their values) lists a name from `EXTRA_SECRET_NAME`. The reader's files are not changed for this, because
+ * they are held by the engine API golden file. A secret in the command, its arguments or the address is not seen here: the reader drops those before this part is made.
+ */
+function namesExtraSecret(text: string): boolean {
+  if (text === '' || text.length > 20000) return false;
+  try {
+    const summary = JSON.parse(text) as { env?: unknown; headers?: unknown } | null;
+    return summary !== null && typeof summary === 'object' && [summary.env, summary.headers].some(list => Array.isArray(list) && list.some(n => typeof n === 'string' && EXTRA_SECRET_NAME.test(n)));
+  } catch { return false; }
+}
+
 /**
  * One part from one item. `sourceId` is the scan source it belongs to and `sourceLabel` is the words shown beside it ("Your Claude Code folder"). A context item needs the world to list its pages
  * (`titles` has them for each set, counted for each place). The id is the item's own id.
@@ -195,7 +209,7 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     // The Overview reads these two. `contentHash` is the hash of the whole text of the file the reader read for the part (a skill's SKILL.md), and is absent when the file had no readable text, so two places with equal text read as one shared skill.
     ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
     // A connection whose config holds a secret (a variable or a header that carries a key) says so with one flag. This part keeps only the flag. The world item still holds the name of the variable (map-world.ts), as it did before; the Engines and usage module never shows that name, only "Secret: set".
-    ...(item.kind === 'tool' && item.toolKind === 'mcp' && item.secret !== null ? { hasSecret: true } : {}),
+    ...(item.kind === 'tool' && item.toolKind === 'mcp' && (item.secret !== null || namesExtraSecret(first?.text ?? '')) ? { hasSecret: true } : {}),
     ...(first === undefined || item.kind === 'context-slice' || first.contentHash === '' ? {} : { contentHash: first.contentHash }),
   };
 }
