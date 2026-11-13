@@ -24,7 +24,7 @@ import { adapterOf, isKnownInterface, secretNameOf } from './adapters.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { tallyWords, topicsOf } from './place.js';
 import type { NoteEntry, PlaceRead, StampedRecord } from './place.js';
-import { cleanLine, cleanPath, cut } from './redact.js';
+import { HIDDEN, cleanLine, cleanPath, cut } from './redact.js';
 import { REAL_LIMITS } from './types.js';
 import type { RealApp, RealCounts, RealKind, RealOther, RealResult } from './types.js';
 
@@ -157,7 +157,9 @@ export function buildRealResult(reads: readonly PlaceRead[], tally: BatchTally, 
     else if (rec.kind === 'hook') tools.push({ ...base, kind: 'tool', toolKind: 'hook', runsCode: true });
     else {
       const name = members.map(m => secretNameOf(m.rec.meta.envNames ?? [], m.rec.meta.headerNames ?? [])).find(n => n !== null) ?? null;
-      tools.push({ ...base, kind: 'tool', toolKind: 'mcp', secret: name === null ? null : { kind: 'env', name, state: 'present' } });
+      // A secret in the command, the arguments or the address has no name (they were dropped with it): it is flagged with the hidden-key mark, and no text of it is kept.
+      const leaks = name === null && members.some(m => m.rec.meta.leaksValue === true);
+      tools.push({ ...base, kind: 'tool', toolKind: 'mcp', secret: name !== null ? { kind: 'env', name, state: 'present' } : leaks ? { kind: 'env', name: HIDDEN, state: 'present' } : null });
     }
   }
 

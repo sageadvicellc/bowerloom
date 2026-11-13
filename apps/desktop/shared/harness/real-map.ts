@@ -194,7 +194,7 @@ export function partOfItem(item: HarnessItem, sourceId: string, sourceLabel: str
     ...(model === undefined || plain(model.badge) === '' ? {} : { badge: cut(plain(model.badge), 40) }),
     // The Overview reads these two. `contentHash` is the hash of the whole text of the file the reader read for the part (a skill's SKILL.md), and is absent when the file had no readable text, so two places with equal text read as one shared skill.
     ...(item.kind === 'tool' ? { toolKind: item.toolKind } : {}),
-    // A connection whose config holds a secret (a variable or a header that carries a key) says so with one flag. The name and the value are never kept: the Engines and usage module shows "Secret: set" and nothing more.
+    // A connection whose config holds a secret (a variable or a header that carries a key) says so with one flag. This part keeps only the flag. The world item still holds the name of the variable (map-world.ts), as it did before; the Engines and usage module never shows that name, only "Secret: set".
     ...(item.kind === 'tool' && item.toolKind === 'mcp' && item.secret !== null ? { hasSecret: true } : {}),
     ...(first === undefined || item.kind === 'context-slice' || first.contentHash === '' ? {} : { contentHash: first.contentHash }),
   };

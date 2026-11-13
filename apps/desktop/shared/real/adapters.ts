@@ -32,6 +32,8 @@ export interface RecordMeta {
   readonly host?: string;
   readonly envNames?: readonly string[];
   readonly headerNames?: readonly string[];
+  /** True when the command, its arguments or the address held a secret (the scrub changed them, or a flag that names a secret came before a value). Only this one fact is kept: no text of them. */
+  readonly leaksValue?: true;
   readonly event?: string;
   readonly matcher?: string;
   readonly runs?: readonly string[];
@@ -227,10 +229,30 @@ function fromTomlAgent(app: RealApp, base: string, relPath: string, text: string
 
 // ---------------------------------------------------------------------------------------------------------------------- connections and hooks
 
-interface ServerSpec { readonly command?: unknown; readonly url?: unknown; readonly env?: unknown; readonly headers?: unknown; readonly bearerEnv?: unknown }
+interface ServerSpec { readonly command?: unknown; readonly args?: unknown; readonly url?: unknown; readonly env?: unknown; readonly headers?: unknown; readonly bearerEnv?: unknown }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const BEARER_NAME = /^[A-Z_][A-Z0-9_]{0,39}$/;
+
+/** A flag or a word that names a secret: `--api-key`, `-token`, `--password`, `GITHUB_PAT`. */
+const NAMES_SECRET = /(^|[_\-.])pat([_\-.]|$)|[_\-.]url$/i;
+const namesSecret = (word: string): boolean => looksSecretName(word) || NAMES_SECRET.test(word);
+
+/**
+ * True when the raw command, its arguments or the address held a secret. The reader drops all three (it keeps the program name and the host), so this one fact is taken before they go: the scrub changes the joined
+ * text or the address (a `key=value`, a login in an address, a known token), or a flag that names a secret comes before a value (`--api-key VALUE`). No text of them is kept.
+ */
+function leaksValue(spec: ServerSpec): boolean {
+  const words: string[] = [];
+  for (const part of [spec.command, spec.args]) {
+    if (typeof part === 'string') words.push(...(part.length > 4000 ? part.slice(0, 4000) : part).split(/\s+/));
+    else if (Array.isArray(part)) for (const item of part.slice(0, 200)) if (typeof item === 'string') words.push(item.length > 2000 ? item.slice(0, 2000) : item);
+  }
+  const joined = words.join(' '), address = typeof spec.url === 'string' && spec.url.length <= 4000 ? spec.url : '';
+  if (joined !== '' && scrubText(joined) !== joined) return true;
+  if (address !== '' && scrubText(address) !== address) return true;
+  return words.some((w, i) => /^--?[A-Za-z][\w.-]*$/.test(w) && namesSecret(w.replace(/^-+/, '')) && i + 1 < words.length && !words[i + 1]!.startsWith('-'));
+}
 
 function serverRecord(app: RealApp, name: string, relPath: string, spec: ServerSpec): RawRecord {
   const first = Array.isArray(spec.command) ? spec.command[0] : spec.command;
@@ -244,6 +266,7 @@ function serverRecord(app: RealApp, name: string, relPath: string, spec: ServerS
   const summary = { server: nameChars(name), ...(command === '' ? {} : { command }), ...(host === '' ? {} : { host }), ...(envNames.size === 0 ? {} : { env: [...envNames].sort() }), ...(headerNames.length === 0 ? {} : { headers: headerNames }) };
   return record(app, 'mcp', nameChars(name), description, relPath, JSON.stringify(summary, null, 2), false, {
     ...(command === '' ? {} : { command }), ...(host === '' ? {} : { host }), ...(envNames.size === 0 ? {} : { envNames: [...envNames].sort() }), ...(headerNames.length === 0 ? {} : { headerNames }),
+    ...(leaksValue(spec) ? { leaksValue: true as const } : {}),
   });
 }
 
@@ -253,7 +276,7 @@ function serversOf(app: RealApp, relPath: string, servers: unknown): RawRecord[]
   for (const [name, raw] of Object.entries(servers as Record<string, unknown>).slice(0, REAL_LIMITS.recordsPerFile)) {
     if (name === '__proto__' || raw === null || typeof raw !== 'object') continue;
     const s = raw as Record<string, unknown>;
-    out.push(serverRecord(app, name, relPath, { command: s.command, url: s.url, env: s.env ?? s.environment, headers: s.headers ?? s.http_headers }));
+    out.push(serverRecord(app, name, relPath, { command: s.command, args: s.args, url: s.url, env: s.env ?? s.environment, headers: s.headers ?? s.http_headers }));
   }
   return out;
 }
@@ -316,13 +339,14 @@ function fromOpenCode(app: RealApp, relPath: string, json: unknown): RawRecord[]
 
 function fromCodexToml(app: RealApp, relPath: string, text: string): RawRecord[] {
   const tables = parseToml(text), out: RawRecord[] = [];
-  const server = new Map<string, { command?: string; url?: string; env: Set<string>; headers: Set<string>; bearer?: string }>();
+  const server = new Map<string, { command?: string; args?: readonly string[]; url?: string; env: Set<string>; headers: Set<string>; bearer?: string }>();
   const entry = (name: string) => { let e = server.get(name); if (e === undefined) { e = { env: new Set(), headers: new Set() }; server.set(name, e); } return e; };
   for (const t of tables) {
     if (t.path[0] !== 'mcp_servers' || t.path.length < 2) continue;
     const name = t.path[1]!, e = entry(name), sub = t.path[2];
     if (sub === undefined) {
-      const command = tomlText(t, 'command'), url = tomlText(t, 'url'), bearer = tomlText(t, 'bearer_token_env_var');
+      const command = tomlText(t, 'command'), url = tomlText(t, 'url'), bearer = tomlText(t, 'bearer_token_env_var'), args = t.values.get('args');
+      if (args !== undefined && args.t === 'arr') e.args = args.v;
       if (command !== '') e.command = command;
       if (url !== '') e.url = url;
       if (bearer !== '') e.bearer = bearer;
@@ -333,7 +357,7 @@ function fromCodexToml(app: RealApp, relPath: string, text: string): RawRecord[]
     } else if (sub === 'env') for (const k of t.values.keys()) e.env.add(k);
     else if (sub === 'http_headers' || sub === 'env_http_headers') for (const k of t.values.keys()) e.headers.add(k);
   }
-  for (const [name, e] of [...server].slice(0, REAL_LIMITS.recordsPerFile)) out.push(serverRecord(app, name, relPath, { command: e.command, url: e.url, env: Object.fromEntries([...e.env].map(k => [k, 1])), headers: Object.fromEntries([...e.headers].map(k => [k, 1])), bearerEnv: e.bearer }));
+  for (const [name, e] of [...server].slice(0, REAL_LIMITS.recordsPerFile)) out.push(serverRecord(app, name, relPath, { command: e.command, args: e.args, url: e.url, env: Object.fromEntries([...e.env].map(k => [k, 1])), headers: Object.fromEntries([...e.headers].map(k => [k, 1])), bearerEnv: e.bearer }));
   const notify = tables[0]?.values.get('notify');
   if (notify !== undefined && notify.t === 'arr') out.push(record(app, 'hook', 'Notify', '', relPath, JSON.stringify({ event: 'notify', kinds: ['command'] }), false, { event: 'notify', runs: ['command'] }));
   return out;
@@ -346,7 +370,7 @@ function fromHermesYaml(app: RealApp, relPath: string, text: string): RawRecord[
   for (const [name, raw] of Object.entries(servers).slice(0, REAL_LIMITS.recordsPerFile)) {
     if (!isMap(raw)) continue;
     const command = textOf(raw.command), url = textOf(raw.url);
-    out.push(serverRecord(app, name, relPath, { command, url, env: namesToObject(raw.env), headers: namesToObject(raw.headers) }));
+    out.push(serverRecord(app, name, relPath, { command, args: raw.args, url, env: namesToObject(raw.env), headers: namesToObject(raw.headers) }));
   }
   return out;
 }
@@ -359,5 +383,5 @@ function namesToObject(value: YamlValue | undefined): Record<string, number> {
 
 /** The name of the variable that most likely holds a secret for a connection: the first of its names that looks like one. */
 export function secretNameOf(envNames: readonly string[], headerNames: readonly string[]): string | null {
-  return [...envNames, ...headerNames].find(looksSecretName) ?? null;
+  return [...envNames, ...headerNames].find(namesSecret) ?? null;
 }

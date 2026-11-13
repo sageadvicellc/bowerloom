@@ -41,6 +41,11 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 - Each number on screen is a sum of numbers that a log held. Nothing is estimated, averaged or rounded up.
 - A figure that no log held reads "Not read". A zero that a log held reads "0".
 - When some runs gave a figure and others did not, the value says so: "1,500 (from 2 of 3 runs)".
+- A log that was capped or read in part can give a low sum. The value carries a low mark in its brackets. A log that is still being written can change. The value carries a change mark. The marks join: "5 (from 1 of 2 runs, may be low)".
+- "Logs read" is x of all the runs of that engine. When the cap left out every run of an engine, the card says so.
+- The module checks every answer of the two calls. A list that is no list, a run with a bad shape, or figures with a bad shape never reach the screen. A bad list is a failed read with the code FAILED. Bad figures are that run's refused read.
+- The read always ends in a state. If a read fails after a good one, the card keeps the good figures and says that the last read failed.
+- Runs that name an engine the app does not know are left out before the cap. One note counts them.
 - The reason a figure is missing uses the words of the log reader (`figuresStateWords` in `apps/desktop/shared/harness/runs-real.ts`). The module counts runs with the same reason: "2 runs: No session log found."
 - A refused read of one run is that run's gap, with the words of its refusal code. The other runs are still read.
 - Some engines have no log reader. Their runs say "Figures are not available for this engine." The module does not guess which engines those are. It reads that from the answer of each run.
@@ -51,7 +56,9 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 
 ## Config rules
 
-- A count of 0 for a found engine is a count that the reader made: it looked and found none. When the reader stopped early or read only part of the folders, the view says that the counts can be low.
+- A count of 0 for a found engine is a count that the reader made: it looked and found none. After a partial read, or when the config of the engine has a problem, each count carries the low mark. A 0 is never bare.
+- A part whose folder is not in the list is counted in one note. It is never dropped without a word.
+- A health word the app does not know shows as a problem.
 - A part found in two engines is one part with one source, so it counts once, under the first engine. The view says so in one line.
 - A list of connections shows the first 12. A list of folders shows the first 6. The count is always the whole count. The rest reads "and N more".
 
@@ -60,7 +67,9 @@ The module adds one field to the state: `Part.hasSecret`. It is a flag on a conn
 A config view never shows a secret.
 
 - The reader keeps the name of a key and never its value. This module goes further: it shows neither.
-- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. The module shows "Secret: set" and nothing more about it. It shows no name of a variable or header and no value.
+- A connection whose config holds a secret has one flag, `hasSecret`. The reader sets it if a variable, a header or a bearer variable of that connection looks like a secret. It also sets it if the command, its arguments or the address held one. The reader drops those three, so it takes this one fact before they go and keeps no text. The names `pat`, `_url` and `dsn` count as secret names.
+- After a partial read, a connection with no flag says "Secret: not checked". It never implies that there is no secret.
+- The world item that the reader builds still holds the name of the variable (`secret.name` in `map-world.ts`). That is older than this lane. This module never shows it. The module shows "Secret: set" and nothing more about it. It shows no name of a variable or header and no value.
 - The module reads no `fileText` of any part. That text holds the names of variables.
 - Every string that comes from the state passes through the scrub of the reader (`scrubText`, `cleanLine`) a second time. That covers a name, a line, a folder and the place where an engine was found. It also covers every model name that a log gave.
 - Tests prove it with made-up homes that hold fake keys, tokens, passwords and `env` values for the three engines. Neither the fake values nor the names of the variables that hold them appear in the view or in the markup (`apps/desktop/tests/engines-usage-secrets.test.ts`).
