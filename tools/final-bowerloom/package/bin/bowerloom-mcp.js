@@ -6,7 +6,7 @@ async function main() {
     const { forward } = await import('../lib/forward.js');
     await forward('latebrake-mcp');
   } catch {
-    try { process.stderr.write('bowerloom-mcp: could not start latebrake-mcp. Install it with: npm install -g latebrake\n'); } catch { /* stderr is gone */ }
+    try { process.stderr.write('bowerloom-mcp: could not start latebrake-mcp because the latebrake package is missing or cannot load.\n'); } catch { /* stderr is gone */ }
     process.exitCode = 1;
   }
 }

@@ -6,19 +6,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+/** The one version of latebrake that this package runs. It is the version of the dependency in package.json. */
+export const LATEBRAKE_VERSION = '0.9.0-beta.1';
+
 /**
- * Finds the folder of the `latebrake` package, starting from `startDir` and walking up the way Node does. It covers a copy
- * nested under this package and a copy that sits beside it in the same global folder. Returns the folder, or throws.
+ * Finds the folder of the `latebrake` package, starting from `startDir` and walking up. It checks a copy nested under this
+ * package, then the sibling in the first `node_modules` folder above, and stops there: a copy further up is never used.
+ * Returns the folder, or throws.
  */
 export function findLatebrake(startDir = HERE) {
   let dir = path.resolve(startDir);
   for (;;) {
-    if (path.basename(dir) !== 'node_modules') {
-      const candidate = path.join(dir, 'node_modules', 'latebrake');
-      if (fs.existsSync(path.join(candidate, 'package.json'))) return fs.realpathSync(candidate);
-    }
+    const inModules = path.basename(dir) === 'node_modules';
+    const candidate = inModules ? path.join(dir, 'latebrake') : path.join(dir, 'node_modules', 'latebrake');
+    if (fs.existsSync(path.join(candidate, 'package.json'))) return fs.realpathSync(candidate);
     const parent = path.dirname(dir);
-    if (parent === dir) throw new Error('latebrake is not installed');
+    if (inModules || parent === dir) throw new Error('latebrake is not installed');
     dir = parent;
   }
 }
@@ -27,6 +30,7 @@ export function findLatebrake(startDir = HERE) {
 export function entryFor(latebrakeDir, command) {
   const manifest = JSON.parse(fs.readFileSync(path.join(latebrakeDir, 'package.json'), 'utf8'));
   if (manifest === null || typeof manifest !== 'object' || manifest.name !== 'latebrake') throw new Error('the latebrake package record is not valid');
+  if (manifest.version !== LATEBRAKE_VERSION) throw new Error(`latebrake ${String(manifest.version)} is installed, and this package runs only ${LATEBRAKE_VERSION}`);
   const bin = typeof manifest.bin === 'string' ? { latebrake: manifest.bin } : manifest.bin;
   const relative = bin !== null && typeof bin === 'object' ? bin[command] : undefined;
   if (typeof relative !== 'string' || relative === '') throw new Error(`latebrake has no ${command} command`);

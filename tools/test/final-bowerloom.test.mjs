@@ -16,9 +16,9 @@ const { shouldNotice, NOTICE } = await import(pathToFileURL(path.join(packageDir
 const { findLatebrake, entryFor } = await import(pathToFileURL(path.join(packageDir, 'lib/forward.js')).href);
 
 const NOTICE_TEXT = 'Bowerloom is now Latebrake. This command still works. Install the new name: npm install -g latebrake';
-const DENY_LINE = `${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Bowerloom guard: the guard could not run, so the call is blocked. Install the new name: npm install -g latebrake' } })}\n`;
+const DENY_LINE = `${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Bowerloom guard: the guard could not run because the latebrake package is missing or cannot load, so the call is blocked.' } })}\n`;
 const CLI_FAIL = 'bowerloom: could not start latebrake. Install it with: npm install -g latebrake\n';
-const MCP_FAIL = 'bowerloom-mcp: could not start latebrake-mcp. Install it with: npm install -g latebrake\n';
+const MCP_FAIL = 'bowerloom-mcp: could not start latebrake-mcp because the latebrake package is missing or cannot load.\n';
 
 // Each old command, and the command of latebrake it runs.
 const PAIRS = [['bowerloom', 'latebrake'], ['bowerloom-mcp', 'latebrake-mcp'], ['bowerloom-guard', 'latebrake-guard']];
@@ -48,7 +48,7 @@ after(() => { fs.rmSync(base, { recursive: true, force: true }); });
 
 /**
  * Makes a folder that holds `node_modules/bowerloom` (a copy of the package) and, unless `standin` is false, `node_modules/latebrake`.
- * `standin` may be 'entry-missing', 'entry-throws', 'bad-record', 'path-escape' or 'link-escape' to make one broken stand-in.
+ * `standin` may be 'entry-missing', 'entry-throws', 'bad-record', 'wrong-version', 'path-escape' or 'link-escape' to make one broken stand-in.
  */
 function install(standin = true) {
   const root = path.join(base, String(counter++));
@@ -66,6 +66,7 @@ function install(standin = true) {
   if (standin === 'entry-missing') for (const name of Object.keys(BINS)) fs.rmSync(path.join(dir, 'bin', `${name}.mjs`));
   if (standin === 'entry-throws') for (const name of Object.keys(BINS)) fs.writeFileSync(path.join(dir, 'bin', `${name}.mjs`), "throw new Error('broken entry');\n");
   if (standin === 'bad-record') record.name = 'other';
+  if (standin === 'wrong-version') record.version = '0.9.0';
   if (standin === 'path-escape' || standin === 'link-escape') {
     fs.writeFileSync(path.join(modules, 'evil.mjs'), "process.stdout.write('EVIL\\n');\n");
     for (const key of Object.keys(bin)) {
@@ -75,6 +76,15 @@ function install(standin = true) {
   }
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(record));
   return root;
+}
+
+/** A good latebrake sits at root/node_modules, and the package is copied one level deeper, so the search would pass a node_modules folder to reach it. */
+function tooFar() {
+  const root = install(true);
+  const inner = path.join(root, 'inner');
+  fs.mkdirSync(path.join(inner, 'node_modules'), { recursive: true });
+  fs.renameSync(path.join(root, 'node_modules/bowerloom'), path.join(inner, 'node_modules/bowerloom'));
+  return path.join(root, 'inner');
 }
 
 const shim = (root, name) => path.join(root, 'node_modules/bowerloom/bin', `${name}.js`);
@@ -185,8 +195,9 @@ test('clean stdout: with a probe that writes nothing, each shim leaves stdout em
 });
 
 test('fail closed: with no usable latebrake, each shim ends as the hook and the protocol need, byte for byte', () => {
-  for (const standin of [false, 'entry-missing', 'entry-throws', 'bad-record']) {
-    const root = install(standin);
+  // The last case puts a good latebrake above the first node_modules folder, where the search must not look.
+  for (const standin of [false, 'entry-missing', 'entry-throws', 'bad-record', 'wrong-version', 'too-far']) {
+    const root = standin === 'too-far' ? tooFar() : install(standin);
     const label = String(standin);
     const cli = run(shim(root, 'bowerloom'), ['harness', 'status']);
     assert.equal(text(cli.stdout), '', `${label}: bowerloom stdout`);
@@ -205,6 +216,40 @@ test('fail closed: with no usable latebrake, each shim ends as the hook and the 
     assert.equal(text(guard.stderr), '', `${label}: guard stderr`);
     assert.equal(guard.status, 0, `${label}: guard exit`);
   }
+});
+
+test('the search for latebrake: a copy nested under the package wins over the sibling, and a version other than the pinned one is refused', () => {
+  const root = install();
+  const nested = path.join(root, 'node_modules/bowerloom/node_modules');
+  fs.mkdirSync(nested);
+  fs.cpSync(path.join(root, 'node_modules/latebrake'), path.join(nested, 'latebrake'), { recursive: true });
+  const start = path.join(root, 'node_modules/bowerloom/lib');
+  assert.equal(findLatebrake(start), fs.realpathSync(path.join(nested, 'latebrake')));
+  fs.rmSync(path.join(nested, 'latebrake'), { recursive: true });
+  assert.equal(findLatebrake(start), fs.realpathSync(path.join(root, 'node_modules/latebrake')));
+  assert.throws(() => entryFor(findLatebrake(path.join(install('wrong-version'), 'node_modules/bowerloom/lib')), 'latebrake'), /runs only 0\.9\.0-beta\.1/);
+  assert.throws(() => findLatebrake(path.join(tooFar(), 'node_modules/bowerloom/lib')), /not installed/);
+  assert.ok(!DENY_LINE.includes('npm install') && !MCP_FAIL.includes('npm install'), 'text that reaches the model or a protocol client gives no command to run');
+});
+
+test('closed stderr: the notice is not required, and the forward still works', () => {
+  const root = install();
+  const runner = path.join(root, 'tty-runner.mjs');
+  fs.writeFileSync(runner, "process.stdout.isTTY = true;\nconst [, , shimUrl] = process.argv;\nprocess.argv.splice(2, 1);\nawait import(shimUrl);\n");
+  // The shell closes file descriptor 2 before it starts node.
+  const closed = args => spawnSync('/bin/sh', ['-c', 'exec "$0" "$@" 2>&-', process.execPath, runner, pathToFileURL(shim(root, 'bowerloom')).href, ...args], { input: 'ping\n' });
+  const result = closed(['harness', 'status', '--exit=3']);
+  assert.equal(result.status, 3);
+  const body = JSON.parse(text(result.stdout));
+  assert.equal(body.name, 'latebrake');
+  assert.deepEqual(body.args, ['harness', 'status', '--exit=3']);
+  assert.equal(body.input, 'ping\n');
+  assert.ok(!text(result.stdout).includes(NOTICE_TEXT), 'no notice on stdout');
+  // With no latebrake, the failure still ends with exit 1 and nothing on stdout.
+  const bare = install(false);
+  const failed = spawnSync('/bin/sh', ['-c', 'exec "$0" "$@" 2>&-', process.execPath, shim(bare, 'bowerloom'), 'harness']);
+  assert.equal(failed.status, 1);
+  assert.equal(failed.stdout.length, 0);
 });
 
 test('fail closed: the deny line has the shape of the guard entry in the CLI', () => {
