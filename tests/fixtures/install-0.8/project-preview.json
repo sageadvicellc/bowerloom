@@ -1,0 +1,100 @@
+{
+  "about": "The same synthetic project, adopted and installed with BOWERLOOM_PREVIEW_ENGINES=1 for OpenCode, Pi, and DeepSeek Harness. Made by tools/fixtures-0.8/make.mjs from the published bowerloom@0.8.0-beta.1. Each key of \"files\" is a path with its mode and its text, or base64 when the bytes are not UTF-8. Paths hold the placeholders {{HOME}}, {{PROJECT}}, {{STATE}}, {{PROJECT_ID}}, and {{ROOT}} (the folder above HOME).",
+  "dirs": {
+    ".agents": "0755",
+    ".agents/skills": "0755",
+    ".agents/skills/review": "0755",
+    ".bowerloom": "0755",
+    ".bowerloom/instructions": "0755",
+    ".bowerloom/skills": "0755",
+    ".bowerloom/skills/review": "0755",
+    ".claude": "0755",
+    ".claude/skills": "0755",
+    ".claude/skills/review": "0755",
+    ".codex": "0755",
+    ".codex/rules": "0755",
+    ".dsh": "0755",
+    ".opencode": "0755",
+    ".opencode/plugins": "0755",
+    ".pi": "0755"
+  },
+  "files": {
+    ".agents/skills/review/SKILL.md": {
+      "mode": "0644",
+      "text": "---\nname: review\ndescription: Reviews a change.\n---\n\nReview it.\n"
+    },
+    ".bowerloom/guardrails.json": {
+      "mode": "0644",
+      "text": "{\n  \"rules\": [\n    {\n      \"id\": \"deny-shell-abbb71ff\",\n      \"action\": \"shell\",\n      \"pattern\": \"rm -rf:*\",\n      \"effect\": \"deny\",\n      \"strength\": \"enforced\"\n    }\n  ]\n}\n"
+    },
+    ".bowerloom/harness.json": {
+      "mode": "0644",
+      "text": "{\n  \"format\": \"bowerloom/harness/v1beta1\",\n  \"id\": \"project\",\n  \"description\": \"Adopted from the engine files of this project.\",\n  \"engines\": [\n    {\n      \"id\": \"claude-code\",\n      \"version\": \"2.1.310\"\n    },\n    {\n      \"id\": \"codex\",\n      \"version\": \"0.157.0\"\n    },\n    {\n      \"id\": \"opencode\",\n      \"version\": \"1.18.30\"\n    },\n    {\n      \"id\": \"pi\",\n      \"version\": \"1.4.0\"\n    },\n    {\n      \"id\": \"deepseek-harness\",\n      \"version\": \"0.2.2-alpha.2\"\n    }\n  ],\n  \"parts\": {\n    \"system-prompt\": \"instructions/AGENTS.md\",\n    \"skills\": \"skills/\",\n    \"guardrails\": \"guardrails.json\",\n    \"hooks\": \"hooks.json\",\n    \"mcp\": \"mcp.json\"\n  },\n  \"skills\": {\n    \"review\": {\n      \"engines\": [\n        \"claude-code\",\n        \"opencode\"\n      ]\n    }\n  }\n}\n"
+    },
+    ".bowerloom/hooks.json": {
+      "mode": "0644",
+      "text": "{\n  \"hooks\": [\n    {\n      \"id\": \"pre-tool-use-52407f3d\",\n      \"event\": \"PreToolUse\",\n      \"matcher\": \"Bash\",\n      \"command\": \"echo check\",\n      \"strength\": \"enforced\"\n    }\n  ]\n}\n"
+    },
+    ".bowerloom/instructions/AGENTS.md": {
+      "mode": "0644",
+      "text": "# E2E\n\nUse npm.\n"
+    },
+    ".bowerloom/mcp.json": {
+      "mode": "0644",
+      "text": "{\n  \"servers\": [\n    {\n      \"name\": \"files\",\n      \"transport\": \"stdio\",\n      \"command\": \"npx\",\n      \"args\": [\n        \"-y\",\n        \"files-server\"\n      ],\n      \"env\": {\n        \"API_TOKEN\": \"${TOKEN}\"\n      }\n    },\n    {\n      \"name\": \"lint\",\n      \"transport\": \"stdio\",\n      \"command\": \"lint-server\",\n      \"args\": [\n        \"--fix\"\n      ]\n    }\n  ]\n}\n"
+    },
+    ".bowerloom/skills/review/SKILL.md": {
+      "mode": "0644",
+      "text": "---\nname: review\ndescription: Reviews a change.\n---\n\nReview it.\n"
+    },
+    ".claude/settings.json": {
+      "mode": "0644",
+      "text": "{\n  \"permissions\": {\n    \"deny\": [\n      \"Bash(rm -rf:*)\"\n    ]\n  },\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"echo check\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+    },
+    ".claude/skills/review/SKILL.md": {
+      "mode": "0644",
+      "text": "---\nname: review\ndescription: Reviews a change.\n---\n\nReview it.\n"
+    },
+    ".codex/config.toml": {
+      "mode": "0644",
+      "text": "# A server this project keeps by hand. Its tool allow list has no neutral form, so adoption leaves it here.\n[mcp_servers.local-notes]\ncommand = \"notes-server\"\nargs = [\"--port\", \"4000\"]\nenabled_tools = [\"read\"]\n\n# Bowerloom writes the tables below. Removal restores this file as it was.\n[mcp_servers.lint]\ncommand = \"lint-server\"\nargs = [\"--fix\"]\n# End of the tables Bowerloom writes.\n"
+    },
+    ".codex/hooks.json": {
+      "mode": "0644",
+      "text": "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash|exec_command\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"echo check\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+    },
+    ".codex/rules/bowerloom.rules": {
+      "mode": "0644",
+      "text": "# Bowerloom writes this file from the guardrails of a harness definition. Removal restores what was here before.\n# A neutral allow never becomes a Codex allow rule: Codex would run the command outside the sandbox without asking.\n\nprefix_rule(\n    pattern = [\"rm\", \"-rf\"],\n    decision = \"forbidden\",\n    justification = \"Bowerloom guardrail deny-shell-abbb71ff\",\n)\n"
+    },
+    ".dsh/bowerloom.patch.yml": {
+      "mode": "0644",
+      "text": "# Bowerloom writes this file from the MCP servers of a harness definition. Pass it to DeepSeek Harness with\n# dsh web --patch .dsh/bowerloom.patch.yml\n# Bowerloom never edits cordis.patch.yml. Removal restores what was here before.\n- insert:\n    - id: \"bowerloom-mcp-files\"\n      name: \"@deepseek-ai/dsh-mcp-client\"\n      config:\n        serverName: \"files\"\n        transport: \"stdio\"\n        command: \"npx\"\n        args: [\"-y\", \"files-server\"]\n        env:\n          API_TOKEN: !!js \"process.env.TOKEN\"\n    - id: \"bowerloom-mcp-lint\"\n      name: \"@deepseek-ai/dsh-mcp-client\"\n      config:\n        serverName: \"lint\"\n        transport: \"stdio\"\n        command: \"lint-server\"\n        args: [\"--fix\"]\n"
+    },
+    ".mcp.json": {
+      "mode": "0644",
+      "text": "{\n  \"mcpServers\": {\n    \"files\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"files-server\"],\n      \"env\": { \"API_TOKEN\": \"${TOKEN}\" }\n    },\n    \"lint\": {\n      \"command\": \"lint-server\",\n      \"args\": [\"--fix\"]\n    }\n  }\n}\n"
+    },
+    ".opencode/plugins/bowerloom-hooks.js": {
+      "mode": "0644",
+      "text": "// Bowerloom generated this OpenCode plugin from the hooks of a harness definition. Read it before you approve the plan:\n// OpenCode loads every file in .opencode/plugins and runs it with your permissions. Removal restores what was here before.\n// Each hook runs its command with /bin/sh through the $ shell of the plugin context, with the hook input as JSON on\n// standard input. Exit 2, or a deny decision on standard output, blocks the tool call: the plugin throws with the\n// reason. Any other exit lets the call continue. A hook that runs past its timeout lets the call continue too; the\n// plugin stops waiting for it but does not stop the command.\n\nconst HOOKS = [\n  {\n    \"entry\": \"pre-tool-use-52407f3d\",\n    \"event\": \"PreToolUse\",\n    \"tools\": {\n      \"bash\": \"Bash\"\n    },\n    \"command\": \"echo check\",\n    \"timeoutMs\": 600000\n  }\n];\n\nfunction payload(event, tool, args, sessionID, directory) {\n  return JSON.stringify({ hook_event_name: event, tool_name: tool, tool_input: args ?? {}, session_id: sessionID ?? null, cwd: directory });\n}\n\nasync function run($, hook, input, directory) {\n  const shell = $`/bin/sh -c ${hook.command} < ${new Response(input)}`.env({ ...process.env, BOWERLOOM_PROJECT_DIR: directory }).quiet().nothrow();\n  let timer;\n  const late = new Promise(resolve => { timer = setTimeout(() => resolve(null), hook.timeoutMs); });\n  try {\n    const result = await Promise.race([shell, late]);\n    if (result === null) return { status: null, stdout: \"\", stderr: \"\" };\n    return { status: result.exitCode, stdout: String(result.stdout ?? \"\"), stderr: String(result.stderr ?? \"\") };\n  } finally { clearTimeout(timer); }\n}\n\nfunction denial(result) {\n  if (result.status === 2) return result.stderr.trim() || \"A Bowerloom hook blocked this action.\";\n  let out = null;\n  try { out = JSON.parse(result.stdout || \"null\"); } catch { out = null; }\n  const decision = out?.hookSpecificOutput?.permissionDecision ?? out?.decision;\n  if (decision === \"deny\" || decision === \"block\") return out?.hookSpecificOutput?.permissionDecisionReason ?? out?.reason ?? \"A Bowerloom hook blocked this action.\";\n  return null;\n}\n\nasync function runTool($, event, input, output, directory) {\n  for (const hook of HOOKS) {\n    if (hook.event !== event) continue;\n    const name = hook.tools === null ? input?.tool : hook.tools[input?.tool];\n    if (typeof name !== \"string\") continue;\n    const reason = denial(await run($, hook, payload(event, name, output?.args, input?.sessionID, directory), directory));\n    if (reason !== null) throw new Error(reason);\n  }\n}\n\nasync function runEvent($, event, directory) {\n  for (const hook of HOOKS) if (hook.event === event) await run($, hook, payload(event, null, null, null, directory), directory);\n}\n\nexport const BowerloomHooks = async ({ directory, $ }) => {\n  return {\n    \"tool.execute.before\": async (input, output) => { await runTool($, \"PreToolUse\", input, output, directory); },\n  };\n};\n"
+    },
+    ".pi/mcp.json": {
+      "mode": "0644",
+      "text": "{\n  \"mcpServers\": {\n    \"files\": {\n      \"type\": \"stdio\",\n      \"command\": \"npx\",\n      \"args\": [\n        \"-y\",\n        \"files-server\"\n      ],\n      \"env\": {\n        \"API_TOKEN\": \"${TOKEN}\"\n      }\n    },\n    \"lint\": {\n      \"type\": \"stdio\",\n      \"command\": \"lint-server\",\n      \"args\": [\n        \"--fix\"\n      ]\n    }\n  }\n}\n"
+    },
+    "AGENTS.md": {
+      "mode": "0644",
+      "text": "# E2E\n\nUse npm.\n"
+    },
+    "CLAUDE.md": {
+      "mode": "0644",
+      "text": "@AGENTS.md\n"
+    },
+    "opencode.json": {
+      "mode": "0644",
+      "text": "{\n  \"mcp\": {\n    \"files\": {\n      \"type\": \"local\",\n      \"command\": [\n        \"npx\",\n        \"-y\",\n        \"files-server\"\n      ],\n      \"environment\": {\n        \"API_TOKEN\": \"{env:TOKEN}\"\n      }\n    },\n    \"lint\": {\n      \"type\": \"local\",\n      \"command\": [\n        \"lint-server\",\n        \"--fix\"\n      ]\n    }\n  },\n  \"permission\": {\n    \"*\": {\n      \"*\": \"ask\"\n    },\n    \"bash\": {\n      \"rm*-rf*\": \"deny\"\n    }\n  }\n}\n"
+    }
+  },
+  "links": {}
+}
