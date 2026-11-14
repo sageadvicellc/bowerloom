@@ -13,13 +13,26 @@ const FIXTURES = fileURLToPath(new URL('../../tests/fixtures/install-0.8', impor
 const DATA_FILES = ['project.json', 'project-preview.json', 'home-store.json', 'state.json', 'global-prefix.json'];
 const ALL_FILES = [...DATA_FILES, 'manifest.json'];
 const FOLDER_CAP = Math.floor(1.5 * 1024 * 1024);
+// The caps are fixed here. manifest.json is generated, so a cap that it names could be raised by the same change that breaks it.
+const FILE_CAPS = {
+  'project.json': 256 * 1024,
+  'project-preview.json': 256 * 1024,
+  'home-store.json': 64 * 1024,
+  'state.json': 512 * 1024,
+  'global-prefix.json': 16 * 1024,
+  'manifest.json': 32 * 1024,
+};
 
-// The paths of the sandbox that made the fixtures, and of a Mac that could run the generator. The folders that the generator uses
-// on the host are not in the fixtures at all. The pinned skill package is frozen as published, and its own package.json holds
-// a temporary path from its publisher's computer, so a general check of temporary folders would fail on third-party bytes.
-const SANDBOX_PATHS = ['/home/node', '/Users/', '/private/tmp/'];
-// Shapes of a real secret. A fixture holds none.
+// The paths of the sandbox that made the fixtures, and of any Mac or temporary folder that could run the generator.
+const SANDBOX_PATHS = ['/home/node', '/Users/', '/private/tmp/', '/private/var/', '/var/folders/'];
+// The one allowed exception. The pinned skill package is frozen as published, and its own package.json holds this temporary path
+// from its publisher's computer. It is third-party bytes, and it is allowed in state.json only, as this exact string.
+const PUBLISHER_TEMP_PATH = '/private/var/folders/m3/r413t_qj4kxg1mdnmk1zb8q80000gn/T/ad388974b1a8b17ca1bd0d75828c0f2e/tanstack-db-skills-0.0.1.tgz';
+const ALLOWED_PATHS = { 'state.json': [PUBLISHER_TEMP_PATH] };
+// Shapes of a real secret, and of the address of a person. A fixture holds none. The pattern for an address needs a name before the @,
+// so a pattern such as '%@company.com' in a skill's own text is not an address.
 const TOKEN_PATTERNS = [
+  /[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/,
   /\bgh[pousr]_[A-Za-z0-9]{20,}/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}/,
   /\bnpm_[A-Za-z0-9]{30,}/,
@@ -57,16 +70,17 @@ function problemsIn(dir) {
     try { bytes = fs.readFileSync(path.join(dir, name)); } catch { problems.push(`${name} is missing`); continue; }
     total += bytes.length;
     if (name === 'manifest.json') {
-      if (bytes.length > manifest.manifestCapBytes) problems.push(`manifest.json is ${bytes.length} bytes, over its cap of ${manifest.manifestCapBytes}`);
+      if (bytes.length > FILE_CAPS[name]) problems.push(`manifest.json is ${bytes.length} bytes, over its cap of ${FILE_CAPS[name]}`);
     } else {
       const listed = manifest.files?.[name];
       if (!listed) { problems.push(`${name} is not listed in manifest.json`); continue; }
       const sha = createHash('sha256').update(bytes).digest('hex');
       if (sha !== listed.sha256) problems.push(`${name} has the SHA-256 ${sha}, and manifest.json lists ${listed.sha256}`);
       if (bytes.length !== listed.bytes) problems.push(`${name} is ${bytes.length} bytes, and manifest.json lists ${listed.bytes}`);
-      if (bytes.length > listed.capBytes) problems.push(`${name} is ${bytes.length} bytes, over its cap of ${listed.capBytes}`);
     }
-    const text = bytes.toString('utf8');
+    if (bytes.length > FILE_CAPS[name]) problems.push(`${name} is ${bytes.length} bytes, over its cap of ${FILE_CAPS[name]}`);
+    let text = bytes.toString('utf8');
+    for (const allowed of ALLOWED_PATHS[name] ?? []) text = text.split(allowed).join('');
     for (const sandbox of SANDBOX_PATHS) if (text.includes(sandbox)) problems.push(`${name} holds the sandbox path ${sandbox}`);
     for (const pattern of TOKEN_PATTERNS) if (pattern.test(text)) problems.push(`${name} matches the token pattern ${pattern}`);
     if (name !== 'manifest.json') {
@@ -93,7 +107,7 @@ test('the manifest records the tarball, the tool versions, the pinned skill, and
   assert.ok(manifest.skillPin.name && manifest.skillPin.version && manifest.skillPin.integrity.startsWith('sha512-'));
   assert.ok(manifest.commands.length > 0);
   for (const command of manifest.commands) assert.equal(command.exit, 0, `${command.command} exited ${command.exit}`);
-  assert.deepEqual(manifest.placeholders, ['{{HOME}}', '{{PROJECT}}', '{{STATE}}', '{{PROJECT_ID}}', '{{ROOT}}']);
+  assert.deepEqual(manifest.placeholders, ['{{HOME}}', '{{PROJECT}}', '{{STATE}}', '{{PROJECT_ID}}', '{{ROOT}}', '{{EMAIL}}']);
   for (const name of DATA_FILES) assert.ok(manifest.files[name].capBytes > 0, name);
 });
 
@@ -129,6 +143,18 @@ test('a changed byte, a sandbox path, a token, and a file over its cap are each 
   const tokened = scratchCopy();
   edit(tokened, 'global-prefix.json', text => text.replace('"about"', '"token": "ghp_' + 'a'.repeat(36) + '", "about"'));
   assert.ok(problemsIn(tokened).some(p => /token pattern/.test(p)));
+
+  const emailed = scratchCopy();
+  edit(emailed, 'global-prefix.json', text => text.replace('"about"', '"email": "someone.name@example.org", "about"'));
+  assert.ok(problemsIn(emailed).some(p => /token pattern/.test(p)));
+
+  // The publisher's temporary path is allowed in state.json only. Elsewhere, and with any other temporary path, it is a problem.
+  const temp = scratchCopy();
+  edit(temp, 'global-prefix.json', text => text.replace('"about"', `"path": "${PUBLISHER_TEMP_PATH}", "about"`));
+  assert.ok(problemsIn(temp).some(p => /global-prefix\.json holds the sandbox path \/private\/var\//.test(p)));
+  const otherTemp = scratchCopy();
+  edit(otherTemp, 'state.json', text => text.replace('"files"', '"path": "/var/folders/zz/other/T/x", "files"'));
+  assert.ok(problemsIn(otherTemp).some(p => /state\.json holds the sandbox path \/var\/folders\//.test(p)));
 
   const big = scratchCopy();
   edit(big, 'global-prefix.json', text => text.replace('"about"', '"filler": "' + 'x'.repeat(20000) + '", "about"'));

@@ -33,7 +33,9 @@ export const CAPS = {
   'manifest.json': 32 * 1024,
 };
 export const TOTAL_CAP = 1.5 * 1024 * 1024;
-export const PLACEHOLDERS = ['{{HOME}}', '{{PROJECT}}', '{{STATE}}', '{{PROJECT_ID}}', '{{ROOT}}'];
+export const PLACEHOLDERS = ['{{HOME}}', '{{PROJECT}}', '{{STATE}}', '{{PROJECT_ID}}', '{{ROOT}}', '{{EMAIL}}'];
+// An address with a name before the @. A pattern such as '%@company.com' in the skill's own text has none, and stays.
+const EMAIL = /[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 
 function docker(args, options = {}) {
   const result = spawnSync('docker', args, { maxBuffer: 1024 * 1024 * 1024, ...options });
@@ -83,6 +85,8 @@ function placeholders(text, { home, project, state, projectId }) {
   let out = text.split(state).join('{{STATE}}').split(project).join('{{PROJECT}}').split(home).join('{{HOME}}');
   if (projectId) out = out.split(projectId).join('{{PROJECT_ID}}');
   // A receipt also lists the folders above HOME, as the CLI pins them. They are named from the volume folder, {{ROOT}}.
+  // The package metadata that npm keeps (_npmUser, maintainers, author) holds real addresses of people. None goes into a fixture.
+  out = out.replace(EMAIL, '{{EMAIL}}');
   out = out.split(`${WORK}`).join('{{ROOT}}').split('"/home/node"').join('"{{ROOT}}/.."').split('"/home"').join('"{{ROOT}}/../.."');
   if (out.includes('/home/node')) throw new Error('A sandbox path is left after the swap: ' + out.slice(Math.max(0, out.indexOf('/home/node') - 40), out.indexOf('/home/node') + 80));
   return out;
@@ -153,7 +157,7 @@ function main() {
     };
 
     const about = (what, extra = '') =>
-      `${what} Made by tools/fixtures-0.8/make.mjs from the published bowerloom@0.8.0-beta.1. Each key of "files" is a path with its mode and its text, or base64 when the bytes are not UTF-8. Paths hold the placeholders {{HOME}}, {{PROJECT}}, {{STATE}}, {{PROJECT_ID}}, and {{ROOT}} (the folder above HOME).${extra}`;
+      `${what} Made by tools/fixtures-0.8/make.mjs from the published bowerloom@0.8.0-beta.1. Each key of "files" is a path with its mode and its text, or base64 when the bytes are not UTF-8. Paths hold the placeholders {{HOME}}, {{PROJECT}}, {{STATE}}, {{PROJECT_ID}}, and {{ROOT}} (the folder above HOME). An address of a person in package metadata is {{EMAIL}}.${extra}`;
     const outputs = {
       'project.json': { about: about('A project after a 0.8 adopt, install for Claude Code and Codex, one skill pin, sync, apply, and lock update.'), ...project },
       'project-preview.json': { about: about('The same synthetic project, adopted and installed with BOWERLOOM_PREVIEW_ENGINES=1 for OpenCode, Pi, and DeepSeek Harness.'), ...projectPreview },

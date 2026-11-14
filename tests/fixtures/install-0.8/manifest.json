@@ -242,28 +242,29 @@
     "{{PROJECT}}",
     "{{STATE}}",
     "{{PROJECT_ID}}",
-    "{{ROOT}}"
+    "{{ROOT}}",
+    "{{EMAIL}}"
   ],
   "totalCapBytes": 1572864,
   "files": {
     "project.json": {
-      "bytes": 133494,
-      "sha256": "e05aa4901b339c6b85b2f4ff91a64c9ebef0ff5f1d3e6fc1cc43ac99d7cc8dac",
+      "bytes": 133551,
+      "sha256": "76a1fc45f893d84491d019d4615859bfec0ea92f3fed962eab8b5a9c5d9fcb41",
       "capBytes": 262144
     },
     "project-preview.json": {
-      "bytes": 10740,
-      "sha256": "1a936e3683391b103d3e4623c10ed70eb5c1c0f44acce1d56c58980b514c789a",
+      "bytes": 10797,
+      "sha256": "3a33b11027fc35f676c19d75495ea1eb8bff05800169683b72860fc5ec4c5cea",
       "capBytes": 262144
     },
     "home-store.json": {
-      "bytes": 23665,
-      "sha256": "6b1e23c2c828846656b49686182cf7aeb0213e108ae54e1cbd60858e7f40d9cd",
+      "bytes": 23722,
+      "sha256": "8eaa61c8b15697312c04c22c933ca28ddbf4aefad17cf0a9687c000a8b307463",
       "capBytes": 65536
     },
     "state.json": {
-      "bytes": 393287,
-      "sha256": "9b183bba7024d4b8c31d27dd60b88bb6a71096a53bc730a111fbf0f8d303a3b5",
+      "bytes": 393276,
+      "sha256": "3a6e7de257b299e54cd2c70a0af2686969ebba288354f5873660432684eeb234",
       "capBytes": 524288
     },
     "global-prefix.json": {

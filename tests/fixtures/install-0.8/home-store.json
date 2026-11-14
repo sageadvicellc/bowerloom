@@ -1,5 +1,5 @@
 {
-  "about": "The store ~/.bowerloom: one skill, one prompt, and one team made with --global, and the pinned skill. No git remote. Made by tools/fixtures-0.8/make.mjs from the published bowerloom@0.8.0-beta.1. Each key of \"files\" is a path with its mode and its text, or base64 when the bytes are not UTF-8. Paths hold the placeholders {{HOME}}, {{PROJECT}}, {{STATE}}, {{PROJECT_ID}}, and {{ROOT}} (the folder above HOME).",
+  "about": "The store ~/.bowerloom: one skill, one prompt, and one team made with --global, and the pinned skill. No git remote. Made by tools/fixtures-0.8/make.mjs from the published bowerloom@0.8.0-beta.1. Each key of \"files\" is a path with its mode and its text, or base64 when the bytes are not UTF-8. Paths hold the placeholders {{HOME}}, {{PROJECT}}, {{STATE}}, {{PROJECT_ID}}, and {{ROOT}} (the folder above HOME). An address of a person in package metadata is {{EMAIL}}.",
   "dirs": {
     "authoring": "0700",
     "prompts": "0700",
