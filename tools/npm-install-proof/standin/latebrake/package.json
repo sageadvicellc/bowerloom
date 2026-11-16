@@ -1,0 +1,16 @@
+{
+  "name": "latebrake",
+  "version": "0.9.0-beta.1",
+  "description": "Test stand-in with the name and the commands of latebrake, and none of its code. Every command is an echo probe.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "latebrake": "probe.mjs",
+    "latebrake-mcp": "probe.mjs",
+    "latebrake-guard": "probe.mjs"
+  },
+  "files": [
+    "probe.mjs"
+  ]
+}
