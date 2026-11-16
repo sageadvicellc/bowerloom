@@ -21,7 +21,7 @@ The files are in `tools/npm-install-proof/`:
 
 The run has two phases.
 
-1. Fetch, with the network on. `npm pack bowerloom@0.8.0-beta.1` downloads the real 0.8 tarball, and the proof checks it against the integrity that the registry lists. A real 0.8 run then makes a project, a store, and a private state folder in an owner-only HOME. This needs the pinned skill from registry.npmjs.org. These are the only reads from the network.
+1. Fetch, with the network on. The driver makes three reads from registry.npmjs.org. First, `npm pack bowerloom@0.8.0-beta.1` downloads the real 0.8 tarball. Second, `npm view` reads the integrity that the registry lists, and the proof checks the tarball against it. Third, the 0.8 command line reads the pinned skill. A real 0.8 run then makes a project, a store, and a private state folder in an owner-only HOME. That run uses the 0.8 command line itself. The fetch phase is registry-only by construction, not enforced. Nothing in it blocks another host.
 2. Run, with no network. In container mode the container runs with `docker run --network none`. In host mode the npm proxy settings point at a closed local port. Each case starts clean. It has an empty prefix, an empty cache, empty npm settings files, and a new HOME. It installs from the static registry with `--registry`.
 
 ## How to run it
@@ -39,7 +39,7 @@ node tools/npm-install-proof/run.mjs --out <new folder> --final-bowerloom-tarbal
 
 The driver removes its Docker volume at the end. Its image tag is `bowerloom-proof-node:dev`.
 
-The proof is not part of `npm test`, because it needs Docker and one registry read. `tools/test/npm-install-proof.test.mjs` runs in `npm test` with no network. It tests the static registry and the stand-in. If any file of the proof holds a command that writes to a registry, the test fails.
+The proof is not part of `npm test`, because it needs Docker and the registry reads. `tools/test/npm-install-proof.test.mjs` runs in `npm test` with no network. It tests the static registry and the stand-in. If any file of the proof holds a command that writes to a registry, the test fails.
 
 ## How to read the result
 
@@ -61,20 +61,23 @@ Each check has three fields. `status` is `pass`, `fail`, or `not run`. `detail` 
 | C3 | 0.8, then `latebrake`: six links, each into its own package, none replaced. |
 | C4 | `latebrake`, then 0.8: the same. |
 | C5 | Upgrade from 0.8 with `npm install -g bowerloom@latest`. The three old links point at the shims. It records whether npm linked any `latebrake` command from the nested copy. Each old command forwards stdout bytes, exit code, and standard input as a direct run does. |
-| C6 | The final `bowerloom` beside a global `latebrake`, in both orders. The old commands run the nested copy, and the version each probe prints says which copy ran. |
+| C6 | The final `bowerloom` beside a global `latebrake`, in both orders, with the global copy at another version and at the pinned version. The old commands run the nested copy. The probe run with `--which` prints `nested` or `global` from the folder of its own files, so the version alone does not decide. |
 | C7 | One command name in two packages. It records whether npm refuses, replaces the link, or needs `--force`, and what it prints. If the record is complete and the prefix is whole, the check passes. |
 | C8 | Uninstall in each order. No step leaves a link that points nowhere, and removing both leaves an empty `bin` and `lib/node_modules`. |
 | C9 | A real 0.8 run makes the project, store, and state trees. Their hashes, and the whole HOME, do not change across the npm steps. |
 | C10 | Through the shims, the MCP command, the guard command, and `context guard` add no byte to stdout and print no notice. |
 | C11 | The proof removes the nested `latebrake` entry file. Then the guard prints one deny line and exits 0. `context guard` exits 2 with empty stdout. The MCP command exits non-zero with empty stdout. |
 | C12 | The run phase made no request to any host but 127.0.0.1, and a read of a real host failed. |
-| C13 | Every npm command was a pack, install, uninstall, view, ls, or version command. No child process had an environment name beyond PATH, HOME, LANG, and npm settings. |
+| C13 | Every npm command was a pack, install, uninstall, view, ls, or version command. No child process had an environment name beyond PATH, HOME, LANG, and the 12 exact npm settings that the driver sets. |
 | C14 | The byte test with the real `latebrake` code. It does not run yet. It reports "not run" by design. |
 
-C6 runs both orders. Its entry holds both results.
+C6 runs four installs. Its entry holds each result.
 
 ## Limits
 
+- The proof ran with one npm version, 11.19.0, from the pinned image. Other versions are not tested.
+- The container run covers linux/arm64 only. Linux on x64 and macOS are not covered.
+- In host mode the proxy settings cover npm only. A program that ignores them, such as the 0.8 command line in the fetch phase, is not blocked.
 - The stand-in has no real `latebrake` code. A shim and a direct run are compared on the stand-in only.
 - The proof cannot press a terminal. The notice that the `bowerloom` command prints at a terminal is tested in `tools/test/final-bowerloom.test.mjs`, not here.
 - The container runs Linux. Command links and file modes can differ on macOS, which is why host mode exists.

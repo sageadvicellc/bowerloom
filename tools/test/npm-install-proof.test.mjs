@@ -107,6 +107,33 @@ test('the registry answers GET only: every other method gets 405 and changes not
   } finally { await registry.close(); }
 });
 
+test('the registry answers a large request body with 405 and Connection: close, and stays up', async () => {
+  const registry = await startRegistry({ packages: [sample] });
+  try {
+    const big = Buffer.alloc(8 * 1024 * 1024, 0x61);
+    for (const method of ['PUT', 'POST']) {
+      // The server closes the connection after it answers, so a client that is still sending may get the 405 or a reset. Both mean refusal.
+      const outcome = await request(`${registry.url}/sample-pkg`, { method, body: big }).catch(error => ({ reset: error.code }));
+      if (outcome.reset === undefined) {
+        assert.equal(outcome.status, 405, method);
+        assert.equal(outcome.headers.connection, 'close', method);
+        assert.equal(outcome.headers.allow, 'GET');
+      } else {
+        assert.ok(['ECONNRESET', 'EPIPE'].includes(outcome.reset), `${method}: ${outcome.reset}`);
+      }
+    }
+    // A small body always gets the whole answer, with the close header.
+    const small = await request(`${registry.url}/sample-pkg`, { method: 'PUT', body: '{}' });
+    assert.equal(small.status, 405);
+    assert.equal(small.headers.connection, 'close');
+    // The registry is still up, and logged each refusal as 405.
+    assert.equal((await request(`${registry.url}/sample-pkg`)).status, 200);
+    const refused = registry.requests.filter(row => row.method !== 'GET');
+    assert.equal(refused.length, 3);
+    assert.equal(refused.every(row => row.status === 405), true);
+  } finally { await registry.close(); }
+});
+
 test('the registry answers 404 for a package it does not hold, and refuses a malformed path', async () => {
   const registry = await startRegistry({ packages: [sample] });
   try {
@@ -141,6 +168,13 @@ test('the stand-in probe echoes arguments and standard input, writes one fixed s
   assert.equal(quiet.stdout, '');
   assert.equal(quiet.stderr, 'probe: fixed stderr line\n');
   assert.equal(run('probe.mjs', ['--exit=130'], '').status, 130);
+  // --which adds the marker of the copy. This folder is not nested inside a bowerloom package, so it reads as global. Without --which there is no marker.
+  assert.equal(JSON.parse(run('probe.mjs', ['--which'], '').stdout).copy, 'global');
+  assert.equal(Object.hasOwn(JSON.parse(run('probe.mjs', [], '').stdout), 'copy'), false);
+  const nested = path.join(base, 'node_modules', 'bowerloom', 'node_modules', 'latebrake');
+  fs.mkdirSync(path.dirname(nested), { recursive: true });
+  fs.cpSync(path.join(proofDir, 'standin/latebrake'), nested, { recursive: true });
+  assert.equal(JSON.parse(spawnSync(process.execPath, [path.join(nested, 'probe.mjs'), '--which'], { encoding: 'utf8' }).stdout).copy, 'nested');
 });
 
 test('the stand-in names the three commands and is private', () => {

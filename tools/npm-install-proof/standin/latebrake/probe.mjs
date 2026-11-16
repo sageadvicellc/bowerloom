@@ -22,8 +22,12 @@ const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const input = Buffer.concat(chunks).toString('utf8');
 
+// With --which, the line also says which copy ran: the one nested inside the final bowerloom package, or another one. It is read from
+// the folder of this file, so it needs no environment variable. Without --which the line is the same for every copy.
+const copy = here.split(path.sep).join('/').includes('/node_modules/bowerloom/node_modules/') ? 'nested' : 'global';
 if (!args.includes('--quiet')) {
-  process.stdout.write(`${JSON.stringify({ command, package: record.name, version: record.version, args, input })}\n`);
+  const marker = args.includes('--which') ? { copy } : {};
+  process.stdout.write(`${JSON.stringify({ command, package: record.name, version: record.version, args, input, ...marker })}\n`);
 }
 process.stderr.write('probe: fixed stderr line\n');
 process.exitCode = Number(option('exit') ?? 0);
