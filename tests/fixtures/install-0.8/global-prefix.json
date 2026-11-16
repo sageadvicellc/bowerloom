@@ -1,0 +1,20 @@
+{
+  "about": "The npm global prefix after `npm install -g bowerloom@0.8.0-beta.1` into an empty prefix. Each key of \"links\" is a path under the prefix. No package code.",
+  "links": {
+    "bin/bowerloom": "../lib/node_modules/bowerloom/dist/apps/cli/src/main.js",
+    "bin/bowerloom-guard": "../lib/node_modules/bowerloom/dist/apps/cli/src/guard-main.js",
+    "bin/bowerloom-mcp": "../lib/node_modules/bowerloom/dist/apps/mcp/src/main.js"
+  },
+  "package": {
+    "path": "lib/node_modules/bowerloom/package.json",
+    "fields": {
+      "name": "bowerloom",
+      "version": "0.8.0-beta.1",
+      "bin": {
+        "bowerloom": "dist/apps/cli/src/main.js",
+        "bowerloom-mcp": "dist/apps/mcp/src/main.js",
+        "bowerloom-guard": "dist/apps/cli/src/guard-main.js"
+      }
+    }
+  }
+}

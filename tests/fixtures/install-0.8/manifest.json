@@ -1,0 +1,277 @@
+{
+  "about": "How the install-0.8 fixtures were made. Written by tools/fixtures-0.8/make.mjs. The file hashes below are of the other five files.",
+  "package": {
+    "name": "bowerloom",
+    "version": "0.8.0-beta.1",
+    "registry": "https://registry.npmjs.org",
+    "integrity": "sha512-8HrwtMDM25dVcVgqZ9HKQn5YyK3PCbyUA4kzUG0bNGdXWIU4ZCTvjoMXJTGqVvPbLj63BZMoHo8LejhpFuhiIA=="
+  },
+  "node": "v24.21.0",
+  "npm": "11.19.0",
+  "image": "node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0",
+  "platform": "linux/arm64",
+  "runsAs": "the image user node (non-root); HOME is a new folder; XDG_STATE_HOME, BOWERLOOM_GITHUB_TOKEN, and BOWERLOOM_EVENT_LOG are unset",
+  "skillPin": {
+    "spec": "npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections",
+    "name": "@tanstack/db-skills",
+    "version": "0.0.1",
+    "license": "MIT",
+    "integrity": "sha512-AmFaDvmdDPI41WRX6s3CMGmmxFvjvBXeHmKc3XnssFdPApYcSl9nA220WypyUTMlMpxbhNqeleXm7w/YEUCbWA=="
+  },
+  "movedToPhaseA": [
+    {
+      "step": "skills sync",
+      "alsoMoved": [
+        "write project",
+        "harness adopt",
+        "harness install",
+        "skill create --global",
+        "prompt create --global",
+        "team create --global",
+        "use skill",
+        "lock update"
+      ],
+      "reason": "SKILLS_OFFLINE: the pin that phase A cached read as partial and unreadable in a second container, and the cause is not known. skills sync fetches the pin, so it runs with the network on."
+    }
+  ],
+  "notes": [
+    "Both adopt steps pass --every-engine guardrails, hooks, and mcp, so that the rule and the hook reach every engine of the harness. Without it the preview engines get no hook or MCP file. Each line that an engine carries more weakly is accepted with harness accept.",
+    "The preview project is adopted with OpenCode 1.18.30, Pi 1.4.0, and DeepSeek Harness 0.2.2-alpha.2, the versions that 0.8 writes locked-in parts for, and installed with BOWERLOOM_PREVIEW_ENGINES=1.",
+    "The lock holds only the pinned skill: a skill, prompt, or team written in the store is checked against its pushed copy on github.com, so the project uses only the pin.",
+    "The teams made here have no agents folder, so apply writes no .claude/agents file."
+  ],
+  "commands": [
+    {
+      "phase": "a",
+      "command": "npm install -g bowerloom@0.8.0-beta.1",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "tarball integrity: listed sha512-8HrwtMDM25dVcVgqZ9HKQn5YyK3PCbyUA4kzUG0bNGdXWIU4ZCTvjoMXJTGqVvPbLj63BZMoHo8LejhpFuhiIA==",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "npm view @tanstack/db-skills@0.0.1",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "skills add --global npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "skills add --global npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness adopt (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness adopt (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness install (first plan refused lines: 2)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness accept guardrails/deny-shell-abbb71ff@codex:4e72830cb6af",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness accept hooks/pre-tool-use-52407f3d@codex:afecc1f72997",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness install (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "harness install (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "skill create --global house-style (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "skill create --global house-style (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "prompt create --global weekly-update (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "prompt create --global weekly-update (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "team create --global review-desk (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "team create --global review-desk (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "use skill tanstack-db-collections (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "use skill tanstack-db-collections (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "skills sync (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "skills sync (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "lock update --item skill:tanstack-db-collections (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "a",
+      "command": "lock update --item skill:tanstack-db-collections (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "apply (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "apply (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "lock verify",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness adopt (preview engines) (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness adopt (preview engines) (approve)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness install (preview engines) (first plan refused lines: 7)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept guardrails/deny-shell-abbb71ff@codex:4e72830cb6af",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept hooks/pre-tool-use-52407f3d@codex:afecc1f72997",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept hooks/pre-tool-use-52407f3d@opencode:afecc1f72997",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept guardrails/deny-shell-abbb71ff@pi:4e72830cb6af",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept hooks/pre-tool-use-52407f3d@pi:afecc1f72997",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept guardrails/deny-shell-abbb71ff@deepseek-harness:4e72830cb6af",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness accept hooks/pre-tool-use-52407f3d@deepseek-harness:afecc1f72997",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness install (preview engines) (plan)",
+      "exit": 0
+    },
+    {
+      "phase": "b",
+      "command": "harness install (preview engines) (approve)",
+      "exit": 0
+    }
+  ],
+  "placeholders": [
+    "{{HOME}}",
+    "{{PROJECT}}",
+    "{{STATE}}",
+    "{{PROJECT_ID}}",
+    "{{ROOT}}",
+    "{{EMAIL}}"
+  ],
+  "totalCapBytes": 1572864,
+  "files": {
+    "project.json": {
+      "bytes": 133551,
+      "sha256": "76a1fc45f893d84491d019d4615859bfec0ea92f3fed962eab8b5a9c5d9fcb41",
+      "capBytes": 262144
+    },
+    "project-preview.json": {
+      "bytes": 10797,
+      "sha256": "3a33b11027fc35f676c19d75495ea1eb8bff05800169683b72860fc5ec4c5cea",
+      "capBytes": 262144
+    },
+    "home-store.json": {
+      "bytes": 23722,
+      "sha256": "8eaa61c8b15697312c04c22c933ca28ddbf4aefad17cf0a9687c000a8b307463",
+      "capBytes": 65536
+    },
+    "state.json": {
+      "bytes": 393276,
+      "sha256": "3a6e7de257b299e54cd2c70a0af2686969ebba288354f5873660432684eeb234",
+      "capBytes": 524288
+    },
+    "global-prefix.json": {
+      "bytes": 792,
+      "sha256": "45eb51d15abfd052c8103a6517b96d17cd9f4bfaac1f4d1e9b244ff913baa0b2",
+      "capBytes": 16384
+    }
+  },
+  "manifestCapBytes": 32768
+}
