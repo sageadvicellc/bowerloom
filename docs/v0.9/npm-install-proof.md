@@ -68,13 +68,14 @@ Each check has three fields. `status` is `pass`, `fail`, or `not run`. `detail` 
 | C10 | Through the shims, the MCP command, the guard command, and `context guard` add no byte to stdout and print no notice. |
 | C11 | The proof removes the nested `latebrake` entry file. Then the guard prints one deny line and exits 0. `context guard` exits 2 with empty stdout. The MCP command exits non-zero with empty stdout. |
 | C12 | The run phase made no request to any host but 127.0.0.1, and a read of a real host failed. |
-| C13 | Every npm command was a pack, install, uninstall, view, ls, or version command. No child process had an environment name beyond PATH, HOME, LANG, and the 12 exact npm settings that the driver sets. |
+| C13 | Every npm command was a pack, install, uninstall, view, ls, or version command. No child process had an environment name beyond PATH, HOME, LANG, and the 12 exact npm settings that the driver sets. The check reads only the commands that the driver starts. It does not see a process that the 0.8 command line starts inside the fetch phase. |
 | C14 | The byte test with the real `latebrake` code. It does not run yet. It reports "not run" by design. |
 
 C6 runs four installs. Its entry holds each result.
 
 ## Limits
 
+- The static registry closes the connection after it answers a method other than GET. A client that is still sending a large body can get a reset instead of the 405. In 30 runs with an 8 MiB body, 23 gave a reset and 7 gave a clean 405. Both mean the request was refused, and the test accepts both.
 - The proof ran with one npm version, 11.19.0, from the pinned image. Other versions are not tested.
 - The container run covers linux/arm64 only. Linux on x64 and macOS are not covered.
 - In host mode the proxy settings cover npm only. A program that ignores them, such as the 0.8 command line in the fetch phase, is not blocked.
