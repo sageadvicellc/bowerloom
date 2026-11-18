@@ -107,15 +107,22 @@ test('A8. orphans: the sidecar ends after a normal quit, kill -9 of the shell an
   assert.deepEqual(Object.keys(outcomes), ['quit', 'kill9', 'crash']);
 });
 
-test('A8b. a sidecar stuck in a busy loop when the shell is killed with kill -9 (informational: records whether it is left behind)', { timeout: 120000 }, async t => {
-  const started = launch(t, 'hold-stuck', {}, TAURI);
-  const pids = await waitFor(() => started.result(), 30000);
-  assert.ok(pids, 'the shell reported its process ids');
-  await new Promise(resolve => setTimeout(resolve, 500));
-  process.kill(pids.mainPid, 'SIGKILL');
-  await started.ended;
-  const gone = (await waitFor(() => !alive(pids.childPid), 5000)) === true;
-  t.diagnostic(`stuck sidecar after kill -9 of the shell: ${gone ? 'ended' : 'LEFT BEHIND'}`);
-  if (!gone) process.kill(pids.childPid, 'SIGKILL');
-  assert.equal(typeof gone, 'boolean');
+const STUCK_LIMIT_MS = 3000; // proposal: not approved
+
+test('A8b. 10 runs: a sidecar stuck in a busy loop ends within 3 s (proposal) after kill -9 of the shell (10 of 10)', { timeout: 300000 }, async t => {
+  const times = [];
+  for (let run = 0; run < 10; run += 1) {
+    const started = launch(t, 'hold-stuck', {}, TAURI);
+    const pids = await waitFor(() => started.result(), 30000);
+    assert.ok(pids, `run ${run}: the shell reported its process ids`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    assert.ok(alive(pids.childPid), `run ${run}: the sidecar runs`);
+    const began = Date.now();
+    process.kill(pids.mainPid, 'SIGKILL');
+    const gone = (await waitFor(() => !alive(pids.childPid), 10000, 10)) === true;
+    times.push(gone ? Date.now() - began : null);
+    if (!gone) process.kill(pids.childPid, 'SIGKILL');
+  }
+  t.diagnostic(`stuck sidecar after kill -9, ms to end per run: ${JSON.stringify(times)}`);
+  assert.equal(times.filter(ms => ms !== null && ms <= STUCK_LIMIT_MS).length, 10);
 });

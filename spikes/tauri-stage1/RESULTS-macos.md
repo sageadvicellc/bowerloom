@@ -61,7 +61,13 @@ Result: PASS on all 10 criteria. They ran on the build made before the Mac went 
 - In-flight call: `FAILED`, ran 1 time, 0 replays.
 - Plan state: control write ok. After a restart the old folder id gives `UNKNOWN_FOLDER`. After the folder is opened again, the write gives `NOT_THE_PLAN_SHOWN`, and folder b is unchanged.
 - Orphans: normal quit 1 of 1, `kill -9` of the shell 1 of 1, shell crash (abort, SIGABRT) 1 of 1. The sidecar ends because its stdin closes.
-- Finding: a sidecar stuck in a busy loop does not read its stdin. After `kill -9` of the shell it is LEFT BEHIND (1 of 1 observed). The Electron utility process does not have this gap. A fix needs a watch from outside the loop, such as a parent check in a second thread. Not built.
+- Finding, then fix: a sidecar stuck in a busy loop did not read its stdin. After `kill -9` of the shell it was LEFT BEHIND (1 of 1 observed). The Electron utility process does not have this gap.
+- Fix (maintainer's choice): a watchdog in a worker thread inside the sidecar (`src/stdio.ts`, Node only, no package). The worker reads stdin and polls the parent process id every 250 ms. On end of stdin or a changed parent it tells the main thread to exit. If the main thread has not exited after 1 s, the worker ends the process with SIGKILL.
+- Time limit tested: 3 s (proposal, not approved).
+- After the fix: 10 of 10 stuck sidecars ended after `kill -9` of the shell. Times in ms: 1010, 1018, 1012, 1008, 1011, 1011, 1009, 1010, 1009, 1006. Slowest 1,018 ms.
+- Core tests with no shell: 8 of 8, including a busy core after closed stdin (1.4 s) and after SIGKILL of its parent (1.4 s), and 20 pings on a healthy core.
+- After the fix, all of Part A reran: 10 of 10 pass. Same counts as before: events 10,000 of 10,000, in-flight 0 replays, plan state `NOT_THE_PLAN_SHOWN`, orphans 3 of 3, 30 s limit failed at 30,007 ms.
+- Kill and restart after the fix: 100 of 100 within 5 s. Slowest 124 ms, median 120 ms. Before the fix: slowest 109 ms, median 107 ms. The cost is about 12 to 15 ms per start (a worker thread starts with the core).
 - Command: `node --test --test-concurrency=1 test/part-a.test.mjs`.
 
 ### Gate 1 Part B on macOS, unsigned part
@@ -74,13 +80,13 @@ Result: PASS on all 10 criteria. They ran on the build made before the Mac went 
 
 ### Gate 2 on macOS (WKWebView) and WebGL 2
 
-Rerun 2026-11-18 13:19 EST, macOS 27.2.1, WebKit 605.1.15 (the system WKWebView; the user agent gives no finer number). Before the run: `IOConsoleLocked` = No, display awake (`pmset -g assertions`: `InternalPreventDisplaySleep` 1, `UserIsActive` 1). The window was hidden for every test. No test needed a visible window.
+Rerun 2026-11-18 13:19 EST, macOS 27.2.1, WebKit 605.1.15 (the system WKWebView, and the user agent gives no finer number). Before the run: `IOConsoleLocked` = No, display awake (`pmset -g assertions`: `InternalPreventDisplaySleep` 1, `UserIsActive` 1). The window was hidden for every test. No test needed a visible window.
 Result: PASS, 6 of 6 (`node --test --test-concurrency=1 test/gate2.test.mjs`).
 - 7 of 7 web features work: container queries, `:has()`, `color-mix`, `backdrop-filter`, `text-wrap`, `ResizeObserver`, Web Animations.
 - Caveat: a hidden window gets no animation frames (`requestAnimationFrame` did not run, `visibilityState` = hidden). So Web Animations was tested by finishing the animation by hand, not by letting time pass. Natural playback is not verified. The plan's frame test is Linux only.
 - Page scheme: `tauri://localhost`, secure context, not `file:`. PASS.
 - CSP: an inline script, a remote script, a remote fetch and a remote image were each blocked (4 of 4, 5 violation events). One more violation shows the page's own IPC channel `ipc://localhost` is blocked by this policy, and Tauri falls back to another path. The real policy needs an `ipc:` rule.
-- Permissions: geolocation `prompt` and the request returned an error (refused). Notifications `default` (not granted). `window.open` returned null. Clipboard: the permission state is not available in WKWebView (TypeError). Calling `navigator.clipboard.readText()` in the hidden window never answers and stops the page (observed, 60 s), so it was not used. So "clipboard refused" is only "not granted". The Electron app refuses every request through a handler. Here the refusal is WebKit's default, tested in a hidden window, and a visible window may show prompts. Camera and microphone were not asked, to avoid a system prompt.
+- Permissions: geolocation `prompt` and the request returned an error (refused). Notifications `default` (not granted). `window.open` returned null. Clipboard: the permission state is not available in WKWebView (TypeError). Calling `navigator.clipboard.readText()` in the hidden window never answers and stops the page (observed, 60 s), so it was not used. So "clipboard refused" is only "not granted". The Electron app refuses every request through a handler. Here the refusal is WebKit's default, tested in a hidden window, and a visible window is untested. Camera and microphone were not asked, to avoid a system prompt.
 - WebGL 2 (engine amendment proposal): PASS. Context made, vertex and fragment shaders compiled, program linked, one frame drawn, pixel read back [255, 0, 0, 255]. `WebGL 2.0`, renderer `Apple GPU`, GL error 0.
 
 ### Gate 3 on macOS

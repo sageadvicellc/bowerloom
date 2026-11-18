@@ -75,6 +75,46 @@ test('A0.4 the core ends by itself when its stdin closes (the shell is gone)', a
   assert.equal(end.code, 0);
 });
 
+// The watchdog: a worker thread in the sidecar that watches stdin for end-of-file and polls for a changed parent process id. Time limit (proposal): 3 seconds.
+const WATCHDOG_LIMIT_MS = 3000;
+
+test('A0.6 a core stuck in a busy loop ends within the limit (proposal: 3 s) when its stdin closes', async t => {
+  const core = startCore(t);
+  await core.next(m => m.type === 'ready');
+  core.send({ type: 'call', id: 1, method: 'spin', args: [] });
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const began = Date.now();
+  core.child.stdin.end();
+  const end = await Promise.race([core.ended, giveUpAfter(10000)]);
+  assert.ok(end, 'the busy core ended');
+  assert.ok(Date.now() - began <= WATCHDOG_LIMIT_MS, `ended after ${Date.now() - began} ms`);
+});
+
+test('A0.7 a core stuck in a busy loop ends within the limit when its parent is killed with SIGKILL', async t => {
+  const parent = spawn(process.execPath, [join(SPIKE, 'test', 'helpers', 'parent.mjs'), CORE, 'busy'], { stdio: ['ignore', 'pipe', 'inherit'] });
+  t.after(() => parent.kill('SIGKILL'));
+  const pid = await new Promise(resolve => parent.stdout.once('data', chunk => resolve(Number(String(chunk).trim()))));
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const alive = p => { try { process.kill(p, 0); return true; } catch { return false; } };
+  assert.ok(alive(pid), 'the busy core runs');
+  const began = Date.now();
+  parent.kill('SIGKILL');
+  const gone = await waitFor(() => !alive(pid), 10000);
+  if (!gone) process.kill(pid, 'SIGKILL');
+  assert.equal(gone, true, 'the busy core ended');
+  assert.ok(Date.now() - began <= WATCHDOG_LIMIT_MS, `ended after ${Date.now() - began} ms`);
+});
+
+test('A0.8 a healthy core keeps working after the watchdog starts (no early exit, 20 pings over 2 s)', async t => {
+  const core = startCore(t);
+  await core.next(m => m.type === 'ready');
+  for (let i = 1; i <= 20; i += 1) {
+    core.send({ type: 'call', id: i, method: 'ping', args: [] });
+    assert.equal((await core.next(m => m.type === 'result' && m.id === i)).ok, true);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+});
+
 test('A0.5 the core holds no listening port', async t => {
   const core = startCore(t);
   await core.next(m => m.type === 'ready');
