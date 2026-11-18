@@ -14,6 +14,12 @@
     "test": "npm run build && npm run test:unit && node --test --test-reporter=spec --test-concurrency=1 test/part-c.test.mjs",
     "payload": "npm run build && node scripts/measure-payload.mjs",
     "package": "npm run build && ../../apps/desktop/node_modules/.bin/electron-builder --projectDir app --mac dmg zip --arm64 --publish never",
-    "test:packaged": "node scripts/run-packaged.mjs"
+    "test:packaged": "node scripts/run-packaged.mjs",
+    "build:tauri": "node build.mjs --tauri && node scripts/prepare-tauri.mjs && node scripts/tauri-build.mjs",
+    "test:tauri": "node --test --test-reporter=spec --test-concurrency=1 test/sidecar-core.test.mjs test/part-a.test.mjs test/part-b.test.mjs test/gate2.test.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "2.12.5",
+    "@tauri-apps/cli": "2.12.5"
   }
 }

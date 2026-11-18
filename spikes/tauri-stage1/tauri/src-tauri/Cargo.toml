@@ -1,0 +1,16 @@
+[package]
+name = "bowerloom-tauri-spike"
+version = "0.0.0"
+description = "Stage 1 spike of the Tauri move: a hidden shell that starts the Node core as a sidecar. Not shipped."
+authors = ["Sage Advice LLC"]
+license = "MIT"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }

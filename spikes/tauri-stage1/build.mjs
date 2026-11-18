@@ -1,7 +1,9 @@
-// Bundles the spike with the app's own esbuild: the child (the Node core, with the shipped code bundled in) and the Electron main process of the spike.
-// Output: app/dist/child.mjs and app/dist/main.mjs. Same bundling rules as apps/desktop/tools/bundle.mjs.
+// Bundles the spike with the app's own esbuild.
+//   node build.mjs           the Electron side: app/dist/child.mjs (the Node core) and app/dist/main.mjs (the spike main process)
+//   node build.mjs --tauri   the Tauri side: tauri/src-tauri/resources/core.mjs (the Node core as the sidecar script) and tauri/dist (the page)
+// Same bundling rules as apps/desktop/tools/bundle.mjs.
 import { createRequire } from 'node:module';
-import { rmSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +13,17 @@ const { build } = createRequire(join(desktop, 'package.json'))('esbuild');
 const banner = "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);";
 const common = { bundle: true, sourcemap: true, logLevel: 'warning', target: 'node24', format: 'esm', platform: 'node', external: ['electron'], banner: { js: banner } };
 
-rmSync(join(here, 'app', 'dist'), { recursive: true, force: true });
-await build({ ...common, entryPoints: [join(here, 'src', 'child.ts')], outfile: join(here, 'app', 'dist', 'child.mjs') });
-await build({ ...common, entryPoints: [join(here, 'src', 'main.mjs')], outfile: join(here, 'app', 'dist', 'main.mjs') });
+if (process.argv.includes('--tauri')) {
+  rmSync(join(here, 'tauri', 'dist'), { recursive: true, force: true });
+  rmSync(join(here, 'tauri', 'src-tauri', 'resources'), { recursive: true, force: true });
+  // The sidecar script. No source map: it sits in the app bundle.
+  await build({ ...common, sourcemap: false, entryPoints: [join(here, 'src', 'stdio.ts')], outfile: join(here, 'tauri', 'src-tauri', 'resources', 'core.mjs') });
+  // The page: the scenarios, with the Tauri API bundled in.
+  await build({ bundle: true, logLevel: 'warning', target: 'safari16', format: 'iife', platform: 'browser', entryPoints: [join(here, 'tauri', 'page', 'main.js')], outfile: join(here, 'tauri', 'dist', 'page.js') });
+  mkdirSync(join(here, 'tauri', 'dist'), { recursive: true });
+  for (const file of ['index.html', 'features.css']) cpSync(join(here, 'tauri', 'page', file), join(here, 'tauri', 'dist', file));
+} else {
+  rmSync(join(here, 'app', 'dist'), { recursive: true, force: true });
+  await build({ ...common, entryPoints: [join(here, 'src', 'child.ts')], outfile: join(here, 'app', 'dist', 'child.mjs') });
+  await build({ ...common, entryPoints: [join(here, 'src', 'main.mjs')], outfile: join(here, 'app', 'dist', 'main.mjs') });
+}

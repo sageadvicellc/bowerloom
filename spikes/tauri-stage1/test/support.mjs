@@ -13,6 +13,12 @@ export const APP_DIR = join(SPIKE, 'app');
 export const PACKAGED = typeof process.env.SPIKE_ELECTRON_EXE === 'string' && process.env.SPIKE_ELECTRON_EXE !== '';
 export const ELECTRON_EXE = PACKAGED ? process.env.SPIKE_ELECTRON_EXE : join(DESKTOP, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
 
+/** The Tauri spike app, as `npm run tauri:build` makes it. */
+export const TAURI_NAME = 'Bowerloom Tauri Spike';
+export const TAURI_APP = join(SPIKE, 'tauri', 'src-tauri', 'target', 'release', 'bundle', 'macos', `${TAURI_NAME}.app`);
+export const tauriExe = (app = TAURI_APP) => join(app, 'Contents', 'MacOS', 'bowerloom-tauri-spike');
+export const TAURI = Object.freeze({ exe: tauriExe(), packaged: true });
+
 export function tempDir(t, prefix = 'stage1-') {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -58,8 +64,8 @@ export function launch(t, scenario, options = {}, { exe = ELECTRON_EXE, packaged
 }
 
 /** Runs a scenario to its end and returns its result. A run that ends with no result file is a failure that names the exit and the error text. */
-export async function run(t, scenario, options = {}) {
-  const started = launch(t, scenario, options);
+export async function run(t, scenario, options = {}, launchOptions = {}) {
+  const started = launch(t, scenario, options, launchOptions);
   const end = await started.ended;
   const result = started.result();
   if (result === null) throw new Error(`scenario ${scenario} left no result (exit ${end.code} ${end.signal}): ${started.stderr().slice(0, 600)}`);

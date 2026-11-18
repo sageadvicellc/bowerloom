@@ -41,4 +41,50 @@ The core in the child is the shipped code: the reader and the engine service (wh
 
 Not run: the x64 dmg and zip. The Electron dist used is the arm64 one, and an x64 run needs Rosetta. The shipped app's own packaging is unchanged. The spike packages its own app with the same settings.
 
+## Tauri work (scope extension)
+
+Dev dependencies, in the spike's own `package.json`: `@tauri-apps/cli` 2.12.5 and `@tauri-apps/api` 2.12.5, both pinned exactly. `npm install` added 3 packages, the third being the CLI's own binary package `@tauri-apps/cli-darwin-arm64`.
+Rust: rustc and cargo 1.100.0. Tauri crate 2.12.6, 427 packages locked, no other crate added by hand. The shell uses the standard library to run the sidecar, not the shell plugin.
+Cargo registry: before 0 KB. After the first build: 177,600 KB (237 crates in the cache). Build time: the first build, with the download, took 19 s and stopped on a missing icon. The next build took 6 s. Warnings: 0. The build output folder is 1.1 GB (ignored by git).
+Bundle: 127.59 MiB. The shell binary is 14.5 MB. The sidecar is a copy of the repository's Node 24.11.0 runtime (112.1 MiB). The core script (1.7 MB) is a resource. This is the plan's second way to package Node.
+Channel: the sidecar's stdin and stdout, one JSON line each way. Only the shell holds the pipe. No port is open (checked with `lsof`). The plan shown last lives in the sidecar, in the shipped engine service, next to the writes it guards.
+Reproduce: `npm run build:tauri`, then `npm run test:tauri`.
+
+### Gate 1 Part A on macOS (Tauri shell, Node sidecar)
+
+Result: PASS on all 10 criteria. They ran on the build made before the Mac went to sleep (see "What did not run").
+- Core with no shell: 5 of 5 plain Node tests pass. They cover ping, 10,000 ordered events, bad input, exit on closed stdin, and no port. File: `test/sidecar-core.test.mjs`.
+- Ping 1 of 1. Large payload (16,725,305 bytes, 9,950 items) returns whole through the page, 1.9 s, size and hash equal. Small payload whole.
+- Events: 10,000 sent, 10,000 received in the page, in order, 0 duplicates, 0 missing.
+- 30-second limit (proposal): 1 call returned in 1,004 ms. 2 failed with `FAILED` at 30,011 ms. Both sidecars came back.
+- Kill and restart: 100 of 100 recovered, 100 of 100 within 5 s (proposal). Slowest 109 ms, median 107 ms.
+- In-flight call: `FAILED`, ran 1 time, 0 replays.
+- Plan state: control write ok. After a restart the old folder id gives `UNKNOWN_FOLDER`. After the folder is opened again, the write gives `NOT_THE_PLAN_SHOWN`, and folder b is unchanged.
+- Orphans: normal quit 1 of 1, `kill -9` of the shell 1 of 1, shell crash (abort, SIGABRT) 1 of 1. The sidecar ends because its stdin closes.
+- Finding: a sidecar stuck in a busy loop does not read its stdin. After `kill -9` of the shell it is LEFT BEHIND (1 of 1 observed). The Electron utility process does not have this gap. A fix needs a watch from outside the loop, such as a parent check in a second thread. Not built.
+- Command: `node --test --test-concurrency=1 test/part-a.test.mjs`.
+
+### Gate 1 Part B on macOS, unsigned part
+
+- B1 pass: the bundle holds the runtime beside the shell and the core script in Resources.
+- B2 pass: the shell binary is ad-hoc, linker-signed. The bundle is not sealed. No team, no Developer ID.
+- B3 (copy to a path with spaces and non-ASCII characters, start the sidecar) and B4 (a scan call from that path): written, NOT RUN, because the page did not run after the machine slept (below). Part A ran the same app from its build path.
+- Notarized criterion: NOT RUN. It waits for the Apple spend decision. Gate 1 cannot pass for macOS until it runs.
+
+### Gate 2 on macOS (WKWebView) and WebGL 2
+
+NOT RUN. Tests are written (`test/gate2.test.mjs`: 7 features, page scheme, 4 CSP checks, 4 permission checks, WebGL 2) and the page code is built. The first run of the combined scenario stalled. After that the page stopped running at all, even the ping that had passed. At that time the Mac was in clamshell sleep and cycling between sleep and dark wake (`pmset -g log`), and the console was locked. So no pass or fail exists. macOS 27.2.1. No claim is made about the cause of the first stall: it happened before the sleep was noticed and it is open. Camera and microphone are not asked, to avoid a system prompt.
+
+### Gate 3 on macOS
+
+NOT RUN. Stopped as the brief says. The WebdriverIO route needs packages that are not in the repository (no `webdriverio` or `@wdio/*` is installed):
+- `@wdio/tauri-service` 1.5.1, from the npm registry, 1.0 MB unpacked. It depends on `webdriverio` 9.31.9 (2.3 MB unpacked) and eleven more `@wdio/*` packages. `@wdio/cli` 10.2.0 (0.1 MB) is also needed to run it.
+- On macOS the plan says the app embeds a WebDriver server. That needs a Rust crate in the app that is not approved.
+Not added. The smoke check needs a visible window and an Accessibility permission for the harness. Not run.
+
+## What did not run
+
+- Gate 2, WebGL 2, Part B items B3 and B4, Gate 3: see above.
+- No denial from any hook, classifier or sandbox. One transient classifier failure was retried once.
+
 Existing gates: root and desktop `typecheck`: 0 errors. Spike `typecheck`: 0 errors. Desktop `npm test`: 2,656 pass, 1 fail, in `tests/context-linked-notes.test.ts` ("a swapped shortcut needs a new pick": `rmSync` on a directory, `ERR_FS_EISDIR`). That test is outside this change and not touched. The repo has no `lint` script. Desktop `npm run build` was not run (it builds x64 too and nothing in the app changed).

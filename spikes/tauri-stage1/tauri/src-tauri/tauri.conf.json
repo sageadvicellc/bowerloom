@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bowerloom Tauri Spike",
+  "version": "0.0.0",
+  "identifier": "com.sageadvice.bowerloom.stage1tauri",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bowerloom Tauri Spike",
+        "width": 800,
+        "height": 600,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "externalBin": ["binaries/node"],
+    "resources": {
+      "resources/core.mjs": "core.mjs"
+    }
+  }
+}
