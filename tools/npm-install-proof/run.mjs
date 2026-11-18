@@ -42,7 +42,12 @@ const SKILL_SPEC = 'npm:@tanstack/db-skills@0.0.1:skills/tanstack-db/collections
 // The npm commands that the driver may run. Check C13 fails on any other command.
 const ALLOWED_NPM = new Set(['pack', 'install', 'uninstall', 'view', 'ls', '--version']);
 // The names that a child process may have in its environment. Check C13 fails on any other name.
-const ALLOWED_ENV = /^(?:PATH|HOME|LANG|npm_config_[a-z_]+)$/;
+// These are the exact names that the driver sets, and no others. An npm setting such as one for an auth value is not on the list.
+const ALLOWED_ENV = new Set([
+  'PATH', 'HOME', 'LANG',
+  'npm_config_userconfig', 'npm_config_globalconfig', 'npm_config_cache', 'npm_config_update_notifier', 'npm_config_fund', 'npm_config_audit',
+  'npm_config_progress', 'npm_config_fetch_retries', 'npm_config_prefix', 'npm_config_proxy', 'npm_config_https_proxy', 'npm_config_noproxy',
+]);
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const clip = (value, max = 3000) => { const text = Buffer.isBuffer(value) ? value.toString('utf8') : String(value); return text.length > max ? `${text.slice(0, max)}... (${text.length - max} more characters)` : text; };
@@ -539,8 +544,9 @@ async function runPhase(proof, fetched) {
   });
 
   // C6: the final package beside a global stand-in, in both orders.
-  const finalBeside = async (id, title, name, order) => check(id, title, async () => {
-    if (finalTar === null) return notRun(NO_FINAL);
+  // The global copy is installed at a version that differs from the nested copy, and at the pinned version. At the pinned version the
+  // version cannot tell the copies apart, so each probe is run with --which, which makes it print where its own files are.
+  const finalBeside = async (name, order, globalVersion) => {
     const c = newCase(proof, name);
     try {
       const problems = [];
@@ -555,18 +561,32 @@ async function runPhase(proof, fetched) {
       if (JSON.stringify(Object.keys(found).sort()) !== JSON.stringify(all)) problems.push(`The links are ${JSON.stringify(Object.keys(found).sort())}, not the six commands.`);
       const ran = {};
       for (const [oldName, newName] of PAIRS) {
-        const viaOld = await runLink(c, oldName, ['--exit=0'], 'in\n');
-        const viaNew = await runLink(c, newName, ['--exit=0'], 'in\n');
-        ran[oldName] = viaOld.probe?.version ?? null;
-        ran[newName] = viaNew.probe?.version ?? null;
-        if (ran[oldName] !== standinVersion) problems.push(`${oldName} ran version ${ran[oldName]}, not the nested copy ${standinVersion}.`);
-        if (ran[newName] !== OTHER_LATEBRAKE) problems.push(`${newName} ran version ${ran[newName]}, not the global copy ${OTHER_LATEBRAKE}.`);
+        const viaOld = await runLink(c, oldName, ['--which', '--exit=0'], 'in\n');
+        const viaNew = await runLink(c, newName, ['--which', '--exit=0'], 'in\n');
+        ran[oldName] = { version: viaOld.probe?.version ?? null, copy: viaOld.probe?.copy ?? null };
+        ran[newName] = { version: viaNew.probe?.version ?? null, copy: viaNew.probe?.copy ?? null };
+        if (ran[oldName].copy !== 'nested' || ran[oldName].version !== standinVersion) problems.push(`${oldName} ran the ${ran[oldName].copy} copy at version ${ran[oldName].version}, not the nested copy ${standinVersion}.`);
+        if (ran[newName].copy !== 'global' || ran[newName].version !== globalVersion) problems.push(`${newName} ran the ${ran[newName].copy} copy at version ${ran[newName].version}, not the global copy ${globalVersion}.`);
       }
-      return verdict(problems, `No clash. The old commands run the nested copy (${standinVersion}), and the new commands run the global copy (${OTHER_LATEBRAKE}).`, { steps, links: found, packages: packages(c), nestedLatebrake: nestedLatebrake(c), versionEachCommandRuns: ran });
+      return verdict(problems, `No clash. The old commands run the nested copy (${standinVersion}), and the new commands run the global copy (${globalVersion}).`, { steps, links: found, packages: packages(c), nestedLatebrake: nestedLatebrake(c), eachCommandRuns: ran });
     } finally { dropCase(c); }
+  };
+  await check('C6', 'The final bowerloom beside a global latebrake, in both orders', async () => {
+    if (finalTar === null) return notRun(NO_FINAL);
+    const runs = {};
+    const problems = [];
+    for (const [label, name, order, globalVersion] of [
+      ['final first, global latebrake at another version', 'c6a', ['bowerloom@latest', `latebrake@${OTHER_LATEBRAKE}`], OTHER_LATEBRAKE],
+      ['latebrake first, at another version', 'c6b', [`latebrake@${OTHER_LATEBRAKE}`, 'bowerloom@latest'], OTHER_LATEBRAKE],
+      ['final first, global latebrake at the pinned version', 'c6c', ['bowerloom@latest', `latebrake@${standinVersion}`], standinVersion],
+      ['latebrake first, at the pinned version', 'c6d', [`latebrake@${standinVersion}`, 'bowerloom@latest'], standinVersion],
+    ]) {
+      const result = await finalBeside(name, order, globalVersion);
+      runs[label] = { status: result.status, detail: result.detail, observed: result.observed };
+      if (result.status !== 'pass') problems.push(`${label}: ${result.detail}`);
+    }
+    return verdict(problems, 'No clash in any of the four runs. The old commands run the nested copy, and the new commands run the global copy. The probe marker, not the version alone, tells the copies apart.', { runs });
   });
-  await finalBeside('C6', 'The final bowerloom beside a global latebrake, final first', 'c6a', ['bowerloom@latest', `latebrake@${OTHER_LATEBRAKE}`]);
-  await finalBeside('C6b', 'The final bowerloom beside a global latebrake, latebrake first', 'c6b', [`latebrake@${OTHER_LATEBRAKE}`, 'bowerloom@latest']);
 
   // C7: one command name in two packages. Both orders are recorded.
   await check('C7', 'The same command name in two packages', async () => {
@@ -777,26 +797,18 @@ async function runPhase(proof, fetched) {
     const verbs = npmCommands.map(entry => entry.argv.slice(1).find(arg => !arg.startsWith('-')) ?? entry.argv[1]);
     const outsideList = [...new Set(verbs.filter(verb => !ALLOWED_NPM.has(verb)))];
     if (outsideList.length > 0) problems.push(`These npm commands are not on the allowed list: ${outsideList.join(', ')}.`);
-    const badEnv = [...new Set(fullLog().flatMap(entry => entry.envNames ?? []).filter(name => !ALLOWED_ENV.test(name)))];
+    const badEnv = [...new Set(fullLog().flatMap(entry => entry.envNames ?? []).filter(name => !ALLOWED_ENV.has(name)))];
     if (badEnv.length > 0) problems.push(`These environment names reached a child process: ${badEnv.join(', ')}.`);
     const counts = {};
     for (const verb of verbs) counts[verb] = (counts[verb] ?? 0) + 1;
-    return verdict(problems, 'Every npm command of the run is a pack, install, uninstall, view, ls, or version command, and no child process had a name in its environment beyond PATH, HOME, LANG, and npm_config settings.', { npmCommandCount: npmCommands.length, verbs: counts, requestMethodsAtRegistry: [...new Set(registry.requests.map(r => r.method))] });
+    return verdict(problems, 'Every npm command of the run is a pack, install, uninstall, view, ls, or version command, and no child process had an environment name beyond PATH, HOME, LANG, and the 12 exact npm settings that the driver sets.', { npmCommandCount: npmCommands.length, verbs: counts, requestMethodsAtRegistry: [...new Set(registry.requests.map(r => r.method))] });
   });
 
   checks.C14 = { id: 'C14', title: 'Real code', status: 'not run', detail: 'not run by design: the byte test needs the real latebrake tarball, and a real latebrake cannot be built before the rename.', observed: { latebrakeTarballGiven: 'latebrake-real' in hashes, latebrakeTarball: hashes['latebrake-real'] ?? null } };
 
   await registry.close();
   dropCase(ref);
-  // C6 covers both orders in the plan. The two runs are folded into one entry so that the result holds C1 to C14.
   const folded = { ...checks };
-  if (folded.C6b) {
-    const a = folded.C6;
-    const b = folded.C6b;
-    const status = a.status === 'not run' && b.status === 'not run' ? 'not run' : a.status === 'pass' && b.status === 'pass' ? 'pass' : 'fail';
-    folded.C6 = { id: 'C6', title: 'The final bowerloom beside a global latebrake, in both orders', status, detail: status === 'pass' ? a.detail : [a.status === 'pass' ? '' : `Final first: ${a.detail}`, b.status === 'pass' ? '' : `latebrake first: ${b.detail}`].filter(Boolean).join(' '), observed: { finalFirst: a.observed, latebrakeFirst: b.observed } };
-    delete folded.C6b;
-  }
   const summary = { pass: 0, fail: 0, 'not run': 0 };
   for (const entry of Object.values(folded)) summary[entry.status] += 1;
   return {
