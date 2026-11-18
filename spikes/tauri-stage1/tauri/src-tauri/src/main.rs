@@ -51,7 +51,12 @@ fn app_args(args: State<'_, Args>) -> Args {
 #[tauri::command]
 async fn core_start(app: AppHandle, hosts: State<'_, Hosts>, name: String, home: String, timeout_ms: u64) -> Result<u64, CallError> {
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).ok_or(CallError { code: "FAILED".into(), message: "no exe folder".into() })?;
-    let resources = app.path().resource_dir().map_err(|e| CallError { code: "FAILED".into(), message: e.to_string() })?;
+    // Tauri's resource resolver answers "unknown path" for an app that sits under a symlinked folder (a temp folder under /var). The bundle layout is fixed
+    // (Contents/MacOS beside Contents/Resources), so fall back to it.
+    let resources = match app.path().resource_dir() {
+        Ok(dir) => dir,
+        Err(_) => exe_dir.parent().map(|contents| contents.join("Resources")).ok_or(CallError { code: "FAILED".into(), message: "no resource folder".into() })?,
+    };
     let host = Host::start(Config { name: name.clone(), node: exe_dir.join("node"), script: resources.join("core.mjs"), home, timeout: Duration::from_millis(timeout_ms), app: app.clone() });
     hosts.0.lock().unwrap().insert(name, Arc::clone(&host));
     let waiter = Arc::clone(&host);

@@ -68,12 +68,20 @@ Result: PASS on all 10 criteria. They ran on the build made before the Mac went 
 
 - B1 pass: the bundle holds the runtime beside the shell and the core script in Resources.
 - B2 pass: the shell binary is ad-hoc, linker-signed. The bundle is not sealed. No team, no Developer ID.
-- B3 (copy to a path with spaces and non-ASCII characters, start the sidecar) and B4 (a scan call from that path): written, NOT RUN, because the page did not run after the machine slept (below). Part A ran the same app from its build path.
+- B3 and B4 pass (rerun 2026-11-18, console unlocked, `IOConsoleLocked` = No, display awake). The app was copied to a folder named `Ünïcode Späce ✓ dir` under the system temp folder. The sidecar started and a ping returned (B3). A scan call returned whole (B4). Hidden window.
+- Finding: the first run failed with `unknown path`. Tauri's `resource_dir()` fails for an app that sits under a symlinked folder, such as the temp folder under /var. Copies under a real path worked. The shell now falls back to the fixed bundle layout (`Contents/Resources`). Without this fallback the install check fails there.
 - Notarized criterion: NOT RUN. It waits for the Apple spend decision. Gate 1 cannot pass for macOS until it runs.
 
 ### Gate 2 on macOS (WKWebView) and WebGL 2
 
-NOT RUN. Tests are written (`test/gate2.test.mjs`: 7 features, page scheme, 4 CSP checks, 4 permission checks, WebGL 2) and the page code is built. The first run of the combined scenario stalled. After that the page stopped running at all, even the ping that had passed. At that time the Mac was in clamshell sleep and cycling between sleep and dark wake (`pmset -g log`), and the console was locked. So no pass or fail exists. macOS 27.2.1. No claim is made about the cause of the first stall: it happened before the sleep was noticed and it is open. Camera and microphone are not asked, to avoid a system prompt.
+Rerun 2026-11-18 13:19 EST, macOS 27.2.1, WebKit 605.1.15 (the system WKWebView; the user agent gives no finer number). Before the run: `IOConsoleLocked` = No, display awake (`pmset -g assertions`: `InternalPreventDisplaySleep` 1, `UserIsActive` 1). The window was hidden for every test. No test needed a visible window.
+Result: PASS, 6 of 6 (`node --test --test-concurrency=1 test/gate2.test.mjs`).
+- 7 of 7 web features work: container queries, `:has()`, `color-mix`, `backdrop-filter`, `text-wrap`, `ResizeObserver`, Web Animations.
+- Caveat: a hidden window gets no animation frames (`requestAnimationFrame` did not run, `visibilityState` = hidden). So Web Animations was tested by finishing the animation by hand, not by letting time pass. Natural playback is not verified. The plan's frame test is Linux only.
+- Page scheme: `tauri://localhost`, secure context, not `file:`. PASS.
+- CSP: an inline script, a remote script, a remote fetch and a remote image were each blocked (4 of 4, 5 violation events). One more violation shows the page's own IPC channel `ipc://localhost` is blocked by this policy, and Tauri falls back to another path. The real policy needs an `ipc:` rule.
+- Permissions: geolocation `prompt` and the request returned an error (refused). Notifications `default` (not granted). `window.open` returned null. Clipboard: the permission state is not available in WKWebView (TypeError). Calling `navigator.clipboard.readText()` in the hidden window never answers and stops the page (observed, 60 s), so it was not used. So "clipboard refused" is only "not granted". The Electron app refuses every request through a handler. Here the refusal is WebKit's default, tested in a hidden window, and a visible window may show prompts. Camera and microphone were not asked, to avoid a system prompt.
+- WebGL 2 (engine amendment proposal): PASS. Context made, vertex and fragment shaders compiled, program linked, one frame drawn, pixel read back [255, 0, 0, 255]. `WebGL 2.0`, renderer `Apple GPU`, GL error 0.
 
 ### Gate 3 on macOS
 

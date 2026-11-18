@@ -140,6 +140,7 @@ const SCENARIOS = {
   async 'webview-features'() {
     const stage = document.getElementById('stage');
     const features = {};
+    const diagnostics = {};
     const make = (tag, props = {}) => { const el = document.createElement(tag); Object.assign(el, props); return el; };
 
     const progress = step => invoke('write_result', { contents: JSON.stringify({ progress: step }) });
@@ -176,13 +177,18 @@ const SCENARIOS = {
     await progress('web animations');
     const animated = make('div'); stage.append(animated);
     try {
+      // A hidden window gets no animation frames, so an animation never finishes by itself there. The API is tested by finishing it by hand.
       const animation = animated.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 50 });
+      const listed = animated.getAnimations().length === 1;
+      animation.finish();
       await Promise.race([animation.finished, sleep(3000).then(() => { throw new Error('never finished'); })]);
-      features.webAnimations = animation.playState === 'finished';
+      features.webAnimations = listed && animation.playState === 'finished';
     } catch { features.webAnimations = false; }
+    diagnostics.animationFramesRun = await Promise.race([new Promise(resolve => requestAnimationFrame(() => resolve(true))), sleep(1000).then(() => false)]);
+    diagnostics.visibilityState = document.visibilityState;
 
     const scheme = { protocol: location.protocol, origin: location.origin, secureContext: window.isSecureContext, notFile: location.protocol !== 'file:' };
-    return { userAgent: navigator.userAgent, features, scheme };
+    return { userAgent: navigator.userAgent, features, scheme, diagnostics };
   },
 
   /** Content security policy. Each attempt is blocked by the policy of the page, and the page sees one violation event for it. */
@@ -221,8 +227,8 @@ const SCENARIOS = {
     });
     permissions.notifications = typeof Notification === 'undefined' ? 'unavailable' : Notification.permission;
     await progress('clipboard');
-    // A read that waits for a person (WebKit shows a paste bubble) and never answers counts as not granted. It is recorded.
-    permissions.clipboardRead = await Promise.race([navigator.clipboard.readText().then(() => 'granted', () => 'refused'), sleep(3000).then(() => 'no answer in 3 s')]);
+    // `navigator.clipboard.readText()` is not called: in the hidden window it never answers and the page stops (observed). The permission state is read instead.
+    try { permissions.clipboardRead = (await navigator.permissions.query({ name: 'clipboard-read' })).state; } catch (error) { permissions.clipboardRead = `unavailable: ${error.name}`; }
     permissions.clipboardReadRefused = permissions.clipboardRead !== 'granted';
     await progress('window.open');
     permissions.windowOpenRefused = window.open('https://example.invalid/') === null;

@@ -29,7 +29,7 @@ test('B3. the app copied to a path with spaces and non-ASCII characters starts t
   const end = await started.ended;
   const r = started.result();
   assert.ok(r, `no result (exit ${end.code} ${end.signal}): ${started.stderr().slice(0, 400)}`);
-  assert.equal(r.pong, true);
+  assert.equal(r.pong, true, JSON.stringify(r).slice(0, 400));
   assert.equal(r.childIsNotShell, true);
   assert.match(r.exePath, /Ünïcode Späce ✓ dir/);
   assert.equal(end.code, 0);
