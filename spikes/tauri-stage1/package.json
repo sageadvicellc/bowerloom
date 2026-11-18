@@ -20,6 +20,11 @@
   },
   "devDependencies": {
     "@tauri-apps/api": "2.12.5",
-    "@tauri-apps/cli": "2.12.5"
+    "@tauri-apps/cli": "2.12.5",
+    "@wdio/cli": "10.2.0",
+    "@wdio/local-runner": "10.2.0",
+    "@wdio/mocha-framework": "10.2.0",
+    "@wdio/tauri-service": "1.5.1",
+    "webdriverio": "9.31.9"
   }
 }

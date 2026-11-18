@@ -65,7 +65,7 @@ Result: PASS on all 10 criteria. They ran on the build made before the Mac went 
 - Fix (maintainer's choice): a watchdog in a worker thread inside the sidecar (`src/stdio.ts`, Node only, no package). The worker reads stdin and polls the parent process id every 250 ms. On end of stdin or a changed parent it tells the main thread to exit. If the main thread has not exited after 1 s, the worker ends the process with SIGKILL.
 - Time limit tested: 3 s (proposal, not approved).
 - After the fix: 10 of 10 stuck sidecars ended after `kill -9` of the shell. Times in ms: 1010, 1018, 1012, 1008, 1011, 1011, 1009, 1010, 1009, 1006. Slowest 1,018 ms.
-- Core tests with no shell: 8 of 8, including a busy core after closed stdin (1.4 s) and after SIGKILL of its parent (1.4 s), and 20 pings on a healthy core.
+- Core tests with no shell: 8 of 8. A busy core ended 1.4 s after its stdin closed. It also ended 1.4 s after SIGKILL of its parent. A healthy core answered 20 pings.
 - After the fix, all of Part A reran: 10 of 10 pass. Same counts as before: events 10,000 of 10,000, in-flight 0 replays, plan state `NOT_THE_PLAN_SHOWN`, orphans 3 of 3, 30 s limit failed at 30,007 ms.
 - Kill and restart after the fix: 100 of 100 within 5 s. Slowest 124 ms, median 120 ms. Before the fix: slowest 109 ms, median 107 ms. The cost is about 12 to 15 ms per start (a worker thread starts with the core).
 - Command: `node --test --test-concurrency=1 test/part-a.test.mjs`.
@@ -91,7 +91,10 @@ Result: PASS, 6 of 6 (`node --test --test-concurrency=1 test/gate2.test.mjs`).
 
 ### Gate 3 on macOS
 
-NOT RUN. Stopped as the brief says. The WebdriverIO route needs packages that are not in the repository (no `webdriverio` or `@wdio/*` is installed):
+NOT RUN yet. Status after the second approval: the npm packages are installed (below). The slice is not written, because the service needs a second Rust crate that the approval did not name.
+Installed in the spike's `package.json`, pinned exactly: `@wdio/tauri-service` 1.5.1 (5.5 MB on disk), `webdriverio` 9.31.9 (13.3 MB), `@wdio/cli` 10.2.0 (9.2 MB), `@wdio/local-runner` 10.2.0 and `@wdio/mocha-framework` 10.2.0 (0.1 MB). In all, 586 packages are in the lock file and `node_modules` grew from 16.5 MB to 188.8 MB. The driver download scripts (edgedriver, geckodriver) did not run.
+The service needs two crates. The approval named one: `tauri-plugin-wdio-webdriver` (embedded WebDriver server, 1.5.1 matches the service, 113.9 KB packed). It also needs `tauri-plugin-wdio` 1.5.1 (41.7 KB packed), plus a page-side package and the `wdio:default` permission. Both crates were downloaded by `cargo info` (2.0.0-next.0 too), so the registry cache is 241 crates and 179,824 KB. Neither is compiled into the spike yet. Waiting for approval of `tauri-plugin-wdio`.
+The old note about packages not in the repository, kept for the record: the WebdriverIO route needs packages that are not in the repository (no `webdriverio` or `@wdio/*` is installed):
 - `@wdio/tauri-service` 1.5.1, from the npm registry, 1.0 MB unpacked. It depends on `webdriverio` 9.31.9 (2.3 MB unpacked) and eleven more `@wdio/*` packages. `@wdio/cli` 10.2.0 (0.1 MB) is also needed to run it.
 - On macOS the plan says the app embeds a WebDriver server. That needs a Rust crate in the app that is not approved.
 Not added. The smoke check needs a visible window and an Accessibility permission for the harness. Not run.
