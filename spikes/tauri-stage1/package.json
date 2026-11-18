@@ -1,0 +1,19 @@
+{
+  "name": "@bowerloom/tauri-stage1-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Stage 1 of the Tauri move, macOS phase: Gate 1 Part C and the payload baseline. A spike. Nothing here ships.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "scripts": {
+    "typecheck": "../../apps/desktop/node_modules/.bin/tsc --noEmit -p tsconfig.json",
+    "build": "node build.mjs",
+    "test:unit": "node --test --test-reporter=spec test/host.test.mjs test/fixture.test.mjs test/parity.test.mjs",
+    "test": "npm run build && npm run test:unit && node --test --test-reporter=spec --test-concurrency=1 test/part-c.test.mjs",
+    "payload": "npm run build && node scripts/measure-payload.mjs",
+    "package": "npm run build && ../../apps/desktop/node_modules/.bin/electron-builder --projectDir app --mac dmg zip --arm64 --publish never",
+    "test:packaged": "node scripts/run-packaged.mjs"
+  }
+}
