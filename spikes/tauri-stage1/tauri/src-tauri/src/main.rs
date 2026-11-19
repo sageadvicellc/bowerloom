@@ -9,9 +9,12 @@ use host::{CallError, Config, Host, Info};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "e2e")]
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Manager, RunEvent, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
 #[derive(Default)]
 struct Hosts(Mutex<HashMap<String, Arc<Host>>>);
@@ -58,7 +61,10 @@ async fn core_start(app: AppHandle, hosts: State<'_, Hosts>, name: String, home:
         Err(_) => exe_dir.parent().map(|contents| contents.join("Resources")).ok_or(CallError { code: "FAILED".into(), message: "no resource folder".into() })?,
     };
     let host = Host::start(Config { name: name.clone(), node: exe_dir.join("node"), script: resources.join("core.mjs"), home, timeout: Duration::from_millis(timeout_ms), app: app.clone() });
-    hosts.0.lock().unwrap().insert(name, Arc::clone(&host));
+    // A page that loads again starts its core again. The old host stops first, so its sidecar does not stay behind.
+    if let Some(old) = hosts.0.lock().unwrap().insert(name, Arc::clone(&host)) {
+        old.stop();
+    }
     let waiter = Arc::clone(&host);
     let generation = tauri::async_runtime::spawn_blocking(move || waiter.wait_ready(0, Duration::from_secs(20))).await.map_err(|e| CallError { code: "FAILED".into(), message: e.to_string() })?;
     if generation == 0 {
@@ -116,6 +122,40 @@ fn crash_app() {
     std::process::abort();
 }
 
+/// The close guard: while the page has switched it on, a request to close the window is held and the page is told, so it can ask the person.
+#[derive(Default)]
+struct CloseGuard(AtomicBool);
+
+#[tauri::command]
+fn set_close_guard(guard: State<'_, CloseGuard>, on: bool) {
+    guard.0.store(on, Ordering::SeqCst);
+}
+
+/// The person said "Leave": the guard is off and the window closes.
+#[tauri::command]
+fn close_window(app: AppHandle, guard: State<'_, CloseGuard>) {
+    guard.0.store(false, Ordering::SeqCst);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
+}
+
+/// Test build only: the answer of the test-only dialog switch. It stands in for the folder chooser. The folders to pick come from the environment, one per call in
+/// order, and the last one repeats. It also gives the home folder and the folder to scan. It is compiled only with the `e2e` feature.
+#[cfg(feature = "e2e")]
+#[derive(Default)]
+struct PickCounter(AtomicUsize);
+
+#[cfg(feature = "e2e")]
+#[tauri::command]
+fn pick_folder(counter: State<'_, PickCounter>, advance: bool) -> Value {
+    let env = |name: &str| std::env::var(name).unwrap_or_default();
+    let picks: Vec<String> = env("SPIKE_E2E_PICKS").split(':').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect();
+    let taken = if advance { counter.0.fetch_add(1, Ordering::SeqCst) } else { counter.0.load(Ordering::SeqCst) };
+    let at = taken.min(picks.len().saturating_sub(1));
+    serde_json::json!({ "picked": picks.get(at), "home": env("SPIKE_E2E_HOME"), "scan": env("SPIKE_E2E_SCAN") })
+}
+
 fn stop_all(app: &AppHandle) {
     let hosts = app.state::<Hosts>();
     let list: Vec<Arc<Host>> = hosts.0.lock().unwrap().values().cloned().collect();
@@ -125,9 +165,28 @@ fn stop_all(app: &AppHandle) {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // The WebdriverIO plugin and the embedded WebDriver server: test build only.
+    #[cfg(feature = "e2e")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init())
+        .manage(PickCounter::default())
+        .invoke_handler(tauri::generate_handler![app_args, core_start, core_call, core_kill, core_wait_ready, core_info, write_result, report_pids, quit_app, crash_app, set_close_guard, close_window, pick_folder]);
+    #[cfg(not(feature = "e2e"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![app_args, core_start, core_call, core_kill, core_wait_ready, core_info, write_result, report_pids, quit_app, crash_app, set_close_guard, close_window]);
+    builder
         .manage(Hosts::default())
         .manage(parse_args())
+        .manage(CloseGuard::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.state::<CloseGuard>().0.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.emit("close-guard", ());
+                }
+            }
+        })
         .setup(|app| {
             // No dock icon and no menu bar: the app is an agent of the test and shows nothing.
             #[cfg(target_os = "macos")]
@@ -135,7 +194,6 @@ fn main() {
             let _ = app;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![app_args, core_start, core_call, core_kill, core_wait_ready, core_info, write_result, report_pids, quit_app, crash_app])
         .build(tauri::generate_context!())
         .expect("error while building the spike shell")
         .run(|app, event| {

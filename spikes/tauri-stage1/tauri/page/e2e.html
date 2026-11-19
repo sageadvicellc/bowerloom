@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bowerloom Tauri Spike E2E</title>
+  </head>
+  <body>
+    <h1 id="title">Bowerloom Tauri Spike E2E</h1>
+    <p>Status: <span id="status">starting</span></p>
+    <p><button id="ping">Ping</button> <span id="ping-out"></span></p>
+    <p><button id="pick">Pick folder</button> <span id="folder"></span></p>
+    <p><button id="plan">Plan adoption</button> <span id="plan-out"></span></p>
+    <p><button id="run">Run adoption</button> <span id="run-out"></span></p>
+    <p><button id="kill">Kill core</button> <span id="kill-out"></span></p>
+    <p><button id="scan">Scan</button> <span id="scan-out"></span></p>
+    <p><button id="saved">Saved read</button> <span id="saved-out"></span></p>
+    <p><button id="guard">Guard on</button> <span id="guard-out">off</span></p>
+    <div id="guard-dialog" hidden>
+      <p>Leave with changes?</p>
+      <button id="stay">Stay</button> <button id="leave">Leave</button>
+    </div>
+    <script src="./page.js"></script>
+  </body>
+</html>

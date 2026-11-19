@@ -7,6 +7,9 @@ import { appendFileSync } from 'node:fs';
 import { buildRealResult } from '../../../apps/desktop/shared/real/map-world.js';
 import { createScanner } from '../../../apps/desktop/main/real-scan.js';
 import { createEngineService } from '../../../apps/desktop/main/engine-service.js';
+import { createScanSession } from '../../../apps/desktop/main/scan-session.js';
+import type { ScanSession } from '../../../apps/desktop/main/scan-session.js';
+import type { RealResult } from '../../../apps/desktop/shared/real/types.js';
 import { ENGINE_ARITY } from '../../../apps/desktop/shared/engine/types.js';
 import type { EngineCall } from '../../../apps/desktop/shared/engine/types.js';
 
@@ -50,7 +53,35 @@ export function createCore(send: (message: unknown) => void, env: NodeJS.Process
     return { result, bytes: Buffer.byteLength(json), digest: createHash('sha256').update(json).digest('hex'), places: found.places.length };
   }
 
+  /** The scan as the app does it with the saved read: the read is kept in the state folder (main/scan-session.ts), and `scanSaved` answers what a launch asks. */
+  let session: ScanSession | null = null;
+  const sessionOf = (scanHome: string): ScanSession => {
+    if (stateRoot === '') throw new CallError('FAILED', 'The core was started with no state folder.');
+    session ??= createScanSession({ home: scanHome, stateRoot });
+    return session;
+  };
+  const countOf = (counts: { skills: number; agents: number; tools: number; hooks: number; notes: number }): number => counts.skills + counts.agents + counts.tools + counts.hooks + counts.notes;
+  async function scanKept(picked: unknown, scanHome: unknown): Promise<unknown> {
+    if (typeof picked !== 'string' || typeof scanHome !== 'string') throw new CallError('BAD_ARGUMENT', 'scanKept needs two folders');
+    const now = (): number => Date.now();
+    const scanner = createScanner({ home: scanHome, now });
+    const found = await scanner.pick(async () => picked);
+    if (found === null) throw new CallError('FAILED', 'no folder');
+    const read = async (): Promise<RealResult> => {
+      const batch = await scanner.read(found.places.map(p => p.id));
+      return buildRealResult(batch.reads, batch.tally, { nowMs: now(), foldExtraApps: true });
+    };
+    const result = await sessionOf(scanHome).keepRead(found.places, read);
+    return { items: countOf(result.counts), places: found.places.length };
+  }
+
   const handlers: Record<string, (args: unknown[]) => unknown> = {
+    scanKept: ([picked, scanHome]) => scanKept(picked, scanHome),
+    scanSaved: async ([scanHome]) => {
+      if (typeof scanHome !== 'string') throw new CallError('BAD_ARGUMENT', 'scanSaved needs the home folder');
+      const answer = await sessionOf(scanHome).savedScan();
+      return answer.status === 'saved' ? { status: 'saved', items: countOf(answer.result.counts) } : { status: answer.status, items: null };
+    },
     ping: () => ({ pong: true, pid: process.pid, versions: { electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome, v8: process.versions.v8 } }),
     echo: ([value]) => value,
     scan: ([picked, scanHome]) => scan(picked, scanHome),

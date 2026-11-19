@@ -16,14 +16,18 @@
     "package": "npm run build && ../../apps/desktop/node_modules/.bin/electron-builder --projectDir app --mac dmg zip --arm64 --publish never",
     "test:packaged": "node scripts/run-packaged.mjs",
     "build:tauri": "node build.mjs --tauri && node scripts/prepare-tauri.mjs && node scripts/tauri-build.mjs",
-    "test:tauri": "node --test --test-reporter=spec --test-concurrency=1 test/sidecar-core.test.mjs test/part-a.test.mjs test/part-b.test.mjs test/gate2.test.mjs"
+    "test:tauri": "node --test --test-reporter=spec --test-concurrency=1 test/sidecar-core.test.mjs test/part-a.test.mjs test/part-b.test.mjs test/gate2.test.mjs test/no-e2e-in-release.test.mjs",
+    "build:e2e": "node scripts/tauri-build-e2e.mjs",
+    "check:release": "node scripts/check-release-clean.mjs",
+    "test:e2e": "node_modules/.bin/wdio run e2e/wdio.conf.mjs"
   },
   "devDependencies": {
     "@tauri-apps/api": "2.12.5",
     "@tauri-apps/cli": "2.12.5",
-    "@wdio/cli": "10.2.0",
-    "@wdio/local-runner": "10.2.0",
-    "@wdio/mocha-framework": "10.2.0",
+    "@wdio/cli": "9.31.9",
+    "@wdio/local-runner": "9.31.9",
+    "@wdio/mocha-framework": "9.31.9",
+    "@wdio/tauri-plugin": "1.5.1",
     "@wdio/tauri-service": "1.5.1",
     "webdriverio": "9.31.9"
   }

@@ -6,13 +6,14 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
-import { SPIKE, giveUpAfter, waitFor } from './support.mjs';
+import { SPIKE, giveUpAfter, tempDir, waitFor } from './support.mjs';
+import { makeScanFixture } from '../src/fixture.mjs';
 
 const CORE = join(SPIKE, 'tauri', 'src-tauri', 'resources', 'core.mjs');
 
-function startCore(t) {
+function startCore(t, env = {}) {
   assert.ok(existsSync(CORE), `no core at ${CORE}: run npm run build:tauri`);
-  const child = spawn(process.execPath, [CORE], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [CORE], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   t.after(() => child.kill('SIGKILL'));
   const messages = [];
   const waiters = [];
@@ -113,6 +114,25 @@ test('A0.8 a healthy core keeps working after the watchdog starts (no early exit
     assert.equal((await core.next(m => m.type === 'result' && m.id === i)).ok, true);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
+});
+
+test('A0.9 the saved read: scanKept keeps a read, and scanSaved in a new core process finds it (9 items)', async t => {
+  const root = tempDir(t, 'stage1-cache-');
+  const made = makeScanFixture(root, { projects: 3, skills: 3, fileBytes: 500 });
+  const env = { SPIKE_HOME: made.home, SPIKE_STATE: join(root, 'state') };
+  const first = startCore(t, env);
+  await first.next(m => m.type === 'ready');
+  first.send({ type: 'call', id: 1, method: 'scanSaved', args: [made.home] });
+  assert.equal((await first.next(m => m.id === 1)).value.status, 'none', 'nothing is saved at first');
+  first.send({ type: 'call', id: 2, method: 'scanKept', args: [made.picked, made.home] });
+  assert.equal((await first.next(m => m.id === 2)).value.items, 9);
+  first.child.stdin.end();
+  await first.ended;
+  const second = startCore(t, env);
+  await second.next(m => m.type === 'ready');
+  second.send({ type: 'call', id: 1, method: 'scanSaved', args: [made.home] });
+  const saved = await second.next(m => m.id === 1);
+  assert.deepEqual(saved.value, { status: 'saved', items: 9 });
 });
 
 test('A0.5 the core holds no listening port', async t => {

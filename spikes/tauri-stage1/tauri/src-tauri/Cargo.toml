@@ -7,6 +7,11 @@ license = "MIT"
 edition = "2021"
 publish = false
 
+[features]
+# Test build only. The WebdriverIO plugins, the test-only dialog answer and the embedded WebDriver server are compiled in only with this feature.
+# The release build never turns it on, and scripts/check-release-clean.mjs proves that against the built binary.
+e2e = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -14,3 +19,5 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+tauri-plugin-wdio = { version = "=1.5.1", optional = true }
+tauri-plugin-wdio-webdriver = { version = "=1.5.1", optional = true }
