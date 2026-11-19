@@ -3,6 +3,7 @@
 // Usage: node scripts/e2e-runs.mjs [runs]. It prints one line per run and a JSON summary.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { withoutLeaveSwitch } from '../e2e/leave-check.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,7 +12,7 @@ const runs = Number(process.argv[2] ?? 100);
 const results = [];
 for (let i = 1; i <= runs; i += 1) {
   const began = Date.now();
-  const run = spawnSync(join(spike, 'node_modules', '.bin', 'wdio'), ['run', join(spike, 'e2e', 'wdio.conf.mjs')], { cwd: spike, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const run = spawnSync(join(spike, 'node_modules', '.bin', 'wdio'), ['run', join(spike, 'e2e', 'wdio.conf.mjs')], { cwd: spike, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: withoutLeaveSwitch(process.env) });
   const text = `${run.stdout}${run.stderr}`;
   const files = /Spec Files:\s+(\d+) passed(?:, (\d+) failed)?, (\d+) total/.exec(text);
   const left = spawnSync('pgrep', ['-f', 'target-e2e/release/bundle/macos'], { encoding: 'utf8' }).stdout.trim() !== '';

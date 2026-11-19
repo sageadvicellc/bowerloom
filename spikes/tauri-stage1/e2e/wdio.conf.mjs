@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { engineFolder } from '../src/engine-folders.mjs';
+import { decideLeaveCheck } from './leave-check.mjs';
 import { makeScanFixture } from '../src/fixture.mjs';
 
 const spike = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,11 +36,17 @@ export const config = {
     process.env.SPIKE_E2E_SCAN = scan.picked;
     process.env.SPIKE_E2E_PICKS = engineFolder(home, 'a');
   },
-  async onComplete() {
-    // Set only by scripts/e2e-spec-loop.mjs for a run that does not include the close-guard spec, whose Leave step ends the app.
-    if (process.env.E2E_LEAVE_CHECK === 'off') {
+  async onComplete(exitCode, runConfig) {
+    // The skip switch is honoured only for a run that leaves out the close-guard spec (see e2e/leave-check.mjs). With the guard spec in the run, the switch fails the run.
+    const decision = decideLeaveCheck({ env: process.env, specs: [].concat(runConfig?.specs ?? []).flat() });
+    if (decision.run === false) {
+      console.log(decision.message);
       if (base !== '') rmSync(base, { recursive: true, force: true });
       return;
+    }
+    if (decision.error) {
+      if (base !== '') rmSync(base, { recursive: true, force: true });
+      throw new Error(decision.error);
     }
     // The close-guard spec presses Leave 4 seconds after it ends. The app must end within 15 seconds of that, and its sidecar with it.
     const running = pattern => spawnSync('pgrep', ['-f', pattern], { encoding: 'utf8' }).stdout.trim() !== '';

@@ -10,7 +10,7 @@
   "scripts": {
     "typecheck": "../../apps/desktop/node_modules/.bin/tsc --noEmit -p tsconfig.json",
     "build": "node build.mjs",
-    "test:unit": "node --test --test-reporter=spec test/host.test.mjs test/fixture.test.mjs test/parity.test.mjs",
+    "test:unit": "node --test --test-reporter=spec test/host.test.mjs test/fixture.test.mjs test/parity.test.mjs test/leave-check.test.mjs",
     "test": "npm run build && npm run test:unit && node --test --test-reporter=spec --test-concurrency=1 test/part-c.test.mjs",
     "payload": "npm run build && node scripts/measure-payload.mjs",
     "package": "npm run build && ../../apps/desktop/node_modules/.bin/electron-builder --projectDir app --mac dmg zip --arm64 --publish never",
