@@ -125,7 +125,8 @@ Differences from the plan, stated plainly:
 
 Flake count (`node scripts/e2e-runs.mjs 100`): a run is one pass of all 8 spec files and the `onComplete` check, each run with a fresh app start. The plan's limit is at most 2 failed runs in 100 (proposal).
 - First count: 96 passed, 4 failed (runs 30, 31, 36, 51). Each failure was 1 spec file of 8. Median run 12.9 s. The failed runs took 14 to 21 s, so they were not slow runs. Run 47 took 50 s and passed. Runs 47 to 51 overlapped with a Rust build and the smoke check on the same machine. The output of the failed runs was not kept, so the failing specs are unknown.
-- RESULT: 4 failed runs is over the limit of 2, so Gate 3 FAILS the flake criterion on macOS as measured. FLAKE_SECOND_PLACEHOLDER
+- Second count, with nothing else running on the machine except file edits: 100 passed, 0 failed. Median run 12.8 s. Slowest 47.4 s. The runner kept the output of failed runs, and there were none.
+- Both counts are reported, and neither is chosen. The first count is over the limit of 2 (4 failed). The second is under it (0 failed). Over the 200 runs, 196 passed. The 4 failures were not diagnosed. So the macOS flake criterion is not shown to hold. The maintainer decides whether to accept the second count, run again, or look for the cause of the 4 failures first.
 
 Smoke check (release build with a visible window, launch and normal quit): PASS, 1 of 1.
 - Build: `npm run build:smoke` (release shell, no test feature, 0 of 6 test-only markers, 4 of 4 smoke-build tests). Its window is visible, 480 x 320.
