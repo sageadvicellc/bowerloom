@@ -19,7 +19,9 @@ import type { ModulesBridge } from '../shared/api/modules.js';
 import type { CallTransport, RawBridges } from '../renderer/api/call-layer.js';
 import { createApiClient, getApiClient } from '../renderer/api/client.js';
 import type { ApiClient, CallLayer } from '../renderer/api/client.js';
-import { electronTransport, pageTransport, resetCallTransport, samplePreviewEngines, useCallTransport } from '../renderer/api/transport.js';
+import { electronTransport, pageTransport, samplePreviewEngines, useCallTransport } from '../renderer/api/transport.js';
+import * as transportModule from '../renderer/api/transport.js';
+import { resetCallTransport } from './helpers-engine/transport-reset.js';
 import { DESKTOP } from './support.js';
 
 const read = (file: string): string => readFileSync(join(DESKTOP, file), 'utf8');
@@ -141,12 +143,109 @@ test('the other three bridges pass through unchanged too, with their argument co
   }
 });
 
-test('a refusal from the window comes out of the client as the same error', async () => {
+const SIDES: readonly { readonly side: keyof CallLayer; readonly global: string; readonly calls: readonly string[] }[] = [
+  { side: 'reader', global: 'bowerloomReal', calls: REAL_CALLS },
+  { side: 'engine', global: 'bowerloomEngine', calls: ENGINE_CALLS },
+  { side: 'local', global: 'bowerloomLocal', calls: LOCAL_CALLS },
+  { side: 'runs', global: 'bowerloomRuns', calls: RUN_CALLS },
+  { side: 'modules', global: 'bowerloomModules', calls: MODULE_CALLS },
+];
+const sideOf = (calls: readonly string[], extra: Record<string, unknown> = {}): Record<string, unknown> => ({ ...extra, ...Object.fromEntries(calls.map(call => [call, () => Promise.resolve(null)])) });
+
+test('a refusal from the window comes out of the client as the same error, for every call of every side', async () => {
   const boom = new Error('NOT_ALLOWED');
-  const reader = { discoverPlaces: () => Promise.reject(boom), pickFolder: () => Promise.reject(boom), readSelected: () => Promise.reject(boom) };
+  const rejecting = (calls: readonly string[], extra: Record<string, unknown> = {}): Record<string, unknown> => ({ ...extra, ...Object.fromEntries(calls.map(call => [call, () => Promise.reject(boom)])) });
+  const found = Object.fromEntries(SIDES.map(s => [s.global, rejecting(s.calls, s.side === 'engine' ? { mode: 'real' } : {})]));
   let api: ApiClient | undefined;
-  withWindow({ bowerloomReal: reader }, () => { api = getApiClient(); });
-  await assert.rejects(() => api!.reader!.pickFolder(), (error: unknown) => error === boom);
+  withWindow(found, () => { api = getApiClient(); });
+  for (const { side, calls } of SIDES) {
+    const bridge = api![side] as unknown as Record<string, (...a: unknown[]) => Promise<unknown>> | null;
+    assert.ok(bridge, `${side} is whole`);
+    for (const call of calls) await assert.rejects(() => bridge[call]!(), (error: unknown) => error === boom, `${side}.${call}`);
+  }
+});
+
+// ---- 2b. a side that is present but not whole is null, and it is told
+
+const captureErrors = (body: () => void): string[] => {
+  const lines: string[] = [], original = console.error;
+  console.error = (...args: unknown[]): void => { lines.push(args.map(String).join(' ')); };
+  try { body(); } finally { console.error = original; }
+  return lines;
+};
+const rawWith = (replace: Partial<Record<keyof CallLayer, unknown>>): RawBridges => {
+  const whole = Object.fromEntries(SIDES.map(s => [s.side, sideOf(s.calls, s.side === 'engine' ? { mode: 'real' } : {})]));
+  return { ...whole, ...replace } as RawBridges;
+};
+
+test('every side: one call missing or not a function gives null, and the console names the transport, the side and the call', () => {
+  for (const { side, calls } of SIDES) {
+    for (const call of calls) {
+      const missing = sideOf(calls, side === 'engine' ? { mode: 'real' } : {}); delete missing[call];
+      const lines = captureErrors(() => { assert.equal(createApiClient(rawWith({ [side]: missing }), 'second')[side], null, `${side}.${call} missing`); });
+      assert.equal(lines.length, 1, `${side}.${call}: one line`);
+      assert.match(lines[0]!, /second/); assert.match(lines[0]!, new RegExp(`\\b${side}\\b`)); assert.match(lines[0]!, new RegExp(`\\b${call}\\b`));
+      const wrongType = { ...sideOf(calls, side === 'engine' ? { mode: 'real' } : {}), [call]: 'x' };
+      captureErrors(() => assert.equal(createApiClient(rawWith({ [side]: wrongType }), 'second')[side], null, `${side}.${call} not a function`));
+    }
+  }
+});
+
+test('every side: a value that is not an object gives null and is told', () => {
+  for (const { side } of SIDES) {
+    for (const odd of [null, 5, 'x', true]) {
+      const lines = captureErrors(() => { assert.equal(createApiClient(rawWith({ [side]: odd }), 'second')[side], null); });
+      assert.equal(lines.length, 1, `${side} ${String(odd)}`);
+    }
+  }
+});
+
+test('the engine side with a mode other than real gives null and the console names the mode', () => {
+  for (const mode of ['sample', '', 'Real', undefined, 5]) {
+    const lines = captureErrors(() => { assert.equal(createApiClient(rawWith({ engine: sideOf(ENGINE_CALLS, { mode }) }), 'second').engine, null, String(mode)); });
+    assert.equal(lines.length, 1, String(mode));
+    assert.match(lines[0]!, /\bmode\b/); assert.match(lines[0]!, /second/); assert.match(lines[0]!, /engine/);
+  }
+});
+
+test('a side that is undefined is quiet, and a whole window is quiet', () => {
+  assert.deepEqual(captureErrors(() => { createApiClient({ reader: undefined, engine: undefined }, 'second'); }), []);
+  assert.deepEqual(captureErrors(() => { createApiClient({ reader: undefined, engine: undefined, local: undefined, runs: undefined, modules: undefined }, 'second'); }), []);
+  assert.deepEqual(captureErrors(() => { const api = createApiClient(rawWith({}), 'second'); for (const { side } of SIDES) assert.ok(api[side], side); }), []);
+});
+
+test('the good sides stay when one side is bad', () => {
+  const bad = sideOf(RUN_CALLS); delete bad.listRuns;
+  captureErrors(() => {
+    const api = createApiClient(rawWith({ runs: bad }), 'second');
+    assert.equal(api.runs, null); assert.ok(api.reader && api.engine && api.local && api.modules);
+  });
+});
+
+// ---- 2c. the engine signatures, spelled out by hand (independent of the source types)
+
+type EngineCalls = CallLayer['engine'];
+type _PlanImportShape = Expect<Same<ReturnType<EngineCalls['planImport']> extends Promise<unknown> ? true : false, true>>;
+type _PlanImportHead = Expect<Same<Parameters<EngineCalls['planImport']> extends [folderId: string, bundleId: string, choices: unknown] ? true : false, true>>;
+type _EngineHasNoExtraCall = Expect<Same<Exclude<keyof EngineCalls, 'mode'> extends EngineCall ? true : false, true>>;
+type _EngineMode = Expect<Same<EngineCalls['mode'], 'sample' | 'real'>>;
+type _DiscoverPlaces = Expect<Same<Parameters<CallLayer['reader']['discoverPlaces']>, []>>;
+export type SpelledPins = [_PlanImportShape, _PlanImportHead, _EngineHasNoExtraCall, _EngineMode, _DiscoverPlaces];
+
+test('the engine calls take the argument counts the table records, through the interface', async () => {
+  const seen: Seen[] = [];
+  const found = { bowerloomEngine: everyCall('engine', ENGINE_CALLS, seen, { mode: 'real' }) };
+  let api: ApiClient | undefined;
+  withWindow(found, () => { api = getApiClient(); });
+  const engine = api!.engine as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+  for (const call of ENGINE_CALLS) {
+    const before = seen.length;
+    await engine[call]!(...argsFor(ENGINE_ARITY[call]));
+    assert.equal(seen[before]!.args.length, ENGINE_ARITY[call], call);
+  }
+  // Spelled out by hand: planImport takes a folder id, a bundle id and the note choices.
+  assert.equal(ENGINE_ARITY.planImport, 3);
+  assert.equal(ENGINE_CALLS.includes('planImport'), true);
 });
 
 // ---- 3. a second implementation plugs in with no renderer change
@@ -167,12 +266,14 @@ test('the Electron implementation is the one in use until another is installed',
   });
 });
 
+const secondOf = (layer: CallLayer, sample = true): CallTransport => ({ id: 'second', bridges: () => ({ reader: layer.reader, engine: layer.engine, local: layer.local, runs: layer.runs, modules: layer.modules }), samplePreviewEngines: () => sample });
+
 test('an installed transport feeds the client and the sample switch, with no window at all', async () => {
   const seen: Seen[] = [];
   const layer = stubLayer(seen);
-  const second: CallTransport = { id: 'second', bridges: () => ({ reader: layer.reader, engine: layer.engine, local: layer.local, runs: layer.runs, modules: layer.modules }), samplePreviewEngines: () => true };
+  resetCallTransport();
   try {
-    useCallTransport(second);
+    useCallTransport(secondOf(layer));
     withWindow(undefined, () => {
       assert.equal(samplePreviewEngines(), true);
       const api = getApiClient();
@@ -183,22 +284,128 @@ test('an installed transport feeds the client and the sample switch, with no win
   } finally {
     resetCallTransport();
   }
-  withWindow(undefined, () => assert.equal(getApiClient().reader, null, 'reset puts the Electron implementation back'));
+  withWindow(undefined, () => assert.equal(getApiClient().reader, null, 'a reset puts the Electron implementation back'));
 });
 
-test('the client still checks what a second transport hands it: a partial bridge is null', () => {
+test('the client still checks what a second transport hands it: a partial bridge is null, and the console names the transport', () => {
   const layer = stubLayer([]);
   const partial = { ...(layer.reader as unknown as Record<string, unknown>) }; delete partial.pickFolder;
-  assert.equal(createApiClient({ reader: partial, engine: layer.engine }).reader, null);
+  resetCallTransport();
+  try {
+    useCallTransport({ id: 'second', bridges: () => ({ reader: partial, engine: layer.engine }), samplePreviewEngines: () => false });
+    const lines = captureErrors(() => { assert.equal(getApiClient().reader, null); });
+    assert.equal(lines.length, 1);
+    assert.match(lines[0]!, /second/); assert.match(lines[0]!, /pickFolder/);
+  } finally {
+    resetCallTransport();
+  }
+});
+
+// ---- 3b. the seal
+
+test('a second install throws', () => {
+  resetCallTransport();
+  try {
+    const layer = stubLayer([]);
+    useCallTransport(secondOf(layer));
+    assert.throws(() => useCallTransport(secondOf(layer)), /ALREADY_INSTALLED/);
+  } finally {
+    resetCallTransport();
+  }
+});
+
+test('an install after the first read of the bridges throws, and so does one after the first read of the sample switch', () => {
+  const layer = stubLayer([]);
+  resetCallTransport();
+  try {
+    withWindow(undefined, () => { pageTransport(); });
+    assert.throws(() => useCallTransport(secondOf(layer)), /IN_USE/);
+    resetCallTransport();
+    withWindow({}, () => { try { samplePreviewEngines(); } catch { /* no document in this process: the read still counts */ } });
+    assert.throws(() => useCallTransport(secondOf(layer)), /IN_USE/);
+  } finally {
+    resetCallTransport();
+  }
+});
+
+test('the installed transport is a frozen copy: changing the original afterwards changes nothing', () => {
+  const layer = stubLayer([]);
+  const original: { id: string; bridges: () => RawBridges; samplePreviewEngines: () => boolean } = { id: 'second', bridges: () => ({ reader: layer.reader, engine: layer.engine }), samplePreviewEngines: () => true };
+  resetCallTransport();
+  try {
+    useCallTransport(original);
+    original.samplePreviewEngines = () => false;
+    original.bridges = () => ({ reader: undefined, engine: undefined });
+    assert.equal(samplePreviewEngines(), true);
+    assert.equal(pageTransport().reader, layer.reader);
+  } finally {
+    resetCallTransport();
+  }
+});
+
+test('the production transport module exports no reset, and the stored transport is frozen', () => {
+  assert.deepEqual(Object.keys(transportModule).sort(), ['activeTransportId', 'electronTransport', 'pageTransport', 'samplePreviewEngines', 'useCallTransport']);
+  assert.equal(Object.isFrozen(electronTransport), true);
+});
+
+test('no renderer file calls useCallTransport: the future shell bootstrap is the only allowed caller', () => {
+  const calling = sourcesUnder('renderer').filter(file => /\buseCallTransport\s*\(/.test(strip(read(file))));
+  assert.deepEqual(calling, ['renderer/api/transport.ts'], 'only the definition');
+  const importing = sourcesUnder('renderer').filter(file => /\buseCallTransport\b/.test(strip(read(file))) && file !== 'renderer/api/transport.ts');
+  assert.deepEqual(importing, []);
+  const stateUsers = sourcesUnder('renderer').filter(file => /transport-state/.test(strip(read(file))));
+  assert.deepEqual(stateUsers, ['renderer/api/transport.ts']);
+});
+
+test('the sample switch is quiet when there is no document', () => {
+  const global = globalThis as unknown as { document?: unknown };
+  const before = global.document;
+  resetCallTransport();
+  try {
+    delete global.document;
+    assert.equal(electronTransport.samplePreviewEngines(), false);
+    global.document = {};
+    assert.equal(electronTransport.samplePreviewEngines(), false, 'no body');
+    global.document = { body: { getAttribute: () => '1' } };
+    assert.equal(electronTransport.samplePreviewEngines(), true);
+  } finally {
+    if (before === undefined) delete global.document; else global.document = before;
+    resetCallTransport();
+  }
 });
 
 // ---- 4. the old globals are read by the Electron implementation alone
 
 const BRIDGE_WORDS = /bowerloom(?:Real|Engine|Local|Runs|Modules)/;
+/** The scan the checks below use: the names of the old globals, comments removed. */
+const namesOldGlobal = (source: string): boolean => BRIDGE_WORDS.test(strip(source));
+/** A window or globalThis cast or index, which is how a page reads a global by name. */
+const readsGlobalByName = (source: string): boolean => /\b(?:window|globalThis)\s*\)?\s*(?:as\b|\[)|\bglobalThis\b/.test(strip(source));
+
+test('the scanner flags a synthetic bad source, and passes a clean one', () => {
+  const bad = [
+    'export const a = (window as never as { bowerloomReal: unknown }).bowerloomReal;',
+    "export const b = globalThis['bowerloomEngine'];",
+    'export const { bowerloomRuns } = window as never;',
+    'export const c = (window as unknown as Record<string, unknown>).bowerloomLocal;',
+    "export const d = (window as never)['bowerloomModules'];",
+  ];
+  for (const source of bad) assert.equal(namesOldGlobal(source), true, source);
+  for (const source of ['export const a = (window as never)[\'x\'];', 'export const globalName = globalThis;']) assert.equal(readsGlobalByName(source), true, source);
+  for (const clean of ['export const a = 1; // bowerloomReal is read by the transport', '/** bowerloomEngine */ export const b = window.innerWidth;']) {
+    assert.equal(namesOldGlobal(clean), false, clean);
+    assert.equal(readsGlobalByName(clean), false, clean);
+  }
+});
 
 test('no renderer file but the Electron implementation names a window bridge global', () => {
-  const naming = sourcesUnder('renderer').filter(file => BRIDGE_WORDS.test(strip(read(file))));
+  const naming = sourcesUnder('renderer').filter(file => namesOldGlobal(read(file)));
   assert.deepEqual(naming, ['renderer/api/transport.ts']);
+});
+
+test('no renderer file but the Electron implementation reads window or globalThis by name', () => {
+  const reading = sourcesUnder('renderer').filter(file => readsGlobalByName(read(file)));
+  assert.deepEqual(reading, ['renderer/api/transport.ts']);
 });
 
 test('the interface file is neutral: no bridge global, no window, no electron, no node: module', () => {
@@ -215,6 +422,3 @@ test('only the client reads a transport, and only the Electron implementation re
   assert.deepEqual(readsWindow, ['renderer/api/transport.ts']);
 });
 
-test('a direct use of an old global outside the Electron implementation would be caught', () => {
-  for (const bad of ["export const a = (window as never as { bowerloomReal: unknown }).bowerloomReal;", "export const b = globalThis['bowerloomEngine'];", 'export const { bowerloomRuns } = window as never;']) assert.match(bad, BRIDGE_WORDS);
-});
