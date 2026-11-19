@@ -1,0 +1,14 @@
+{
+  "productName": "Bowerloom Tauri Spike Smoke",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bowerloom Tauri Spike Smoke",
+        "width": 480,
+        "height": 320,
+        "visible": true
+      }
+    ]
+  }
+}

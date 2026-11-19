@@ -189,8 +189,11 @@ fn main() {
         })
         .setup(|app| {
             // No dock icon and no menu bar: the app is an agent of the test and shows nothing.
+            // Only a test scenario hides the app. Started with no scenario, as the smoke check starts it, the app is a normal app with a window.
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+            if app.state::<Args>().scenario.is_some() {
+                app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+            }
             let _ = app;
             Ok(())
         })

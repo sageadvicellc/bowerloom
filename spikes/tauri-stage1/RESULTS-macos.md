@@ -43,7 +43,7 @@ The core in the child is the shipped code: the reader and the engine service (wh
 ## Tauri work
 
 Dev dependencies of the spike, pinned exactly: `@tauri-apps/cli` 2.12.5 and `@tauri-apps/api` 2.12.5. The install also added the CLI's own binary package `@tauri-apps/cli-darwin-arm64`.
-Rust crates: Tauri 2.12.6 and its dependencies (427 packages locked). The shell uses the standard library to run the sidecar, not the shell plugin. The Gate 3 crates are listed under Gate 3.
+Rust crates: Tauri 2.12.6 and its dependencies (457 packages in the lock file, with the Gate 3 crates). The shell uses the standard library to run the sidecar, not the shell plugin. The Gate 3 crates are listed under Gate 3.
 Cargo registry: 0 KB before the first build. After the first build, 177,600 KB (237 crates). After the Gate 3 crates, 215,300 KB (289 crates). The first build, with the download, took 19 s and stopped on a missing icon. Later builds took 6 to 15 s. Warnings: 0. The build output folder is 1.1 GB (ignored by git).
 Bundle: 127.59 MiB. The shell binary is 14.5 MB. The sidecar is a copy of the repository's Node 24.11.0 runtime (112.1 MiB). The core script (1.7 MB) is a resource. This is the plan's second way to package Node.
 Channel: the sidecar's stdin and stdout, one JSON line each way. Only the shell holds the pipe. No port is open (checked with `lsof`). The plan shown last lives in the sidecar, in the shipped engine service, next to the writes it guards.
@@ -123,18 +123,29 @@ Differences from the plan, stated plainly:
 - The service starts the app once, and the page keeps its state between spec files. Each spec reloads the page first.
 - A runner fault: when a spec ends the app, the runner then fails to end its session. So Leave is pressed 4 s after the last spec ends, and `onComplete` does the check.
 
-FLAKE_COUNT_PLACEHOLDER
+Flake count (`node scripts/e2e-runs.mjs 100`): a run is one pass of all 8 spec files and the `onComplete` check, each run with a fresh app start. The plan's limit is at most 2 failed runs in 100 (proposal).
+- First count: 96 passed, 4 failed (runs 30, 31, 36, 51). Each failure was 1 spec file of 8. Median run 12.9 s. The failed runs took 14 to 21 s, so they were not slow runs. Run 47 took 50 s and passed. Runs 47 to 51 overlapped with a Rust build and the smoke check on the same machine. The output of the failed runs was not kept, so the failing specs are unknown.
+- RESULT: 4 failed runs is over the limit of 2, so Gate 3 FAILS the flake criterion on macOS as measured. FLAKE_SECOND_PLACEHOLDER
 
-Smoke check (unsigned release build, launch and normal quit): NOT RUN. It needs a visible window and an Accessibility permission for the harness app only.
-- Harness: `Bowerloom Smoke Harness`, bundle id `com.sageadvice.bowerloom.smokeharness`, ad-hoc signed with a designated requirement that names only its identifier (`npm run build:harness`, `npm run test:harness`, 6 of 6).
+Smoke check (release build with a visible window, launch and normal quit): PASS, 1 of 1.
+- Build: `npm run build:smoke` (release shell, no test feature, 0 of 6 test-only markers, 4 of 4 smoke-build tests). Its window is visible, 480 x 320.
+- Run: 2026-11-19 06:54:34Z to 06:54:35Z, through the harness started with `open`. Result: `{"launched":true,"windowFound":true,"windows":1,"windowTitle":"Bowerloom Tauri Spike Smoke","launchMs":1016,"attempts":1,"quitAsked":true,"quitEnded":true,"quitMs":109,"exitCode":0,"limitMs":30000,"accessibilityCalls":5}`.
+- It shows 1 window, ends on the normal quit request in 109 ms (limit 30 s, a proposal) and exits with code 0. One attempt, no retry. This proves launch and quit only. It proves no call.
+- Harness: `Bowerloom Smoke Harness`, bundle id `com.sageadvice.bowerloom.smokeharness`, ad-hoc signed (`npm run build:harness`, `npm run test:harness`, 6 of 6). It has no crate dependency and no network symbol. It probes only the app it starts as its own child.
 - Its dry run through `open` reported parent process 1 (launchd), `trusted` false, and no Accessibility call.
-- It has no crate dependency and no network symbol. It probes only the app it starts as its own child.
+- Accessibility grant: it was given for one smoke run (2026-11-19 06:54:34Z to 06:54:35Z) and removed by the maintainer after it. The harness never runs again.
+- Risk, stated plainly: the harness is signed ad-hoc with a designated requirement that names only its identifier. So another ad-hoc binary that claims the same identifier can inherit an Accessibility grant. The removal of the grant handles this. A stronger signing requirement is an optional follow-up for any future run, and a future run needs a new grant.
+- The `smoke` command starts any executable path it is given. A limit to the spike's own build folder was not added, because that needs a rebuild of the harness.
+
+Test-only commands in the release binary: the release shell still holds `core_kill`, `write_result`, `report_pids`, `quit_app` and `crash_app`. The release check does not look for them. They stay for one reason. The Part A tests and the Gate 2 pages run on the release binary through these commands. Moving them behind the `e2e` feature needs a second build for Part A. The spike shell is not shipped. A shipped shell restarts the sidecar by itself and needs none of them. The Stage 4 release job must check for them, as for `pick_folder`.
+Design note, native dialogs: Electron answers a dialog in the main process, so a test can replace the answer in main code (`answerCloseQuestion` in `e2e/hidden.ts`). Tauri has no such place for a page test. A native dialog belongs to the Rust shell, and WebDriver cannot reach it. The spike uses a page element for the close question and a Rust command for the folder pick. Stage 1 still has to design the test-only switch that answers a real native dialog from a fixture.
 
 ## What did not run
 
 - The notarized Part B build. It waits for the Apple spend decision.
 - The x64 dmg and zip of Part C.
-- The Gate 3 smoke check, which waits for the Accessibility grant to the harness app.
+- A second smoke result for the signed build (Stage 6).
+- The Gate 3 flake count on the release build of the real screens.
 - Gate 2 in a visible window: animation playback over time, and permission prompts.
 - Camera and microphone permission checks, to avoid a system prompt.
 - Gate 3 against the real screens and the 48 Electron specs.

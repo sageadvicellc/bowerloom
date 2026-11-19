@@ -2,6 +2,7 @@
 // A run is one pass of all 8 spec files and the `onComplete` check. Plan limits (proposals): 100 runs, at most 2 failed.
 // Usage: node scripts/e2e-runs.mjs [runs]. It prints one line per run and a JSON summary.
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +16,8 @@ for (let i = 1; i <= runs; i += 1) {
   const files = /Spec Files:\s+(\d+) passed(?:, (\d+) failed)?, (\d+) total/.exec(text);
   const left = spawnSync('pgrep', ['-f', 'target-e2e/release/bundle/macos'], { encoding: 'utf8' }).stdout.trim() !== '';
   const result = { run: i, ok: run.status === 0 && !left, status: run.status, passedFiles: files ? Number(files[1]) : null, failedFiles: files ? Number(files[2] ?? 0) : null, ms: Date.now() - began, leftover: left };
+  // With E2E_KEEP=<folder>, the full output of each failed run is kept there, so a failure can be read afterwards.
+  if (!result.ok && process.env.E2E_KEEP) { mkdirSync(process.env.E2E_KEEP, { recursive: true }); writeFileSync(join(process.env.E2E_KEEP, `run-${i}.log`), text); }
   results.push(result);
   console.log(JSON.stringify(result));
 }

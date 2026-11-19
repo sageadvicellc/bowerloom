@@ -18,6 +18,7 @@
     "build:tauri": "node build.mjs --tauri && node scripts/prepare-tauri.mjs && node scripts/tauri-build.mjs",
     "test:tauri": "node --test --test-reporter=spec --test-concurrency=1 test/sidecar-core.test.mjs test/part-a.test.mjs test/part-b.test.mjs test/gate2.test.mjs test/no-e2e-in-release.test.mjs",
     "build:e2e": "node scripts/tauri-build-e2e.mjs",
+    "build:smoke": "node scripts/tauri-build-smoke.mjs",
     "build:harness": "node scripts/build-harness.mjs",
     "test:harness": "node --test --test-reporter=spec --test-concurrency=1 test/harness.test.mjs",
     "check:release": "node scripts/check-release-clean.mjs",
