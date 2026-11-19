@@ -37,6 +37,14 @@ test('L4. the switch is set and a single spec from 1 to 7 is run: the check is s
   assert.equal(SKIP_MESSAGE, 'Leave check skipped');
 });
 
+test('L8. fail closed: an empty or missing spec list counts as including the close-guard spec (3 of 3 shapes)', () => {
+  for (const specs of [[], undefined, null]) {
+    const d = decideLeaveCheck({ env: { [LEAVE_SWITCH]: 'off' }, specs });
+    assert.equal(d.run, true);
+    assert.match(d.error, /close-guard/);
+  }
+});
+
 test('L5. any value other than "off" does not skip', () => {
   assert.deepEqual(decideLeaveCheck({ env: { [LEAVE_SWITCH]: '1' }, specs: one(2) }), { run: true });
 });

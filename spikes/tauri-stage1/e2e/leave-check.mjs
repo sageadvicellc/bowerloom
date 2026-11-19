@@ -5,8 +5,8 @@
 export const LEAVE_SWITCH = 'E2E_LEAVE_CHECK';
 export const SKIP_MESSAGE = 'Leave check skipped';
 
-/** True when the spec list is, or may expand to, the close-guard spec: a glob, a folder, or its own file name. */
-const includesCloseGuard = specs => specs.some(spec => /[*?]/.test(String(spec)) || /08-close-guard/.test(String(spec)) || !/\.spec\.[mc]?[jt]s$/.test(String(spec)));
+/** True when the spec list is, or may expand to, the close-guard spec: a glob, a folder, or its own file name. An empty or missing list counts too (fail closed). */
+const includesCloseGuard = specs => !Array.isArray(specs) || specs.length === 0 || specs.some(spec => /[*?]/.test(String(spec)) || /08-close-guard/.test(String(spec)) || !/\.spec\.[mc]?[jt]s$/.test(String(spec)));
 
 /** What `onComplete` does: `{ run: true }`, `{ run: true, error }` (run it, and fail the run), or `{ run: false, message }` (skip it). */
 export function decideLeaveCheck({ env, specs }) {
