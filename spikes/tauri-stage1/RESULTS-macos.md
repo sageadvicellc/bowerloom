@@ -130,8 +130,8 @@ Flake count (`node scripts/e2e-runs.mjs 100`): a run is one pass of all 8 spec f
 - Each spec file alone, 20 runs each in a row (`node scripts/e2e-spec-loop.mjs 20`, the output of failures kept): 160 of 160 passed, 0 failed. Medians were 2.7 to 3.2 s for specs 1 to 7 and 6.9 s for the close-guard spec.
 - Totals: 300 full runs, 296 passed. All 4 failures were in the first count. None of the later 200 full runs and none of the 160 single-spec runs failed.
 - Cause: not found. The 4 failures did not reproduce, and the first count's output was not kept, so the failing spec is unknown. What is known: during the first count, the same machine was committing to git (with the repo's commit hooks), writing files, and later building a Rust app. The two counts after it ran with the machine idle. The likely cause is a spec waiting past its time limit under load (the page waits are 10 to 30 s). This is a guess, not a finding.
-- Gate 3 flake criterion (at most 2 failed in 100, a proposal): met in the two idle counts (0 and 0 failed), not met in the count that ran under load (4 failed). It is not proven robust under load. If load is part of the criterion, a count under a stated load is needed.
-- Test-code change for the loop: the `onComplete` check that Leave ended the app now runs only when the close-guard spec is part of the run. A single spec run without it failed 20 of 20 by that check alone, which is not a flake.
+- Gate 3 flake criterion (at most 2 failed in 100, a proposal): met in the two idle counts (0 and 0 failed), not met in the count that ran under load (4 failed). It is not proven to hold under load. If load is part of the criterion, a count under a stated load is needed.
+- Test-code change for the loop: the `onComplete` check of Leave now runs only for a run that includes the close-guard spec. Without that change, a single spec run failed 20 of 20 by that check alone. That is not a flake.
 
 Smoke check (release build with a visible window, launch and normal quit): PASS, 1 of 1.
 - Build: `npm run build:smoke` (release shell, no test feature, 0 of 6 test-only markers, 4 of 4 smoke-build tests). Its window is visible, 480 x 320.
