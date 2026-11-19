@@ -2,7 +2,7 @@
   "name": "@bowerloom/tauri-stage1-spike",
   "version": "0.0.0",
   "private": true,
-  "description": "Stage 1 of the Tauri move, macOS phase: Gate 1 Part C and the payload baseline. A spike. Nothing here ships.",
+  "description": "Stage 1 of the Tauri move, macOS phase: the payload baseline, Gate 1 Parts A, B and C, Gate 2 feature tests, and Gate 3 (WebdriverIO) on an Electron utility process and a Tauri shell with a Node sidecar. A spike. Nothing here ships.",
   "type": "module",
   "engines": {
     "node": ">=24.11.0 <25"
