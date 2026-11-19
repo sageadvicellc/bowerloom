@@ -1,0 +1,9 @@
+dist/
+dist-e2e/
+src-tauri/target/
+src-tauri/target-e2e/
+src-tauri/target-smoke/
+src-tauri/gen/
+src-tauri/binaries/
+src-tauri/icons/
+src-tauri/resources/

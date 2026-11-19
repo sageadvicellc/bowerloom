@@ -1,0 +1,56 @@
+{
+  "name": "bowerloom-stage1-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Spike app for the Tauri move, Stage 1: it starts the Node core in a child process. Not shipped.",
+  "author": "Sage Advice LLC",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/main.mjs",
+  "build": {
+    "appId": "com.sageadvice.bowerloom.stage1spike",
+    "productName": "Bowerloom Spike",
+    "copyright": "Sage Advice LLC",
+    "electronVersion": "44.10.2",
+    "electronDist": "../../../apps/desktop/node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    }
+  }
+}

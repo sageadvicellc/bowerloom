@@ -1,0 +1,37 @@
+{
+  "name": "@bowerloom/tauri-stage1-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Stage 1 of the Tauri move, macOS phase: the payload baseline, Gate 1 Parts A, B and C, Gate 2 feature tests, and Gate 3 (WebdriverIO) on an Electron utility process and a Tauri shell with a Node sidecar. A spike. Nothing here ships.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "scripts": {
+    "typecheck": "../../apps/desktop/node_modules/.bin/tsc --noEmit -p tsconfig.json",
+    "build": "node build.mjs",
+    "test:unit": "node --test --test-reporter=spec test/host.test.mjs test/fixture.test.mjs test/parity.test.mjs test/leave-check.test.mjs",
+    "test": "npm run build && npm run test:unit && node --test --test-reporter=spec --test-concurrency=1 test/part-c.test.mjs",
+    "payload": "npm run build && node scripts/measure-payload.mjs",
+    "package": "npm run build && ../../apps/desktop/node_modules/.bin/electron-builder --projectDir app --mac dmg zip --arm64 --publish never",
+    "test:packaged": "node scripts/run-packaged.mjs",
+    "build:tauri": "node build.mjs --tauri && node scripts/prepare-tauri.mjs && node scripts/tauri-build.mjs",
+    "test:tauri": "node --test --test-reporter=spec --test-concurrency=1 test/sidecar-core.test.mjs test/part-a.test.mjs test/part-b.test.mjs test/gate2.test.mjs test/no-e2e-in-release.test.mjs",
+    "build:e2e": "node scripts/tauri-build-e2e.mjs",
+    "build:smoke": "node scripts/tauri-build-smoke.mjs",
+    "build:harness": "node scripts/build-harness.mjs",
+    "test:harness": "node --test --test-reporter=spec --test-concurrency=1 test/harness.test.mjs",
+    "check:release": "node scripts/check-release-clean.mjs",
+    "test:e2e": "node_modules/.bin/wdio run e2e/wdio.conf.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "2.12.5",
+    "@tauri-apps/cli": "2.12.5",
+    "@wdio/cli": "9.31.9",
+    "@wdio/local-runner": "9.31.9",
+    "@wdio/mocha-framework": "9.31.9",
+    "@wdio/tauri-plugin": "1.5.1",
+    "@wdio/tauri-service": "1.5.1",
+    "webdriverio": "9.31.9"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "productName": "Bowerloom Tauri Spike E2E",
+  "build": {
+    "frontendDist": "../dist-e2e"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "e2e",
+          "description": "Test build only: the core events and window calls, and the WebdriverIO plugin and embedded WebDriver permissions.",
+          "windows": ["main"],
+          "permissions": ["core:default", "core:window:default", "core:window:allow-close", "wdio:default", "wdio-webdriver:default"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+/* The rules the web-feature tests of Gate 2 need. They are in a file because the content security policy allows only the app's own styles. */
+#cq { container-type: inline-size; width: 300px; }
+#cq .kid { width: 10px; height: 10px; }
+@container (min-width: 200px) { #cq .kid { width: 123px; } }
+
+.has-parent { width: 10px; }
+.has-parent:has(> .has-child) { width: 77px; }
+
+.mix { color: color-mix(in srgb, rgb(255, 0, 0) 50%, rgb(0, 0, 255) 50%); }
+
+.blur { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+
+.balance { text-wrap: balance; }
