@@ -36,6 +36,11 @@ export const config = {
     process.env.SPIKE_E2E_PICKS = engineFolder(home, 'a');
   },
   async onComplete() {
+    // Set only by scripts/e2e-spec-loop.mjs for a run that does not include the close-guard spec, whose Leave step ends the app.
+    if (process.env.E2E_LEAVE_CHECK === 'off') {
+      if (base !== '') rmSync(base, { recursive: true, force: true });
+      return;
+    }
     // The close-guard spec presses Leave 4 seconds after it ends. The app must end within 15 seconds of that, and its sidecar with it.
     const running = pattern => spawnSync('pgrep', ['-f', pattern], { encoding: 'utf8' }).stdout.trim() !== '';
     const until = Date.now() + 15000;
