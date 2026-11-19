@@ -20,18 +20,22 @@ import { realNowIso } from '../harness/clock.js';
 import { pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
-export interface ApiClient {
-  /** The three calls of the read-only reader, or null when this window has none or a partial set. */
-  readonly reader: RealBridge | null;
-  /** The calls of the adopt, install and save sheets, or null when this window has none, a partial set, or a mode other than 'real'. */
-  readonly engine: EngineBridge | null;
-  /** The two read-only calls of the local models report and the extension list, or null when this window has none or a partial set. */
-  readonly local: LocalBridge | null;
-  /** The five calls of the run record and the figures of a session log, or null when this window has none or a partial set. */
-  readonly runs: RunsBridge | null;
-  /** The four calls of the read scope of a module (the places approved for it), or null when this window has none or a partial set. */
-  readonly modules: ModulesBridge | null;
+/** Every call the page can make, by side: the 3 reader calls, the 39 engine calls, and the local, runs and modules calls. Any shell gives each side whole or not at all. */
+export interface CallLayer {
+  /** The three calls of the read-only reader. */
+  readonly reader: RealBridge;
+  /** The calls of the adopt, install and save sheets, in mode 'real'. */
+  readonly engine: EngineBridge;
+  /** The two read-only calls of the local models report and the extension list. */
+  readonly local: LocalBridge;
+  /** The five calls of the run record and the figures of a session log. */
+  readonly runs: RunsBridge;
+  /** The calls of the read scope of a module (the places approved for it). */
+  readonly modules: ModulesBridge;
 }
+
+/** What the page gets: each side of the call layer, or null when this window has none, a partial set, or (for the engine) a mode other than 'real'. */
+export type ApiClient = { readonly [Side in keyof CallLayer]: CallLayer[Side] | null };
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 const hasAll = (found: Record<string, unknown>, calls: readonly string[]): boolean => calls.every(call => typeof found[call] === 'function');
