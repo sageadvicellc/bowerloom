@@ -22,7 +22,7 @@ These items run on the maintainer's Mac alone:
 - Gate 1 Part A on macOS: the protocol, events, the 30-second limit, kill-and-restart, the in-flight failure, the plan state, the orphan tests, and the core and CLI tests with no shell.
 - Gate 1 Part C on macOS: the Electron child process, the ad-hoc signed dmg and zip, and the install path with spaces and non-ASCII characters.
 - Gate 1 Part B on macOS, the unsigned part only. The notarized build still waits for the Apple spend (open question 8). So Gate 1 cannot pass for macOS until that build runs.
-- The Gate 2 macOS feature tests: WKWebView, the page scheme, the content security policy, and the permission checks.
+- The Gate 2 macOS feature tests: WKWebView, the page scheme, the content security policy, the permission checks, and the WebGL 2 check.
 - Gate 3 on macOS: the WebdriverIO slice and the unsigned smoke check.
 - Stage 2, the call layer. It already does not wait for the gates.
 - The largest-payload measurement on Electron.
@@ -178,10 +178,11 @@ If any criterion fails on a system and the maintainer does not approve a fix, Ga
 
 Risk: Linux uses `webkit2gtk`, and Electron bundles its own Chromium.
 
-Phase split. The macOS phase runs the feature tests, the page scheme, the content security policy, and the permission checks on macOS (WKWebView). It records each macOS version and its patch state. Everything that concerns the Linux web view waits for the Windows and Linux phase. That covers the `webkit2gtk` versions, the reference machine, the frame test, the screenshot baseline, and the pixel limit. The WebView2 feature tests on Windows wait for that phase too, because they need a Windows machine.
+Phase split. The macOS phase runs the feature tests, the page scheme, the content security policy, and the permission checks on macOS (WKWebView). It also runs the WebGL 2 check on macOS. It records each macOS version and its patch state. Everything that concerns the Linux web view waits for the Windows and Linux phase. That covers the `webkit2gtk` versions, the reference machine, the frame test, the screenshot baseline, and the pixel limit. The WebView2 feature tests on Windows wait for that phase too, because they need a Windows machine.
 
 The Linux part runs in the Windows and Linux phase. Two named Linux distributions with different `webkit2gtk` versions are the minimum (proposal). The gate passes for Linux when all of these hold on them. In a decision, the maintainer names the test distributions, the reference machine, and the two baseline machines. The decision also names the key screens and the screenshot viewport (open questions 7 and 10). Stage 0 checks that the named distributions have different `webkit2gtk` versions. The two baseline machines are the machines of the two named distributions. The reference machine is one of them.
 - Each web feature in "Web features the renderer uses" has a test. "Works" means its test passes.
+- WebGL 2 check, on each system. The shipped web view creates a WebGL 2 context, compiles one shader, and draws one frame with no GL error. The gate records the web view engine and the GPU. The macOS item runs in the macOS phase. The Linux and Windows items run in the second phase. A failure on a system fails Gate 2 for that system. Measured fact: a macOS spike on the branch of [pull request 196](https://github.com/sageadvicellc/bowerloom/pull/196) passed this check on 2026-11-18, with GL error 0 on an Apple GPU. This is a spike result, not the gate run.
 - The custom page scheme, the content security policy, and the permission refusal work. These checks also run on macOS and Windows.
 - Before the gate runs, a baseline run compares Electron screenshots from two machines. A trial run compares Electron with Tauri on the reference machine, to check that the limit is feasible. The maintainer sets the pixel limit below from the baseline run (open question 7). The baseline runs on the machines of the two named distributions, and both run Linux. So cross-machine noise does not fail the limit.
 - Screenshots of the key screens match the Electron screenshots. If more than 1% of the pixels in a screenshot differ, that screenshot fails (proposal).
