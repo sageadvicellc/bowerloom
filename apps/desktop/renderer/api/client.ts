@@ -17,38 +17,62 @@ import { MODULE_CALLS } from '../../shared/api/modules.js';
 import type { ModuleRefusalCode, ModulesBridge } from '../../shared/api/modules.js';
 import { createSampleLocal } from '../../shared/local-models/sample.js';
 import { realNowIso } from '../harness/clock.js';
-import { pageTransport, samplePreviewEngines } from './transport.js';
+import { activeTransportId, pageTransport, samplePreviewEngines } from './transport.js';
 import type { RawBridges } from './transport.js';
 
-export interface ApiClient {
-  /** The three calls of the read-only reader, or null when this window has none or a partial set. */
-  readonly reader: RealBridge | null;
-  /** The calls of the adopt, install and save sheets, or null when this window has none, a partial set, or a mode other than 'real'. */
-  readonly engine: EngineBridge | null;
-  /** The two read-only calls of the local models report and the extension list, or null when this window has none or a partial set. */
-  readonly local: LocalBridge | null;
-  /** The five calls of the run record and the figures of a session log, or null when this window has none or a partial set. */
-  readonly runs: RunsBridge | null;
-  /** The four calls of the read scope of a module (the places approved for it), or null when this window has none or a partial set. */
-  readonly modules: ModulesBridge | null;
+/** Every call the page can make, by side: the 3 reader calls, the 39 engine calls, and the local, runs and modules calls. Any shell gives each side whole or not at all. */
+export interface CallLayer {
+  /** The three calls of the read-only reader. */
+  readonly reader: RealBridge;
+  /** The calls of the adopt, install and save sheets, in mode 'real'. */
+  readonly engine: EngineBridge;
+  /** The two read-only calls of the local models report and the extension list. */
+  readonly local: LocalBridge;
+  /** The five calls of the run record and the figures of a session log. */
+  readonly runs: RunsBridge;
+  /** The calls of the read scope of a module (the places approved for it). */
+  readonly modules: ModulesBridge;
 }
+
+/** What the page gets: each side of the call layer, or null when this window has none, a partial set, or (for the engine) a mode other than 'real'. */
+export type ApiClient = { readonly [Side in keyof CallLayer]: CallLayer[Side] | null };
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 const hasAll = (found: Record<string, unknown>, calls: readonly string[]): boolean => calls.every(call => typeof found[call] === 'function');
 
-/** Checks what a transport found and gives the client. */
-export function createApiClient(raw: RawBridges): ApiClient {
-  const reader = isObject(raw.reader) && hasAll(raw.reader, REAL_CALLS) ? (raw.reader as unknown as RealBridge) : null;
-  const engine = isObject(raw.engine) && raw.engine.mode === 'real' && hasAll(raw.engine, ENGINE_CALLS) ? (raw.engine as unknown as EngineBridge) : null;
-  const local = isObject(raw.local) && hasAll(raw.local, LOCAL_CALLS) ? (raw.local as unknown as LocalBridge) : null;
-  const runs = isObject(raw.runs) && hasAll(raw.runs, RUN_CALLS) ? (raw.runs as unknown as RunsBridge) : null;
-  const modules = isObject(raw.modules) && hasAll(raw.modules, MODULE_CALLS) ? (raw.modules as unknown as ModulesBridge) : null;
-  return { reader, engine, local, runs, modules };
+/** The one place the client writes to the console. */
+const tell = (message: string): void => { console.error(message); };
+
+/** The calls a found side lacks (every call when it is not an object), plus `mode` for an engine side that is not in mode 'real'. Empty when the side is whole. */
+const missingOf = (found: unknown, calls: readonly string[], needsRealMode: boolean): string[] => {
+  if (!isObject(found)) return [...calls];
+  const missing = calls.filter(call => typeof found[call] !== 'function');
+  return needsRealMode && found.mode !== 'real' ? ['mode', ...missing] : missing;
+};
+
+/**
+ * Checks what a transport found and gives the client. A side that is missing altogether (undefined) is normal in the sample launch and in a window with no bridge, and is quiet.
+ * A side that is present and not whole is null, and the console names the transport, the side and what it lacked, so a shell that gives a partial set is not mistaken for no shell.
+ */
+export function createApiClient(raw: RawBridges, transportId = 'unknown'): ApiClient {
+  const side = <T>(name: keyof CallLayer, found: unknown, calls: readonly string[], needsRealMode = false): T | null => {
+    const missing = missingOf(found, calls, needsRealMode);
+    if (missing.length === 0) return found as T;
+    if (found !== undefined) tell(`Bowerloom: the ${transportId} shell gave no whole ${name} bridge; it lacks ${missing.join(', ')} (BRIDGE_PARTIAL).`);
+    return null;
+  };
+  return {
+    reader: side<RealBridge>('reader', raw.reader, REAL_CALLS),
+    engine: side<EngineBridge>('engine', raw.engine, ENGINE_CALLS, true),
+    local: side<LocalBridge>('local', raw.local, LOCAL_CALLS),
+    runs: side<RunsBridge>('runs', raw.runs, RUN_CALLS),
+    modules: side<ModulesBridge>('modules', raw.modules, MODULE_CALLS),
+  };
 }
 
 /** The client of this window. */
 export function getApiClient(): ApiClient {
-  return createApiClient(pageTransport());
+  return createApiClient(pageTransport(), activeTransportId());
 }
 
 /**
@@ -92,6 +116,6 @@ export function fallbackModules(realMode: boolean): ModulesBridge | null {
   if (!realMode) return null;
   const modules = getApiClient().modules;
   // In the app on the person's own folders the preload always gives the whole bridge. A missing or partial one is a fault, told in the console here and on the Modules screen (BRIDGE_MISSING).
-  if (modules === null) console.error('Bowerloom: the window gave no whole modules bridge (BRIDGE_MISSING).');
+  if (modules === null) tell('Bowerloom: the window gave no whole modules bridge (BRIDGE_MISSING).');
   return modules;
 }

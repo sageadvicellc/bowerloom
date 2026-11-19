@@ -50,7 +50,7 @@ test('the shipped page does not carry the attribute, and main reads the launch a
 
 test('the page reads the attribute once, to make its sample world, and only the API client does it', () => {
   assert.match(read('renderer/api/client.ts'), /createSampleEngine\(\{ previewEngines: samplePreviewEngines\(\) \}\)/);
-  assert.match(read('renderer/api/transport.ts'), /document\.body\.getAttribute\(SAMPLE_PREVIEW_ATTRIBUTE\) === '1'/);
+  assert.match(read('renderer/api/transport.ts'), /document\.body\?\.getAttribute\(SAMPLE_PREVIEW_ATTRIBUTE\) === '1'/);
   assert.doesNotMatch(read('renderer/harness/HarnessApp.tsx'), /createSampleEngine|SAMPLE_PREVIEW_ATTRIBUTE/, 'the screen tree makes no engine of its own');
 });
 
